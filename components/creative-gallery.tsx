@@ -21,6 +21,11 @@ function ChannelTag({ item }: { item: Creative }) {
   return <span className="channel-tag"><i className={`platform-dot ${cls}`}/>{item.channel}</span>;
 }
 
+function UrlLink({ url }: { url: string }) {
+  if (!url || url === "-") return <div className="url-box url-empty">연결 URL 없음</div>;
+  return <a className="url-box url-link" href={url} target="_blank" rel="noreferrer"><span>{url}</span><b>열기 ↗</b></a>;
+}
+
 export function CreativeGallery() {
   const [active, setActive] = useState<(typeof filters)[number]>("전체");
   const [selected, setSelected] = useState<Creative | null>(null);
@@ -54,7 +59,7 @@ export function CreativeGallery() {
       <div className="drawer-tabs"><button className="active">게재지면</button><button>원본 소재</button><button>성과</button><button>URL / UTM</button></div>
       <div className="drawer-section placement-hero"><Preview item={selected} large/></div>
       <div className="drawer-section"><div className="detail-section-head"><h4>운영 정보</h4><span className="operation-state live"><i/>LIVE</span></div><div className="detail-grid refined-detail-grid"><div className="detail-box"><span>측정 등급</span><strong>{selected.measurement}</strong></div><div className="detail-box"><span>Spend</span><strong>{selected.spend}</strong></div><div className="detail-box"><span>주요 KPI</span><strong>{selected.ctr}</strong></div><div className="detail-box"><span>게재 확인</span><strong>09.14</strong></div></div></div>
-      <div className="drawer-section"><div className="detail-section-head"><h4>Landing & Tracking</h4><span className="url-status">✓ QA 정상</span></div><label className="url-label">Original Landing</label><div className="url-box">{selected.landing}</div><label className="url-label second">Tracking URL · UTM</label><div className="url-box tracking-url">{selected.tracking}</div></div>
+      <div className="drawer-section"><div className="detail-section-head"><h4>Landing & Tracking</h4><span className="url-status">✓ QA 정상</span></div><label className="url-label">Original Landing</label><UrlLink url={selected.landing}/><label className="url-label second">Tracking URL · UTM</label><UrlLink url={selected.tracking}/></div>
       <div className="drawer-section"><div className="detail-section-head"><h4>게재 증빙</h4><button className="text-button">보고서 열기 →</button></div><div className="proof-row"><div className="proof-thumb">09.14</div><div><strong>최근 게재 확인 완료</strong><p>게재보고서 / 실제 노출 캡처 연결</p></div><span className="operation-state live"><i/>확인</span></div></div>
     </aside></div>}
   </>;
