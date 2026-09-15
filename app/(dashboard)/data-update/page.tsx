@@ -1,4 +1,4 @@
-import { DailyReportIntake } from "./daily-report-intake";
+import { DailyReportIntakeV2 } from "./daily-report-intake-v2";
 import styles from "./update.module.css";
 
 export default function DataUpdatePage() {
@@ -13,7 +13,7 @@ export default function DataUpdatePage() {
         <div className="page-meta"><span className="view-pill">FACT ≠ INSIGHT</span></div>
       </div>
 
-      <DailyReportIntake />
+      <DailyReportIntakeV2 />
 
       <section className={styles.secondarySources}>
         <article><div className="eyebrow">MONTHLY / ASSET</div><h3>다른 운영 자료는 기존 방식 유지</h3><p>Media Mix는 최초/변경 시, 소재·게재지면은 Google Drive 폴더 동기화 또는 일괄 업로드로 관리합니다.</p></article>
