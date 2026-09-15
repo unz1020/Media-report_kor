@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./report-ui.css";
+import "./link-enhancements.css";
 
 export const metadata: Metadata = {
   title: "Media Report",
