@@ -1,5 +1,12 @@
 import * as XLSX from "xlsx";
-import type { DailyBundlePreview, MailMetricCheck, MediaPlanFact, PlacementFact } from "@/lib/daily-report-parser";
+import type {
+  CreativeDailyFact,
+  DailyBundlePreview,
+  DailyPerformanceFact,
+  MailMetricCheck,
+  MediaPlanFact,
+  PlacementFact,
+} from "@/lib/daily-report-parser";
 
 type Matrix = unknown[][];
 
@@ -12,12 +19,15 @@ function num(value: unknown) {
 }
 function optionalNum(value: unknown): number | null {
   const raw = text(value);
-  if (!raw || raw === "-" || raw === "#REF!" || raw === "#N/A") return null;
+  if (!raw || raw === "-" || raw === "#REF!" || raw === "#N/A" || raw === "#VALUE!") return null;
   const parsed = num(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 function asDate(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === "number" && Number.isFinite(value) && value > 30000 && value < 70000) {
+    return new Date(Date.UTC(1899, 11, 30) + Math.round(value * 86400000)).toISOString().slice(0, 10);
+  }
   const raw = text(value);
   const match = raw.match(/(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})/);
   if (!match) return "";
@@ -66,9 +76,23 @@ function extractMailReportDate(mailBody: string, year: number) {
   return "";
 }
 function extractOperationNotes(mailBody: string) {
-  return Array.from(new Set(mailBody.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).filter((line) =>
-    /전일|성과|보너스 집행|라이브|집행 기간|기간\s*:|매체\s*:|효율|상승|하락|예산|노출|클릭|CTR|전환/i.test(line)
-  ))).slice(0, 30);
+  const lines = mailBody.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const mediaPattern = /(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)/i;
+  let currentMedia = "";
+  const notes: string[] = [];
+
+  for (const line of lines) {
+    const section = line.match(/^<\s*(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)\s*>$/i)
+      || line.match(/^\d+\)\s*(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)/i);
+    if (section) currentMedia = section[1];
+
+    const useful = /전일|집행 결과|보너스 집행|라이브 시작|집행 기간|기간\s*:|매체\s*:|효율|상승|하락|예산|보장 노출수|Impression|Clicks|CTR|전환|일일 통합 성과 데이터/i.test(line);
+    if (!useful) continue;
+
+    const hasMedia = mediaPattern.test(line);
+    notes.push(currentMedia && !hasMedia ? `[${currentMedia}] ${line}` : line);
+  }
+  return Array.from(new Set(notes)).slice(0, 40);
 }
 function extractMailMetrics(mailBody: string) {
   const checks: Omit<MailMetricCheck, "status" | "matchedPlacement">[] = [];
@@ -113,6 +137,17 @@ function workbookMeta(book: XLSX.WorkBook, matrices: Record<string, Matrix>) {
     }
   }
   return { advertiser, campaignStart, campaignEnd, inferredYear };
+}
+
+function sheetPlatform(rows: Matrix, sheetName: string) {
+  for (const row of rows.slice(0, 25)) {
+    const index = findIndex(row, ["플랫폼", "Platform"]);
+    if (index >= 0) {
+      const value = text(nextNonEmpty(row, index + 1));
+      if (value) return value;
+    }
+  }
+  return sheetName.split(/[_-]/)[0] || sheetName;
 }
 
 function placementFromColumns(input: {
@@ -255,6 +290,119 @@ function parseGenericMetricTable(sheetName: string, rows: Matrix): PlacementFact
   return result;
 }
 
+function metricColumn(row: unknown[], start: number, end: number, aliases: string[]) {
+  const wanted = aliases.map(key);
+  for (let i = start; i < end; i++) if (wanted.includes(key(row[i]))) return i;
+  return -1;
+}
+
+function parseAgencyDailyPerformance(sheetName: string, rows: Matrix, reportDate: string) {
+  const result: DailyPerformanceFact[] = [];
+  if (!/total/i.test(sheetName) || /소재별|타게팅별/i.test(sheetName)) return result;
+  const titleRow = rows.findIndex((row) => row.some((value) => /일별\s*통합\s*성과\s*데이터/i.test(text(value))));
+  if (titleRow < 0 || titleRow + 3 >= rows.length) return result;
+
+  const groupRow = rows[titleRow + 1] ?? [];
+  const metricRow = rows[titleRow + 2] ?? [];
+  const dateCol = findIndex(groupRow, ["Date", "일자", "날짜"]);
+  if (dateCol < 0) return result;
+
+  const starts: number[] = [];
+  for (let i = dateCol + 1; i < groupRow.length; i++) {
+    const label = text(groupRow[i]);
+    if (label && key(label) !== "total") starts.push(i);
+  }
+  const platform = sheetPlatform(rows, sheetName);
+
+  starts.forEach((start, groupIndex) => {
+    const end = starts[groupIndex + 1] ?? metricRow.length;
+    const placement = text(groupRow[start]);
+    const impCol = metricColumn(metricRow, start, end, ["Impression", "Impressions", "A.Imps", "노출", "노출수"]);
+    const clickCol = metricColumn(metricRow, start, end, ["Click", "Clicks", "A.Clicks", "클릭", "클릭수"]);
+    const ctrCol = metricColumn(metricRow, start, end, ["CTR", "CTR(%)"]);
+    if (!placement || impCol < 0) return;
+
+    for (let r = titleRow + 4; r < rows.length; r++) {
+      const row = rows[r] ?? [];
+      const date = asDate(row[dateCol]);
+      if (!date || (reportDate && date > reportDate)) continue;
+      const impressionsRaw = optionalNum(valueAt(row, impCol));
+      const clicksRaw = clickCol >= 0 ? optionalNum(valueAt(row, clickCol)) : null;
+      const ctrRaw = ctrCol >= 0 ? ratioPercent(valueAt(row, ctrCol)) : null;
+      if (impressionsRaw === null && clicksRaw === null && ctrRaw === null) continue;
+      const impressions = impressionsRaw ?? 0;
+      result.push({
+        date,
+        platform,
+        placement,
+        spend: null,
+        impressions,
+        clicks: clicksRaw,
+        views: null,
+        ctr: ctrRaw ?? (impressions > 0 && clicksRaw !== null ? clicksRaw / impressions * 100 : null),
+        cpm: null,
+        cpc: null,
+        cpv: null,
+        vtr: null,
+        sourceSheet: sheetName,
+      });
+    }
+  });
+  return result;
+}
+
+function parseCreativeDailyPerformance(sheetName: string, rows: Matrix, reportDate: string) {
+  const result: CreativeDailyFact[] = [];
+  if (!/소재별/i.test(sheetName)) return result;
+  const titleRow = rows.findIndex((row) => row.some((value) => /일별\s*통합\s*성과\s*데이터/i.test(text(value))));
+  if (titleRow < 0 || titleRow + 3 >= rows.length) return result;
+
+  const creativeRow = rows[titleRow] ?? [];
+  const groupRow = rows[titleRow + 1] ?? [];
+  const metricRow = rows[titleRow + 2] ?? [];
+  const dateCol = findIndex(groupRow, ["Date", "일자", "날짜"]);
+  if (dateCol < 0) return result;
+
+  const starts: number[] = [];
+  for (let i = dateCol + 1; i < creativeRow.length; i++) {
+    const label = text(creativeRow[i]);
+    if (label && !/일별\s*통합\s*성과\s*데이터/i.test(label)) starts.push(i);
+  }
+  const platform = sheetPlatform(rows, sheetName);
+
+  starts.forEach((start, groupIndex) => {
+    const end = starts[groupIndex + 1] ?? metricRow.length;
+    const creative = text(creativeRow[start]);
+    const placement = text(groupRow[start]);
+    const impCol = metricColumn(metricRow, start, end, ["Impression", "Impressions", "A.Imps", "노출", "노출수"]);
+    const clickCol = metricColumn(metricRow, start, end, ["Click", "Clicks", "A.Clicks", "클릭", "클릭수"]);
+    const ctrCol = metricColumn(metricRow, start, end, ["CTR", "CTR(%)"]);
+    if (!creative || !placement || impCol < 0) return;
+
+    for (let r = titleRow + 4; r < rows.length; r++) {
+      const row = rows[r] ?? [];
+      const date = asDate(row[dateCol]);
+      if (!date || (reportDate && date > reportDate)) continue;
+      const impressionsRaw = optionalNum(valueAt(row, impCol));
+      const clicksRaw = clickCol >= 0 ? optionalNum(valueAt(row, clickCol)) : null;
+      const ctrRaw = ctrCol >= 0 ? ratioPercent(valueAt(row, ctrCol)) : null;
+      if (impressionsRaw === null && clicksRaw === null && ctrRaw === null) continue;
+      const impressions = impressionsRaw ?? 0;
+      result.push({
+        date,
+        platform,
+        placement,
+        creative,
+        impressions,
+        clicks: clicksRaw,
+        ctr: ctrRaw ?? (impressions > 0 && clicksRaw !== null ? clicksRaw / impressions * 100 : null),
+        sourceSheet: sheetName,
+      });
+    }
+  });
+  return result;
+}
+
 function parseMediaPlans(book: XLSX.WorkBook, matrices: Record<string, Matrix>, year: number) {
   const plans: MediaPlanFact[] = []; const sourceSheets = new Set<string>();
   for (const sheetName of book.SheetNames) {
@@ -282,12 +430,32 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
   const matrices: Record<string, Matrix> = {};
   for (const sheetName of book.SheetNames) matrices[sheetName] = rowsFor(book, sheetName);
   const meta = workbookMeta(book, matrices);
+  const year = Number((meta.campaignStart || `${meta.inferredYear}`).slice(0, 4)) || meta.inferredYear;
+  const reportDate = extractMailReportDate(mailBody, year) || meta.campaignStart || "";
+
   const placements: PlacementFact[] = [];
   const parsedSheets = new Set<string>();
+  const dailyPerformance: DailyPerformanceFact[] = [];
+  const creativeDailyPerformance: CreativeDailyFact[] = [];
+  const dailySourceSheets = new Set<string>();
+  const creativeSourceSheets = new Set<string>();
 
   for (const sheetName of book.SheetNames) {
     const rows = matrices[sheetName] ?? [];
-    if (/^raw/i.test(sheetName) || /media\s*mix/i.test(sheetName)) continue;
+    if (/^raw/i.test(sheetName) || /media\s*mix/i.test(sheetName) || /_[A-Z]$/i.test(sheetName)) continue;
+
+    const daily = parseAgencyDailyPerformance(sheetName, rows, reportDate);
+    if (daily.length) {
+      dailyPerformance.push(...daily);
+      dailySourceSheets.add(sheetName);
+    }
+    const creative = parseCreativeDailyPerformance(sheetName, rows, reportDate);
+    if (creative.length) {
+      creativeDailyPerformance.push(...creative);
+      creativeSourceSheets.add(sheetName);
+    }
+
+    if (/소재별|타게팅별/i.test(sheetName)) continue;
     const parsers = [parseSummaryMediaReport, parseAgencyTotal, parseOverall, parseGenericMetricTable];
     for (const parser of parsers) {
       const result = parser(sheetName, rows);
@@ -296,8 +464,6 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
   }
 
   const plan = parseMediaPlans(book, matrices, meta.inferredYear);
-  const year = Number((meta.campaignStart || `${meta.inferredYear}`).slice(0, 4)) || meta.inferredYear;
-  const reportDate = extractMailReportDate(mailBody, year) || meta.campaignStart || "";
   const mailMetrics = extractMailMetrics(mailBody);
   const mailChecks: MailMetricCheck[] = mailMetrics.map((metric) => {
     const wanted = normalizedPlacement(metric.placement);
@@ -310,7 +476,7 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
     const status = candidate.impressions === metric.impressions && candidate.clicks === metric.clicks && ctrDiff <= 0.01 ? "match" : "mismatch";
     return { ...metric, status, matchedPlacement: candidate.placement };
   });
-  const usedSheets = new Set([...parsedSheets, ...plan.sourceSheets]);
+  const usedSheets = new Set([...parsedSheets, ...dailySourceSheets, ...creativeSourceSheets, ...plan.sourceSheets]);
 
   return {
     advertiser: meta.advertiser || (/교원웰스|웰스/i.test(filename + mailBody) ? "교원웰스" : /자코모/i.test(filename + mailBody) ? "자코모" : "미확인"),
@@ -321,6 +487,8 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
     parsedSheets: [...parsedSheets],
     ignoredSheets: book.SheetNames.filter((name) => !usedSheets.has(name)),
     placements,
+    dailyPerformance,
+    creativeDailyPerformance,
     mediaPlan: plan.plans,
     planSourceSheets: [...plan.sourceSheets],
     mailChecks,
