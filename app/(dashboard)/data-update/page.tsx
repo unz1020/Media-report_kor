@@ -1,58 +1,128 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import styles from "./update.module.css";
 
+type IntakeMode = "gmail" | "manual";
+type ImportState = "idle" | "preview";
+
+const qaItems = [
+  { type: "ok", title: "Excel 기준 성과 데이터", desc: "Spend / IMP / Click / CTR / CV는 첨부 리포트를 Fact Source로 사용합니다." },
+  { type: "ok", title: "메일 본문 Insight 추출", desc: "인사말·서명·이전 회신은 제외하고 성과 요약 / 주요 변동 / 이슈 / 액션으로 정리합니다." },
+  { type: "warn", title: "본문 숫자 1건 검산 필요", desc: "메일 본문의 CTR 표현과 Excel 원본 값이 다르면 자동 수정하지 않고 확인 항목으로 남깁니다." }
+] as const;
+
 export default function DataUpdatePage() {
+  const [mode, setMode] = useState<IntakeMode>("gmail");
+  const [importState, setImportState] = useState<ImportState>("idle");
+  const [advertiser, setAdvertiser] = useState("자코모");
+  const [mailQuery, setMailQuery] = useState("자코모 Daily Report has:attachment");
+  const [mailBody, setMailBody] = useState("");
+
+  const canPreview = useMemo(() => mode === "gmail" || mailBody.trim().length > 0, [mode, mailBody]);
+
   return (
     <>
       <div className="page-head refined-head">
         <div>
-          <div className="eyebrow">AE only · data pipeline</div>
-          <h1 className="page-title">데이터 · 소재 업데이트</h1>
-          <p className="page-desc">한 건씩 연결하지 않습니다. 폴더 또는 자료 묶음을 넣으면 자동 분류·연결하고 애매한 항목만 검수합니다.</p>
+          <div className="eyebrow">AE only · daily intake</div>
+          <h1 className="page-title">Daily Report 업데이트</h1>
+          <p className="page-desc">메일 본문은 Insight, 첨부 Excel은 Fact로 분리합니다. 둘을 하나의 Daily Bundle로 묶어 검수 후 반영합니다.</p>
         </div>
-        <div className="page-meta"><span className="view-pill">AUTO MATCH FIRST</span></div>
+        <div className="page-meta"><span className="view-pill">FACT ≠ INSIGHT</span></div>
       </div>
 
-      <section className={styles.sourceGrid}>
-        <article className={`${styles.sourceCard} ${styles.sourcePrimary}`}>
-          <div className={styles.sourceHead}><div><div className="eyebrow">PRIMARY SOURCE</div><h2>Google Drive 폴더 연결</h2><p>광고주별 작업 폴더 하나를 연결하면 새 이미지·영상·PDF·게재보고서를 주기적으로 읽어 자동 반영 후보로 가져옵니다.</p></div><span className={styles.sourceBadge}>추천</span></div>
-          <div className={styles.connectRow}><button className={styles.connectButton}>Google Drive 연결</button><span className={styles.helper}>예: 자코모 / 2026 / 09월 운영 폴더</span></div>
-          <div className={styles.flow}><div className={styles.flowStep}><span>01</span><strong>폴더 스캔</strong></div><div className={styles.flowStep}><span>02</span><strong>파일·이미지 분석</strong></div><div className={styles.flowStep}><span>03</span><strong>자동 매칭</strong></div><div className={styles.flowStep}><span>04</span><strong>검수 후 반영</strong></div></div>
-        </article>
+      <section className={styles.dailyHero}>
+        <div className={styles.modeTabs}>
+          <button className={mode === "gmail" ? styles.modeActive : ""} onClick={() => setMode("gmail")}>Gmail에서 가져오기</button>
+          <button className={mode === "manual" ? styles.modeActive : ""} onClick={() => setMode("manual")}>직접 업로드</button>
+        </div>
 
-        <article className={styles.sourceCard}>
-          <div className={styles.sourceHead}><div><div className="eyebrow">FALLBACK</div><h2>폴더 / 파일 일괄 업로드</h2><p>Drive를 쓰지 않는 경우 폴더째 드래그하거나 여러 파일을 한 번에 넣습니다. ZIP 업로드도 같은 흐름으로 처리합니다.</p></div></div>
-          <div className={styles.connectRow}><button className={styles.secondaryButton}>폴더 선택</button><button className={styles.secondaryButton}>파일 선택</button></div>
-          <p className={styles.helper}>파일명 규칙을 강제하지 않고, 원본 이름을 그대로 유지합니다.</p>
-        </article>
+        {mode === "gmail" ? (
+          <div className={styles.gmailPanel}>
+            <div className={styles.gmailIntro}>
+              <div><span className={styles.gmailMark}>M</span></div>
+              <div><h2>Gmail Daily Report Intake</h2><p>광고주와 검색 규칙을 기준으로 메일 본문과 Excel 첨부를 한 세트로 가져옵니다.</p></div>
+              <span className={styles.betaBadge}>CONNECTOR</span>
+            </div>
+            <div className={styles.formGrid}>
+              <label><span>광고주</span><select value={advertiser} onChange={(e) => setAdvertiser(e.target.value)}><option>자코모</option><option>교원웰스</option><option>솔테라이브러리</option></select></label>
+              <label className={styles.queryField}><span>Gmail 검색 규칙</span><input value={mailQuery} onChange={(e) => setMailQuery(e.target.value)} /></label>
+              <label><span>기준일</span><input type="date" defaultValue="2026-09-15" /></label>
+            </div>
+            <div className={styles.gmailActions}>
+              <button className={styles.connectButton} onClick={() => setImportState("preview")}>최신 리포트 불러오기</button>
+              <span>실서비스에서는 Google OAuth + Gmail API로 연결합니다. 현재는 Intake/검수 UX를 먼저 검증합니다.</span>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.manualPanel}>
+            <div className={styles.manualGrid}>
+              <div className={styles.dropzone}><div className="eyebrow">FACT SOURCE</div><h3>Daily Monitoring Excel</h3><p>.xlsx / .xls / .csv 파일을 드래그하거나 선택</p><button className={styles.secondaryButton}>Excel 선택</button></div>
+              <div className={styles.mailPaste}><div className="eyebrow">INSIGHT SOURCE</div><h3>메일 본문</h3><textarea value={mailBody} onChange={(e) => setMailBody(e.target.value)} placeholder="메일 본문의 성과 분석 부분을 그대로 붙여넣으세요. 인사말·서명은 포함되어도 자동 제외합니다." /><button disabled={!canPreview} className={styles.secondaryButton} onClick={() => setImportState("preview")}>분석하기</button></div>
+            </div>
+          </div>
+        )}
       </section>
 
-      <section className={styles.inputGrid}>
-        <article className={styles.inputCard}><div className="eyebrow">PERFORMANCE</div><h3>Daily Monitoring</h3><p>매체별 데일리 Excel/CSV. 날짜·매체·캠페인·성과를 자동 인식합니다.</p><div className={styles.inputMeta}><span>업데이트</span><strong>매일</strong></div></article>
-        <article className={styles.inputCard}><div className="eyebrow">PLAN / CALENDAR</div><h3>Media Mix</h3><p>예산과 시작·종료일을 읽어 Overview와 Schedule의 온에어 캘린더를 자동 생성합니다.</p><div className={styles.inputMeta}><span>업데이트</span><strong>최초 + 변경 시</strong></div></article>
-        <article className={styles.inputCard}><div className="eyebrow">PROOF / ASSET</div><h3>Placement & Creative</h3><p>게재보고서, 이미지, 영상, 캡처를 함께 넣습니다. PDF 안 이미지도 소재/지면 후보로 분리합니다.</p><div className={styles.inputMeta}><span>업데이트</span><strong>수신 시</strong></div></article>
+      <section className={styles.bundleFlow}>
+        <div><span>01</span><strong>메일/파일 수집</strong><small>Gmail 또는 직접 업로드</small></div>
+        <i>→</i>
+        <div><span>02</span><strong>Fact 파싱</strong><small>Excel 숫자·날짜·매체</small></div>
+        <i>→</i>
+        <div><span>03</span><strong>Insight 파싱</strong><small>요약·변동·이슈·액션</small></div>
+        <i>→</i>
+        <div><span>04</span><strong>QA / Diff</strong><small>수정본·불일치 검산</small></div>
+        <i>→</i>
+        <div><span>05</span><strong>Publish</strong><small>AE 확인 후 반영</small></div>
       </section>
 
-      <section className={styles.pipelineGrid}>
-        <article className={styles.panel}>
-          <h3>자동 연결 결과</h3><p>파일명을 바꾸거나 소재를 하나씩 연결하지 않고, 아래 신호를 조합해 매칭합니다.</p>
-          <div className={styles.matchStats}><div className={styles.matchStat}><span>자동 연결</span><strong>42</strong></div><div className={styles.matchStat}><span>검수 필요</span><strong>3</strong></div><div className={styles.matchStat}><span>신규 미분류</span><strong>1</strong></div></div>
-          <div className={styles.matchList}>
-            <div className={styles.matchRow}><div><strong>정성편_15s_final.mp4 → Meta / Reels</strong><span>파일명 + 영상 프레임 + Media Mix 기간 일치</span></div><b className={`${styles.confidence} ${styles.high}`}>96%</b></div>
-            <div className={styles.matchRow}><div><strong>240914_포커스미디어_게재.jpg → Focus Media</strong><span>이미지 내용 + 게재보고서 + 촬영일 일치</span></div><b className={`${styles.confidence} ${styles.high}`}>93%</b></div>
-            <div className={styles.matchRow}><div><strong>banner_final_v3.png → NAVER or Kakao</strong><span>규격은 유사하지만 파일명·폴더 정보가 부족함</span></div><b className={`${styles.confidence} ${styles.medium}`}>72%</b></div>
-          </div>
-        </article>
+      {importState === "preview" ? (
+        <section className={styles.previewSection}>
+          <div className={styles.previewHead}><div><div className="eyebrow">DAILY BUNDLE PREVIEW</div><h2>{advertiser} · 2026.09.15</h2><p>한 번의 Publish로 Performance와 Briefing이 같이 업데이트됩니다.</p></div><span className={styles.readyBadge}>검수 준비</span></div>
 
-        <article className={styles.panel}>
-          <h3>매칭 원칙</h3><p>수동 연결은 예외 처리로만 사용합니다.</p>
-          <div className={styles.rules}>
-            <div className={styles.rule}><strong>1. 파일/폴더 문맥</strong><span>파일명, 상위 폴더, 수정일, 확장자와 기존 광고주 자료를 같이 봅니다.</span></div>
-            <div className={styles.rule}><strong>2. 이미지·영상 내용</strong><span>문구, 로고, 제품, 화면비, 프레임 특징을 분석해 기존 소재와 유사도를 계산합니다.</span></div>
-            <div className={styles.rule}><strong>3. 운영 데이터 교차검증</strong><span>Media Mix 기간·매체와 게재보고서 정보를 비교해 후보를 좁힙니다.</span></div>
-            <div className={styles.rule}><strong>4. 확신도 기반 검수</strong><span>높은 확률은 자동 연결, 애매한 몇 건만 AE가 한 번에 승인합니다.</span></div>
+          <div className={styles.sourceSummary}>
+            <article><span className={styles.sourceIcon}>XLS</span><div><strong>Daily Monitoring Excel</strong><p>JACOMO_Daily_0915.xlsx · 186 rows</p></div><b className={styles.okText}>Fact Source</b></article>
+            <article><span className={styles.sourceIcon}>✉</span><div><strong>Gmail Insight</strong><p>[자코모] 9월 15일 Daily Report</p></div><b className={styles.insightText}>Insight Source</b></article>
           </div>
-          <button className={styles.publish}>검수 완료 후 Dashboard 반영</button>
-        </article>
+
+          <div className={styles.reviewGrid}>
+            <article className={styles.reviewPanel}>
+              <div className={styles.reviewTitle}><div><h3>Excel Fact Preview</h3><p>성과 데이터는 이 값을 기준으로 대시보드에 반영합니다.</p></div><span>186 rows</span></div>
+              <div className={styles.factTable}>
+                <div className={styles.factHeader}><span>매체</span><span>Spend</span><span>IMP</span><span>CTR</span><span>CV</span></div>
+                <div><strong>Meta</strong><span>₩18.4M</span><span>4.82M</span><span>1.27%</span><span>418</span></div>
+                <div><strong>NAVER GFA</strong><span>₩14.8M</span><span>5.21M</span><span>0.72%</span><span>162</span></div>
+                <div><strong>Google / DV360</strong><span>₩11.2M</span><span>2.91M</span><span>1.38%</span><span>221</span></div>
+                <div><strong>Kakao</strong><span>₩8.6M</span><span>3.77M</span><span>0.77%</span><span>104</span></div>
+              </div>
+            </article>
+
+            <article className={styles.reviewPanel}>
+              <div className={styles.reviewTitle}><div><h3>Mail Insight Preview</h3><p>메일 본문에서 해석만 구조화합니다. 숫자는 Excel과 교차검증합니다.</p></div><span>4 sections</span></div>
+              <div className={styles.insightSections}>
+                <div><span>성과 요약</span><strong>전체 효율은 안정적인 흐름으로 운영 중</strong></div>
+                <div><span>주요 변동</span><strong>Meta 정성편 CTR 상승, Google 전환 증가</strong></div>
+                <div><span>운영 이슈</span><strong>NAVER 클릭 대비 전환 기여도 추가 점검 필요</strong></div>
+                <div><span>Next Action</span><strong>Meta 고효율 소재 중심 운영 유지</strong></div>
+              </div>
+            </article>
+          </div>
+
+          <div className={styles.qaPanel}>
+            <div className={styles.reviewTitle}><div><h3>자동 QA</h3><p>메일과 Excel이 충돌하면 자동 덮어쓰지 않고 AE 확인 항목으로 남깁니다.</p></div><span className={styles.warnBadge}>1 확인</span></div>
+            <div className={styles.qaList}>{qaItems.map((item) => <div key={item.title} className={styles.qaRow}><i className={item.type === "ok" ? styles.qaOk : styles.qaWarn}>{item.type === "ok" ? "✓" : "!"}</i><div><strong>{item.title}</strong><span>{item.desc}</span></div></div>)}</div>
+            <div className={styles.changeSummary}><div><span>신규 데이터</span><strong>186</strong></div><div><span>과거값 수정</span><strong>7</strong></div><div><span>Insight 추출</span><strong>4</strong></div><div><span>확인 필요</span><strong>1</strong></div></div>
+            <button className={styles.publish}>검수 완료 · 오늘 대시보드 반영</button>
+          </div>
+        </section>
+      ) : (
+        <section className={styles.emptyPreview}><strong>Daily Bundle 미리보기</strong><p>Gmail에서 리포트를 불러오거나 직접 업로드하면 Excel Fact와 Mail Insight를 한 화면에서 검수합니다.</p></section>
+      )}
+
+      <section className={styles.secondarySources}>
+        <article><div className="eyebrow">MONTHLY / ASSET</div><h3>다른 운영 자료는 기존 방식 유지</h3><p>Media Mix는 최초/변경 시, 소재·게재지면은 Google Drive 폴더 동기화 또는 일괄 업로드로 관리합니다.</p></article>
+        <div><span>Media Mix</span><strong>최초 + 변경 시</strong></div><div><span>Creative / Placement</span><strong>Drive 자동수집</strong></div>
       </section>
     </>
   );
