@@ -7,6 +7,7 @@ import {
   gmailCookieOptions,
 } from "@/lib/gmail-oauth";
 import { parseDailyWorkbookBuffer } from "@/lib/server-daily-parser";
+import { extractStructuredOperationNotes } from "@/lib/mail-insight";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,11 @@ export async function POST(request: NextRequest) {
     if (!attachment.data) throw new Error("Attachment payload is empty");
 
     const bytes = Buffer.from(attachment.data, "base64url");
-    const bundle = parseDailyWorkbookBuffer(bytes, payload.filename, payload.mailBody || "");
+    const mailBody = payload.mailBody || "";
+    const bundle = parseDailyWorkbookBuffer(bytes, payload.filename, mailBody);
+    const structuredNotes = extractStructuredOperationNotes(mailBody);
+    if (structuredNotes.length) bundle.operationNotes = structuredNotes;
+
     const result = NextResponse.json({ bundle, sizeBytes: bytes.byteLength });
     if (refreshed) result.cookies.set(GMAIL_TOKEN_COOKIE, encryptToken(token), gmailCookieOptions());
     return result;
