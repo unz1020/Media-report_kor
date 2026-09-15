@@ -26,11 +26,12 @@ export type PublishedInsight = {
 
 export type PublishedDailyState = {
   datasets: Record<string, PublishedDataset>;
+  snapshots: Record<string, PublishedDataset>;
   insights: Record<string, PublishedInsight>;
 };
 
 function emptyState(): PublishedDailyState {
-  return { datasets: {}, insights: {} };
+  return { datasets: {}, snapshots: {}, insights: {} };
 }
 
 export function dailyDatasetKey(bundle: DailyBundlePreview) {
@@ -49,9 +50,10 @@ export function readPublishedDailyState(): PublishedDailyState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyState();
-    const parsed = JSON.parse(raw) as PublishedDailyState;
+    const parsed = JSON.parse(raw) as Partial<PublishedDailyState>;
     return {
       datasets: parsed.datasets ?? {},
+      snapshots: parsed.snapshots ?? {},
       insights: parsed.insights ?? {},
     };
   } catch {
@@ -73,8 +75,7 @@ export function publishDailyBundle(
   const datasetKey = dailyDatasetKey(bundle);
   const month = (bundle.campaignStart || bundle.reportDate || "unknown").slice(0, 7);
   const publishedAt = new Date().toISOString();
-
-  state.datasets[datasetKey] = {
+  const dataset: PublishedDataset = {
     key: datasetKey,
     advertiser: bundle.advertiser,
     month,
@@ -84,6 +85,13 @@ export function publishDailyBundle(
     publishedAt,
     bundle,
   };
+
+  // datasets = latest valid cumulative workbook for each source.
+  state.datasets[datasetKey] = dataset;
+
+  // snapshots = immutable daily history for date range reporting / double-checking.
+  const snapshotKey = `${datasetKey}::${bundle.reportDate || publishedAt.slice(0, 10)}`;
+  state.snapshots[snapshotKey] = { ...dataset, key: snapshotKey };
 
   const insightKey = `${bundle.advertiser}::${bundle.reportDate}::${datasetKey}`;
   state.insights[insightKey] = {
@@ -135,6 +143,13 @@ export function publishedDatasetsFor(advertiser: string, month?: string) {
   return Object.values(state.datasets).filter((item) =>
     item.advertiser === advertiser && (!month || item.month === month)
   );
+}
+
+export function publishedSnapshotsFor(advertiser: string, month?: string) {
+  const state = readPublishedDailyState();
+  return Object.values(state.snapshots)
+    .filter((item) => item.advertiser === advertiser && (!month || item.month === month))
+    .sort((a, b) => (a.bundle.reportDate || "").localeCompare(b.bundle.reportDate || ""));
 }
 
 export function publishedInsightsFor(advertiser: string, month?: string) {
