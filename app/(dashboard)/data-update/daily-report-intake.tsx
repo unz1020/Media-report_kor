@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { parseDailyWorkbook, type DailyBundlePreview } from "@/lib/daily-report-parser";
-import styles from "./update.module.css";
+import styles from "./daily-report-intake.module.css";
 
 export function DailyReportIntake() {
   const [mode, setMode] = useState<"gmail" | "manual">("gmail");
