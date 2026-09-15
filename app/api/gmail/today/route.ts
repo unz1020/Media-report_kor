@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
   try {
     const current = decryptToken(cookie);
     const { token, refreshed } = await ensureFreshToken(current);
-    const baseQuery = request.nextUrl.searchParams.get("q") || "has:attachment filename:xlsx";
+    const baseQuery = request.nextUrl.searchParams.get("q") || "자코모";
     const bounds = kstDayBounds();
     const q = `${baseQuery} after:${bounds.start} before:${bounds.end}`;
 
@@ -118,13 +118,12 @@ export async function GET(request: NextRequest) {
     for (const item of list.messages ?? []) {
       const message = await gmailJson<GmailMessage>(token.access_token, `messages/${item.id}?format=full`);
       const attachments = collectParts(message.payload)
-        .filter((part) => Boolean(part.filename?.toLowerCase().match(/\.xlsx?$/) && part.body?.attachmentId))
+        .filter((part) => Boolean(part.filename?.toLowerCase().match(/\.(xlsx|xls|xlsb)$/) && part.body?.attachmentId))
         .map((part) => ({
           filename: part.filename || "daily.xlsx",
           attachmentId: part.body?.attachmentId || "",
           mimeType: part.mimeType,
         }));
-      if (!attachments.length) continue;
       messages.push({
         id: message.id,
         subject: header(message, "Subject"),
