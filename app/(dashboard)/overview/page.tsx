@@ -1,96 +1,78 @@
 import { mediaRows, planTrend, spendTrend } from "@/lib/mock-data";
 
 function TrendChart() {
-  const width = 720;
-  const height = 230;
-  const padX = 14;
-  const padY = 18;
+  const width = 760;
+  const height = 250;
+  const padX = 20;
+  const padY = 20;
   const makePoints = (values: number[]) => values.map((v, i) => {
     const x = padX + (i / (values.length - 1)) * (width - padX * 2);
-    const y = height - padY - (v / 110) * (height - padY * 2);
+    const y = height - 34 - (v / 110) * (height - padY * 2 - 16);
     return `${x},${y}`;
   }).join(" ");
-
-  const area = `${padX},${height-padY} ${makePoints(spendTrend)} ${width-padX},${height-padY}`;
-
+  const area = `${padX},${height - 34} ${makePoints(spendTrend)} ${width-padX},${height - 34}`;
   return (
-    <div className="chart-wrap">
-      <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="9월 누적 집행액과 계획 추이">
-        <defs>
-          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#5b5cf0" stopOpacity="0.17" />
-            <stop offset="100%" stopColor="#5b5cf0" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[35, 75, 115, 155, 195].map((y) => <line key={y} x1="14" y1={y} x2="706" y2={y} className="chart-grid-line" />)}
+    <div className="report-chart">
+      <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="누적 광고비 추이">
+        <defs><linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5965e8" stopOpacity="0.13"/><stop offset="100%" stopColor="#5965e8" stopOpacity="0"/></linearGradient></defs>
+        {[40,80,120,160,200].map(y => <line key={y} x1="20" y1={y} x2="740" y2={y} className="chart-grid-line"/>)}
         <polygon points={area} className="chart-area" />
         <polyline points={makePoints(planTrend)} className="chart-line-2" />
         <polyline points={makePoints(spendTrend)} className="chart-line" />
-        {[0, 4, 8, 12, 14].map((i) => {
-          const x = padX + (i / 14) * (width - padX * 2);
-          return <text key={i} x={x} y="226" textAnchor="middle" className="chart-axis">9/{i + 1}</text>;
-        })}
+        {[0,4,8,12,14].map(i => { const x = padX + (i/14)*(width-padX*2); return <text key={i} x={x} y="244" textAnchor="middle" className="chart-axis">9/{i+1}</text>; })}
       </svg>
-      <div className="chart-legend"><span><i className="legend-dot" />실제 집행</span><span><i className="legend-dot gray" />계획</span></div>
     </div>
   );
 }
 
+const attention = [
+  { tone: "danger", label: "종료 임박", value: "2", text: "3일 내 종료되는 프로모션 소재" },
+  { tone: "warning", label: "게재 확인", value: "1", text: "서울버스TV 증빙 업데이트 필요" },
+  { tone: "good", label: "예산 페이스", value: "정상", text: "계획 대비 +1.8%p 범위" },
+];
+
 export default function OverviewPage() {
   return (
     <>
-      <div className="page-head">
+      <div className="page-head refined-head">
         <div>
-          <div className="eyebrow">Monthly dashboard</div>
+          <div className="eyebrow">Overview</div>
           <h1 className="page-title">9월 광고 운영 현황</h1>
-          <p className="page-desc">성과, 집행 상태, 소재와 게재 현황을 한 화면에서 확인합니다.</p>
+          <p className="page-desc">계획 · 집행 · 성과 · 게재 상태를 하나의 월간 뷰에서 확인합니다.</p>
         </div>
-        <div className="page-meta"><span className="badge live">● 정상 운영</span><span className="badge info">Client View</span></div>
+        <div className="page-meta"><span className="status-dot-label"><i/> 정상 운영</span><span className="view-pill">Client View</span></div>
       </div>
 
-      <section className="grid kpi-grid">
-        <article className="card kpi"><div className="kpi-label"><span>월 예산</span><span>PLAN</span></div><div className="kpi-value">₩120M</div><div className="kpi-foot"><span className="delta neutral">100%</span><span>9월 승인 예산</span></div></article>
-        <article className="card kpi"><div className="kpi-label"><span>현재 집행액</span><span>SPEND</span></div><div className="kpi-value">₩76.4M</div><div className="kpi-foot"><span className="delta up">+6.2%</span><span>전일 대비</span></div></article>
-        <article className="card kpi"><div className="kpi-label"><span>예산 소진율</span><span>PACE</span></div><div className="kpi-value">63.7%</div><div className="kpi-foot"><span className="delta up">+1.8%p</span><span>계획 대비 양호</span></div></article>
-        <article className="card kpi"><div className="kpi-label"><span>LIVE 매체</span><span>MEDIA</span></div><div className="kpi-value">8</div><div className="kpi-foot"><span className="delta neutral">6 Digital</span><span>2 ATL</span></div></article>
-        <article className="card kpi"><div className="kpi-label"><span>LIVE 소재</span><span>CREATIVE</span></div><div className="kpi-value">24</div><div className="kpi-foot"><span className="delta down">3 확인</span><span>종료임박·게재확인</span></div></article>
+      <div className="report-toolbar">
+        <div className="toolbar-group"><span className="toolbar-label">기간</span><button className="toolbar-control">2026.09.01 – 09.15⌄</button><button className="toolbar-control muted-control">비교 · 08.01 – 08.15</button></div>
+        <div className="toolbar-group right"><button className="toolbar-control">다운로드</button><button className="toolbar-control">공유</button></div>
+      </div>
+
+      <section className="metric-strip">
+        <article className="metric-card primary-metric"><span className="metric-kicker">집행액</span><strong>₩76.4M</strong><div><b className="metric-up">+6.2%</b><span>직전 동기간</span></div></article>
+        <article className="metric-card"><span className="metric-kicker">월 예산</span><strong>₩120M</strong><div><b>63.7%</b><span>소진</span></div></article>
+        <article className="metric-card"><span className="metric-kicker">노출</span><strong>21.8M</strong><div><b className="metric-up">+9.1%</b><span>직전 동기간</span></div></article>
+        <article className="metric-card"><span className="metric-kicker">클릭</span><strong>192.4K</strong><div><b className="metric-up">+7.4%</b><span>직전 동기간</span></div></article>
+        <article className="metric-card"><span className="metric-kicker">LIVE</span><strong>8 <small>매체</small></strong><div><b>24</b><span>소재 운영 중</span></div></article>
       </section>
 
-      <section className="grid two-col section-space">
-        <article className="card">
-          <div className="card-head"><div><h2>누적 광고비 추이</h2><p>계획 대비 실제 집행액 · 9월 1–15일</p></div><span className="badge performance">Performance</span></div>
+      <section className="overview-layout section-space">
+        <article className="card report-panel main-chart-card">
+          <div className="report-panel-head"><div><h2>성과 추이</h2><p>누적 광고비 · 계획 대비 실제 집행</p></div><div className="metric-switch"><button className="active">광고비</button><button>노출</button><button>클릭</button><button>전환</button></div></div>
           <TrendChart />
+          <div className="chart-footer"><span><i className="legend-dot"/>실제 집행</span><span><i className="legend-dot gray"/>계획</span><span className="chart-note">현재 페이스 63.7% · 목표 페이스 61.9%</span></div>
         </article>
 
-        <article className="card">
-          <div className="card-head"><div><h2>매체별 예산 소진</h2><p>현재 월 계획 대비</p></div><span className="eyebrow">PACE</span></div>
-          <div className="progress-list">
-            {[['Meta',76],['NAVER',69],['Google',63],['Kakao',57],['TVING',71],['OOH',60]].map(([name, value]) => (
-              <div className="progress-row" key={name as string}><strong>{name}</strong><div className="progress-track"><div className="progress-fill" style={{ width: `${value}%` }} /></div><span className="progress-num">{value}%</span></div>
-            ))}
-          </div>
-        </article>
+        <aside className="card report-panel attention-panel">
+          <div className="report-panel-head"><div><h2>Attention</h2><p>오늘 우선 확인할 운영 항목</p></div><span className="attention-count">3</span></div>
+          <div className="attention-list">{attention.map(item => <div className={`attention-item ${item.tone}`} key={item.label}><div className="attention-icon">{item.tone === 'danger' ? '!' : item.tone === 'warning' ? '•' : '✓'}</div><div className="attention-copy"><div><strong>{item.label}</strong><b>{item.value}</b></div><p>{item.text}</p></div></div>)}</div>
+          <a className="attention-link" href="/data-update">검수 항목 전체 보기 →</a>
+        </aside>
       </section>
 
-      <section className="grid two-col section-space">
-        <article className="card">
-          <div className="card-head"><div><h2>매체 운영 현황</h2><p>측정 가능 수준에 따라 Performance / Delivery / Live Only로 구분</p></div><a href="/performance" className="btn ghost">상세 보기 →</a></div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>매체</th><th>측정 등급</th><th>집행액</th><th>IMP</th><th>CTR</th><th>상태</th></tr></thead>
-              <tbody>{mediaRows.map((row) => <tr key={row.media}><td><div className="media-cell"><span className={`media-logo ${row.className}`}>{row.media.slice(0,1)}</span>{row.media}</div></td><td><span className={`badge ${row.measurement === 'Performance' ? 'performance' : row.measurement === 'Delivery' ? 'delivery' : 'live-only'}`}>{row.measurement}</span></td><td>{row.spend}</td><td>{row.impressions}</td><td>{row.ctr}</td><td><span className={`badge ${row.status === 'LIVE' ? 'live' : row.status === 'REVIEW' ? 'review' : 'ended'}`}>{row.status}</span></td></tr>)}</tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="card">
-          <div className="card-head"><div><h2>오늘 확인 필요</h2><p>AE 검수 기준 · Client 공개 전</p></div><span className="badge review">3건</span></div>
-          <div className="notice-list">
-            <div className="notice"><span className="notice-dot"/><div><strong>종료 예정 소재 2건</strong><p>Meta 프로모션 소재가 3일 내 종료됩니다. 연장 여부를 확인하세요.</p></div></div>
-            <div className="notice"><span className="notice-dot"/><div><strong>게재 확인 필요 1건</strong><p>서울버스TV의 최근 게재 증빙이 아직 등록되지 않았습니다.</p></div></div>
-            <div className="notice"><span className="notice-dot good"/><div><strong>예산 소진 정상</strong><p>현재 전체 소진율은 월간 계획 범위 안에서 운영 중입니다.</p></div></div>
-          </div>
-        </article>
+      <section className="card section-space report-panel">
+        <div className="report-panel-head table-title-row"><div><h2>매체 운영 현황</h2><p>Performance / Delivery / Live Only 통합</p></div><div className="table-tools"><button className="toolbar-control">열 설정</button><a href="/performance" className="toolbar-control strong-control">성과 상세 →</a></div></div>
+        <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>측정</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th><th>전환</th><th>운영 상태</th></tr></thead><tbody>{mediaRows.map(row => <tr key={row.media}><td><div className="platform-cell"><span className={`platform-dot ${row.className}`}/><div><strong>{row.media}</strong><small>월간 운영</small></div></div></td><td><span className={`measure-chip ${row.measurement === 'Performance' ? 'perf' : row.measurement === 'Delivery' ? 'delivery' : 'liveonly'}`}>{row.measurement}</span></td><td className="num-cell">{row.spend}</td><td className="num-cell">{row.impressions}</td><td className="num-cell">{row.clicks}</td><td className="num-cell">{row.ctr}</td><td className="num-cell">{row.conversions}</td><td><span className={`operation-state ${row.status === 'LIVE' ? 'live' : 'review'}`}><i/>{row.status}</span></td></tr>)}</tbody></table></div>
       </section>
     </>
   );
