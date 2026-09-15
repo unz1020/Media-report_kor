@@ -1,5 +1,6 @@
 import type { MediaPlanFact, PlacementFact } from "@/lib/daily-report-parser";
 import type { PublishedDataset } from "@/lib/daily-report-store";
+import { isOperationalPlacement } from "@/lib/media-normalization";
 
 type DailyPerformanceFact = {
   date: string;
@@ -14,6 +15,13 @@ type DailyPerformanceFact = {
   cpc: number | null;
   cpv: number | null;
   vtr: number | null;
+};
+
+export type DailyPerformanceRow = DailyPerformanceFact & {
+  sourceFile: string;
+  reportDate: string;
+  sourceUrl?: string;
+  sourceKind?: string;
 };
 
 export type ReportingRow = Omit<PlacementFact, "clicks"> & {
@@ -40,15 +48,41 @@ function extendedBundle(dataset: PublishedDataset) {
 export function rowsFromDatasets(datasets: PublishedDataset[]): ReportingRow[] {
   return datasets.flatMap((dataset) => {
     const bundle = extendedBundle(dataset);
-    return bundle.placements.map((row) => ({
-      ...row,
-      clicks: (row as PlacementFact & { clicks?: number | null }).clicks ?? null,
-      sourceFile: dataset.sourceFile,
-      reportDate: dataset.bundle.reportDate,
-      sourceUrl: bundle.sourceUrl,
-      sourceKind: bundle.sourceKind,
-    }));
+    return bundle.placements
+      .filter((row) => isOperationalPlacement(row.placement))
+      .map((row) => ({
+        ...row,
+        clicks: (row as PlacementFact & { clicks?: number | null }).clicks ?? null,
+        sourceFile: dataset.sourceFile,
+        reportDate: dataset.bundle.reportDate,
+        sourceUrl: bundle.sourceUrl,
+        sourceKind: bundle.sourceKind,
+      }));
   });
+}
+
+export function dailyPerformanceFromDatasets(datasets: PublishedDataset[], startDate?: string, endDate?: string): DailyPerformanceRow[] {
+  const seen = new Set<string>();
+  const result: DailyPerformanceRow[] = [];
+  for (const dataset of datasets) {
+    const bundle = extendedBundle(dataset);
+    for (const row of bundle.dailyPerformance ?? []) {
+      if (!isOperationalPlacement(row.placement)) continue;
+      if (startDate && row.date < startDate) continue;
+      if (endDate && row.date > endDate) continue;
+      const id = `${row.date}::${row.platform}::${row.placement}::${dataset.sourceFile}`.toLowerCase();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      result.push({
+        ...row,
+        sourceFile: dataset.sourceFile,
+        reportDate: dataset.bundle.reportDate,
+        sourceUrl: bundle.sourceUrl,
+        sourceKind: bundle.sourceKind,
+      });
+    }
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform, "ko") || a.placement.localeCompare(b.placement, "ko"));
 }
 
 export function mediaPlansFromDatasets(datasets: PublishedDataset[]): MediaPlanFact[] {
@@ -73,7 +107,7 @@ function subtractNumber(end: number | null | undefined, start: number | null | u
 
 function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, endDate: string): ReportingRow[] | null {
   const bundle = extendedBundle(dataset);
-  const daily = (bundle.dailyPerformance ?? []).filter((row) => row.date >= startDate && row.date <= endDate);
+  const daily = (bundle.dailyPerformance ?? []).filter((row) => row.date >= startDate && row.date <= endDate && isOperationalPlacement(row.placement));
   if (!daily.length) return null;
 
   const groups = new Map<string, DailyPerformanceFact[]>();
@@ -141,10 +175,11 @@ export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate
 
     const baseline = sorted.filter((item) => item.bundle.reportDate < startDate).at(-1);
     if (startDate.slice(-2) !== "01" && !baseline) baselineComplete = false;
-    const baselineMap = new Map((baseline?.bundle.placements ?? []).map((row) => [factIdentity(row), row]));
+    const baselineMap = new Map((baseline?.bundle.placements ?? []).filter((row) => isOperationalPlacement(row.placement)).map((row) => [factIdentity(row), row]));
     const endBundle = extendedBundle(end);
 
     for (const endRow of end.bundle.placements) {
+      if (!isOperationalPlacement(endRow.placement)) continue;
       const startRow = baselineMap.get(factIdentity(endRow));
       const endClicks = (endRow as PlacementFact & { clicks?: number | null }).clicks ?? null;
       const startClicks = (startRow as (PlacementFact & { clicks?: number | null }) | undefined)?.clicks ?? null;
