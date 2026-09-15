@@ -3,6 +3,7 @@ import "./globals.css";
 import "./report-ui.css";
 import "./link-enhancements.css";
 import "./ui-readable.css";
+import "./real-data.css";
 
 export const metadata: Metadata = {
   title: "Media Report",
