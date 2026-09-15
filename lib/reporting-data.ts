@@ -1,6 +1,21 @@
 import type { MediaPlanFact, PlacementFact } from "@/lib/daily-report-parser";
 import type { PublishedDataset } from "@/lib/daily-report-store";
 
+type DailyPerformanceFact = {
+  date: string;
+  platform: string;
+  placement: string;
+  spend: number | null;
+  impressions: number;
+  clicks: number | null;
+  views: number | null;
+  ctr: number | null;
+  cpm: number | null;
+  cpc: number | null;
+  cpv: number | null;
+  vtr: number | null;
+};
+
 export type ReportingRow = Omit<PlacementFact, "clicks"> & {
   clicks: number | null;
   sourceFile: string;
@@ -14,7 +29,12 @@ export function factIdentity(row: Pick<PlacementFact, "platform" | "placement" |
 }
 
 function extendedBundle(dataset: PublishedDataset) {
-  return dataset.bundle as typeof dataset.bundle & { sourceUrl?: string; sourceKind?: string };
+  return dataset.bundle as typeof dataset.bundle & {
+    sourceUrl?: string;
+    sourceKind?: string;
+    sourceId?: string;
+    dailyPerformance?: DailyPerformanceFact[];
+  };
 }
 
 export function rowsFromDatasets(datasets: PublishedDataset[]): ReportingRow[] {
@@ -51,6 +71,52 @@ function subtractNumber(end: number | null | undefined, start: number | null | u
   return Math.max(0, end - start);
 }
 
+function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, endDate: string): ReportingRow[] | null {
+  const bundle = extendedBundle(dataset);
+  const daily = (bundle.dailyPerformance ?? []).filter((row) => row.date >= startDate && row.date <= endDate);
+  if (!daily.length) return null;
+
+  const groups = new Map<string, DailyPerformanceFact[]>();
+  for (const item of daily) {
+    const key = `${item.platform}::${item.placement}`;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+
+  return [...groups.values()].map((items) => {
+    const base = items[0];
+    const spendValues = items.map((item) => item.spend).filter((value): value is number => typeof value === "number");
+    const clickValues = items.map((item) => item.clicks).filter((value): value is number => typeof value === "number");
+    const viewValues = items.map((item) => item.views).filter((value): value is number => typeof value === "number");
+    const spend = spendValues.length ? spendValues.reduce((sum, value) => sum + value, 0) : null;
+    const impressions = items.reduce((sum, item) => sum + item.impressions, 0);
+    const clicks = clickValues.length ? clickValues.reduce((sum, value) => sum + value, 0) : null;
+    const views = viewValues.length ? viewValues.reduce((sum, value) => sum + value, 0) : null;
+    return {
+      platform: base.platform,
+      placement: base.placement,
+      achievement: null,
+      guaranteed: "",
+      spend,
+      impressions,
+      clicks,
+      ctr: impressions > 0 && clicks !== null ? clicks / impressions * 100 : null,
+      views,
+      vtr: impressions > 0 && views !== null ? views / impressions * 100 : null,
+      conversions: null,
+      cpm: impressions > 0 && spend !== null ? spend / impressions * 1000 : null,
+      cpc: clicks && clicks > 0 && spend !== null ? spend / clicks : clicks === 0 ? 0 : null,
+      cpv: views && views > 0 && spend !== null ? spend / views : null,
+      sourceSheet: "일간 성과",
+      sourceFile: dataset.sourceFile,
+      reportDate: dataset.bundle.reportDate,
+      sourceUrl: bundle.sourceUrl,
+      sourceKind: bundle.sourceKind,
+    };
+  });
+}
+
 export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate: string, endDate: string) {
   const grouped = new Map<string, PublishedDataset[]>();
   for (const snapshot of snapshots) {
@@ -66,6 +132,13 @@ export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate
     const sorted = [...list].sort((a, b) => a.bundle.reportDate.localeCompare(b.bundle.reportDate));
     const end = sorted.filter((item) => item.bundle.reportDate <= endDate).at(-1);
     if (!end) continue;
+
+    const exactDailyRows = rowsFromDailyPerformance(end, startDate, endDate);
+    if (exactDailyRows) {
+      rows.push(...exactDailyRows);
+      continue;
+    }
+
     const baseline = sorted.filter((item) => item.bundle.reportDate < startDate).at(-1);
     if (startDate.slice(-2) !== "01" && !baseline) baselineComplete = false;
     const baselineMap = new Map((baseline?.bundle.placements ?? []).map((row) => [factIdentity(row), row]));
