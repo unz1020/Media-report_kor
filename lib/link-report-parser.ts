@@ -1,5 +1,12 @@
 import type { DailyBundlePreview, PlacementFact } from "@/lib/daily-report-parser";
 
+type LinkedPlacementFact = Omit<PlacementFact, "clicks"> & { clicks: number | null };
+export type LinkedReportBundle = DailyBundlePreview & {
+  sourceUrl: string;
+  sourceKind: "link-report";
+  placements: LinkedPlacementFact[];
+};
+
 function numberFrom(value?: string) {
   if (!value) return null;
   const parsed = Number(value.replace(/,/g, "").trim());
@@ -34,20 +41,21 @@ function metric(text: string, regex: RegExp) {
   return numberFrom(text.match(regex)?.[1]);
 }
 
-function explicitNotes(body: string) {
-  return Array.from(new Set(
+function explicitNotes(body: string, sourceUrl: string) {
+  const notes = Array.from(new Set(
     body.split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
       .filter((line) => /기준|원활|우수|진행 중|성과|효율|목표 대비/i.test(line))
-  )).slice(0, 20);
+  )).slice(0, 19);
+  return [`원본 리포트: ${sourceUrl}`, ...notes];
 }
 
-export function parseLinkedReportMail(body: string, advertiser: string, fallbackDate: string): DailyBundlePreview | null {
+export function parseLinkedReportMail(body: string, advertiser: string, fallbackDate: string): LinkedReportBundle | null {
   const sourceUrl = lookerUrl(body);
   if (!sourceUrl) return null;
 
-  const placements: PlacementFact[] = [];
+  const placements: LinkedPlacementFact[] = [];
   const dv = section(body, /▶\s*Display\s*&\s*Video\s*360/i, /▶\s*넷플릭스/i);
   if (dv) {
     const impressions = metric(dv, /광고\s*노출수\s*\(목표\s*:\s*[\d,]+\)\s*:\s*([\d,]+)/i);
@@ -118,7 +126,7 @@ export function parseLinkedReportMail(body: string, advertiser: string, fallback
     mediaPlan: [],
     planSourceSheets: [],
     mailChecks: [],
-    operationNotes: explicitNotes(body),
+    operationNotes: explicitNotes(body, sourceUrl),
     qa: { matchedMailMetrics: 0, mismatchedMailMetrics: 0, unmatchedMailMetrics: 0, ignoredSheetCount: 0 },
-  };
+  } as LinkedReportBundle;
 }
