@@ -15,6 +15,25 @@ const MEDIA_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
   { canonical: "DV360", aliases: ["displayvideo360", "display&video360", "dv360", "display & video 360"] },
 ];
 
+const NON_PLACEMENT_LABELS = new Set([
+  "kpi",
+  "result",
+  "achievement",
+  "achievement%",
+  "달성률",
+  "달성율",
+  "구분",
+  "summary",
+  "campaigntotal",
+  "total",
+  "grandtotal",
+]);
+
+export function isOperationalPlacement(value: string) {
+  const key = normalizeKey(value || "");
+  return Boolean(key) && !NON_PLACEMENT_LABELS.has(key);
+}
+
 export function canonicalMedia(value: string) {
   const key = normalizeKey(value || "");
   if (!key) return "미확인";
