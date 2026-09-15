@@ -36,8 +36,10 @@ function emptyState(): PublishedDailyState {
 
 export function dailyDatasetKey(bundle: DailyBundlePreview) {
   const month = (bundle.campaignStart || bundle.reportDate || "unknown").slice(0, 7);
+  const extended = bundle as DailyBundlePreview & { sourceId?: string };
+  if (extended.sourceId) return `${bundle.advertiser}::${month}::${extended.sourceId.toLowerCase()}`;
   const stem = bundle.sourceFile
-    .replace(/\.(xlsx|xls|xlsb|csv)$/i, "")
+    .replace(/\.(xlsx|xls|xlsb|csv|pdf)$/i, "")
     .replace(/[_\- ]?(?:20)?\d{6,8}$/i, "")
     .replace(/[_\- ]?\d{4}$/i, "")
     .trim()
@@ -86,10 +88,8 @@ export function publishDailyBundle(
     bundle,
   };
 
-  // datasets = latest valid cumulative workbook for each source.
   state.datasets[datasetKey] = dataset;
 
-  // snapshots = immutable daily history for date range reporting / double-checking.
   const snapshotKey = `${datasetKey}::${bundle.reportDate || publishedAt.slice(0, 10)}`;
   state.snapshots[snapshotKey] = { ...dataset, key: snapshotKey };
 
