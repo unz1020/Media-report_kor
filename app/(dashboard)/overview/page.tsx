@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
 import { publishedDatasetsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
 import { formatCount, formatKrw, formatRate, mediaPlansFromDatasets, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
+import { canonicalMedia, canonicalProduct, normalizeInsightText } from "@/lib/media-normalization";
 
 export default function OverviewPage() {
   const { advertiser, month } = useWorkspace();
@@ -21,29 +22,47 @@ export default function OverviewPage() {
     return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
   }, [advertiser, month]);
 
-  const rows = useMemo(() => rowsFromDatasets(datasets), [datasets]);
-  const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
+  const rows = useMemo(() => rowsFromDatasets(datasets).map((row) => ({
+    ...row,
+    media: canonicalMedia(row.platform),
+    product: canonicalProduct(row.platform, row.placement, row.sourceSheet),
+  })), [datasets]);
+
+  const rawPlans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
+  const plans = useMemo(() => rawPlans.map((plan) => ({
+    ...plan,
+    media: canonicalMedia(plan.platform),
+    canonicalProduct: canonicalProduct(plan.platform, plan.product || plan.placement, plan.sourceSheet),
+  })), [rawPlans]);
+
   const summary = useMemo(() => summarizeRows(rows), [rows]);
   const totalBudget = useMemo(() => {
     const values = plans.map((item) => item.budget).filter((value): value is number => typeof value === "number");
     return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
   }, [plans]);
+
   const mediaRows = useMemo(() => {
     const grouped = new Map<string, typeof rows>();
     for (const row of rows) {
-      const list = grouped.get(row.platform) ?? [];
+      const list = grouped.get(row.media) ?? [];
       list.push(row);
-      grouped.set(row.platform, list);
+      grouped.set(row.media, list);
     }
-    return [...grouped.entries()].map(([platform, items]) => ({ platform, summary: summarizeRows(items), items }));
+    return [...grouped.entries()].map(([media, items]) => ({
+      media,
+      summary: summarizeRows(items),
+      products: Array.from(new Set(items.map((row) => row.product).filter(Boolean))),
+      sourceCount: new Set(items.map((row) => row.sourceFile)).size,
+    })).sort((a, b) => a.media.localeCompare(b.media, "ko"));
   }, [rows]);
+
   const latestInsight = insights.at(-1);
   const latestDate = datasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1) || "";
 
   return (
     <>
       <div className="page-head refined-head">
-        <div><div className="eyebrow">Overview · SOURCE ONLY</div><h1 className="page-title">{advertiser} {Number(month.slice(5,7))}월 광고 운영 현황</h1><p className="page-desc">실제 반영된 Daily Monitoring과 문서 내 Media Mix만 사용합니다.</p></div>
+        <div><div className="eyebrow">Overview · MEDIA → PRODUCT</div><h1 className="page-title">{advertiser} {Number(month.slice(5,7))}월 광고 운영 현황</h1><p className="page-desc">실제 Daily Monitoring과 Media Mix를 매체 → 광고상품 기준으로 통합합니다.</p></div>
         <div className="page-meta"><span className="real-data-note">임의 수치 사용 안 함</span></div>
       </div>
 
@@ -58,20 +77,25 @@ export default function OverviewPage() {
 
         <section className="grid two-col section-space">
           <article className="card report-panel">
-            <div className="report-panel-head"><div><h2>매체 운영 현황</h2><p>반영된 원본 파일에서 확인된 매체만 표시합니다.</p></div><span className="view-pill">{mediaRows.length} 매체</span></div>
-            <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th><th>Source</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.platform}><td><strong>{item.platform}</strong></td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td><td>{new Set(item.items.map((row) => row.sourceFile)).size} file</td></tr>)}</tbody></table></div>
+            <div className="report-panel-head"><div><h2>매체별 운영 현황</h2><p>동일 매체의 표기 차이는 통합하고 광고상품 수를 함께 표시합니다.</p></div><span className="view-pill">{mediaRows.length} 매체</span></div>
+            <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.media}><td><strong>{item.media}</strong></td><td>{item.products.length ? `${item.products.slice(0,3).join(" · ")}${item.products.length > 3 ? ` 외 ${item.products.length - 3}` : ""}` : "-"}</td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td></tr>)}</tbody></table></div>
           </article>
 
           <aside className="card report-panel">
-            <div className="report-panel-head"><div><h2>최근 Daily Insight</h2><p>메일 본문 기반 · Fact와 분리</p></div></div>
-            <div className="notice-list">{latestInsight ? <><div className="notice"><span className="notice-dot good"/><div><strong>{latestInsight.reportDate}</strong><p>{latestInsight.mailSubject}</p></div></div>{latestInsight.notes.slice(0,5).map((note, index) => <div className="notice" key={index}><span className="notice-dot"/><div><p>{note}</p></div></div>)}</> : <div className="empty-inline">반영된 Daily Insight가 없습니다.</div>}</div>
+            <div className="report-panel-head"><div><h2>최근 Daily Insight</h2><p>메일 본문의 운영 현황 · 전일 성과 해석</p></div></div>
+            <div className="notice-list">{latestInsight ? <><div className="notice"><span className="notice-dot good"/><div><strong>{latestInsight.reportDate}</strong><p>{normalizeInsightText(latestInsight.mailSubject)}</p></div></div>{latestInsight.notes.slice(0,6).map((note, index) => <div className="notice" key={index}><span className="notice-dot"/><div><p>{normalizeInsightText(note)}</p></div></div>)}</> : <div className="empty-inline">반영된 Daily Insight가 없습니다.</div>}</div>
           </aside>
         </section>
 
         <section className="card section-space report-panel">
-          <div className="report-panel-head table-title-row"><div><h2>문서에서 확인된 미디어 운영안</h2><p>Excel의 Media Mix / 광고 상품 / 일정 / 예산 필드를 그대로 정규화합니다.</p></div><span className="view-pill">{plans.length}개 항목</span></div>
-          {plans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>예산</th><th>예상 노출</th><th>예상 클릭</th><th>타겟팅</th><th>Source Sheet</th></tr></thead><tbody>{plans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td className="num-cell">{formatKrw(plan.budget)}</td><td className="num-cell">{formatCount(plan.expectedImpressions)}</td><td className="num-cell">{formatCount(plan.expectedClicks)}</td><td>{plan.target || "-"}</td><td>{plan.sourceSheet}</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">현재 반영 파일에서 Media Mix 운영안을 찾지 못했습니다. 운영안 문서를 추가하면 이 영역에 자동 반영됩니다.</div>}
+          <div className="report-panel-head table-title-row"><div><h2>미디어 운영안</h2><p>Excel Media Mix를 매체 → 광고상품 기준으로 정리합니다. 원본 시트명은 검산용으로만 유지합니다.</p></div><span className="view-pill">{plans.length}개 항목</span></div>
+          {plans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>기기/소재</th><th>기간</th><th>예산</th><th>예상 노출</th><th>예상 클릭</th><th>타겟팅</th></tr></thead><tbody>{plans.map((plan,index)=><tr key={`${plan.media}-${plan.canonicalProduct}-${index}`}><td><strong>{plan.media}</strong></td><td>{plan.canonicalProduct}</td><td>{[plan.device, plan.creativeType].filter(Boolean).join(" · ") || "-"}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td className="num-cell">{formatKrw(plan.budget)}</td><td className="num-cell">{formatCount(plan.expectedImpressions)}</td><td className="num-cell">{formatCount(plan.expectedClicks)}</td><td>{plan.target || "-"}</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">현재 반영 파일에서 Media Mix 운영안을 찾지 못했습니다. 운영안 문서를 추가하면 이 영역에 자동 반영됩니다.</div>}
         </section>
+
+        <details className="section-space">
+          <summary style={{cursor:"pointer",fontSize:12,color:"#667085",fontWeight:600}}>원본 데이터 추적 정보</summary>
+          <div className="card card-pad" style={{marginTop:10}}><p className="page-desc">현재 반영 원본 {datasets.length}개 · 원본 파일/시트명은 Performance 상세의 추적 정보에서 확인할 수 있습니다.</p></div>
+        </details>
       </>}
     </>
   );
