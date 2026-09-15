@@ -36,7 +36,7 @@ function emptyState(): PublishedDailyState {
 export function dailyDatasetKey(bundle: DailyBundlePreview) {
   const month = (bundle.campaignStart || bundle.reportDate || "unknown").slice(0, 7);
   const stem = bundle.sourceFile
-    .replace(/\.(xlsx?|csv)$/i, "")
+    .replace(/\.(xlsx|xls|xlsb|csv)$/i, "")
     .replace(/[_\- ]?(?:20)?\d{6,8}$/i, "")
     .replace(/[_\- ]?\d{4}$/i, "")
     .trim()
@@ -104,6 +104,30 @@ export function publishDailyBundles(
   items: Array<{ bundle: DailyBundlePreview; mailSubject?: string; mailDate?: string }>,
 ) {
   items.forEach((item) => publishDailyBundle(item.bundle, item));
+}
+
+export function publishMailOnlyInsight(input: {
+  advertiser: string;
+  reportDate: string;
+  mailSubject: string;
+  mailDate?: string;
+  notes: string[];
+}) {
+  if (typeof window === "undefined") return;
+  const state = readPublishedDailyState();
+  const publishedAt = new Date().toISOString();
+  const key = `${input.advertiser}::${input.reportDate}::mail::${input.mailSubject.toLowerCase()}`;
+  state.insights[key] = {
+    key,
+    advertiser: input.advertiser,
+    reportDate: input.reportDate,
+    datasetKey: "mail-only",
+    mailSubject: input.mailSubject,
+    mailDate: input.mailDate || "",
+    notes: input.notes,
+    publishedAt,
+  };
+  writeState(state);
 }
 
 export function publishedDatasetsFor(advertiser: string, month?: string) {
