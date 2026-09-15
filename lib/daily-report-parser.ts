@@ -3,9 +3,31 @@ export type PlacementFact = {
   placement: string;
   achievement: number | null;
   guaranteed: string;
+  spend?: number | null;
   impressions: number;
   clicks: number;
   ctr: number | null;
+  views?: number | null;
+  vtr?: number | null;
+  conversions?: number | null;
+  cpc?: number | null;
+  cpm?: number | null;
+  cpv?: number | null;
+  sourceSheet: string;
+};
+
+export type MediaPlanFact = {
+  platform: string;
+  product: string;
+  placement: string;
+  device: string;
+  creativeType: string;
+  periodStart: string;
+  periodEnd: string;
+  budget: number | null;
+  expectedImpressions: number | null;
+  expectedClicks: number | null;
+  target: string;
   sourceSheet: string;
 };
 
@@ -27,6 +49,8 @@ export type DailyBundlePreview = {
   parsedSheets: string[];
   ignoredSheets: string[];
   placements: PlacementFact[];
+  mediaPlan?: MediaPlanFact[];
+  planSourceSheets?: string[];
   mailChecks: MailMetricCheck[];
   operationNotes: string[];
   qa: {
@@ -84,9 +108,9 @@ function extractMailReportDate(mailBody: string, year: number) {
 function extractOperationNotes(mailBody: string) {
   const lines = mailBody.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const notes = lines.filter((line) =>
-    /보너스 집행|라이브 시작|집행 기간|기간\s*:|매체\s*:/.test(line)
+    /보너스 집행|라이브 시작|집행 기간|기간\s*:|매체\s*:|전일|성과|효율|상승|하락|예산|노출|클릭|CTR|전환/i.test(line)
   );
-  return Array.from(new Set(notes)).slice(0, 12);
+  return Array.from(new Set(notes)).slice(0, 20);
 }
 
 function extractMailMetrics(mailBody: string) {
@@ -132,24 +156,18 @@ export async function parseDailyWorkbook(file: File, mailBody: string): Promise<
     sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
       const texts: string[] = [];
       for (let col = 1; col <= Math.max(row.cellCount, 8); col++) texts[col] = normalized(row.getCell(col).text || row.getCell(col).value);
-
       const advertiserIndex = texts.findIndex((value) => value === "광고주");
       if (advertiserIndex > 0 && !advertiser) advertiser = normalized(row.getCell(advertiserIndex + 1).text || row.getCell(advertiserIndex + 1).value);
-
       const platformIndex = texts.findIndex((value) => value === "플랫폼");
       if (platformIndex > 0) platform = normalized(row.getCell(platformIndex + 1).text || row.getCell(platformIndex + 1).value);
-
       const periodIndex = texts.findIndex((value) => value === "집행 기간");
       if (periodIndex > 0 && !campaignStart) {
         campaignStart = dateText(row.getCell(periodIndex + 1).value || row.getCell(periodIndex + 1).text);
         campaignEnd = dateText(row.getCell(periodIndex + 3).value || row.getCell(periodIndex + 3).text);
       }
-
       if (texts.includes("매체") && texts.includes("지면") && texts.some((value) => value === "A.Imps")) {
         headerRowNumber = rowNumber;
-        texts.forEach((value, index) => {
-          if (value) headerIndex[value] = index;
-        });
+        texts.forEach((value, index) => { if (value) headerIndex[value] = index; });
       }
     });
 
@@ -165,23 +183,12 @@ export async function parseDailyWorkbook(file: File, mailBody: string): Promise<
       const placement = normalized(row.getCell(headerIndex["지면"] || 1).text || row.getCell(headerIndex["지면"] || 1).value);
       if (media === "Total" || placement === "Total") break;
       if (!placement) continue;
-
       const impressions = numberValue(row.getCell(headerIndex["A.Imps"] || 1).value ?? row.getCell(headerIndex["A.Imps"] || 1).text);
       const clicks = numberValue(row.getCell(headerIndex["A.Clicks"] || 1).value ?? row.getCell(headerIndex["A.Clicks"] || 1).text);
       const ctrRaw = optionalNumber(row.getCell(headerIndex["CTR(%)"] || 1).value ?? row.getCell(headerIndex["CTR(%)"] || 1).text);
       const achievementRaw = optionalNumber(row.getCell(headerIndex["달성률"] || headerIndex["달성율"] || 1).value ?? row.getCell(headerIndex["달성률"] || headerIndex["달성율"] || 1).text);
       const guaranteed = normalized(row.getCell(headerIndex["보장노출수"] || 1).text || row.getCell(headerIndex["보장노출수"] || 1).value);
-
-      placements.push({
-        platform: platform || media,
-        placement,
-        achievement: achievementRaw === null ? null : achievementRaw * 100,
-        guaranteed,
-        impressions,
-        clicks,
-        ctr: ctrRaw === null ? null : ctrRaw * 100,
-        sourceSheet: sheetName,
-      });
+      placements.push({ platform: platform || media, placement, achievement: achievementRaw === null ? null : achievementRaw * 100, guaranteed, spend: null, impressions, clicks, ctr: ctrRaw === null ? null : ctrRaw * 100, sourceSheet: sheetName });
     }
   });
 
@@ -209,6 +216,8 @@ export async function parseDailyWorkbook(file: File, mailBody: string): Promise<
     parsedSheets,
     ignoredSheets,
     placements,
+    mediaPlan: [],
+    planSourceSheets: [],
     mailChecks,
     operationNotes: extractOperationNotes(mailBody),
     qa: {
