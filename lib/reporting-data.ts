@@ -1,23 +1,15 @@
-import type { MediaPlanFact, PlacementFact } from "@/lib/daily-report-parser";
+import type { CreativeDailyFact, DailyPerformanceFact, MediaPlanFact, PlacementFact } from "@/lib/daily-report-parser";
 import type { PublishedDataset } from "@/lib/daily-report-store";
 import { isOperationalPlacement } from "@/lib/media-normalization";
 
-type DailyPerformanceFact = {
-  date: string;
-  platform: string;
-  placement: string;
-  spend: number | null;
-  impressions: number;
-  clicks: number | null;
-  views: number | null;
-  ctr: number | null;
-  cpm: number | null;
-  cpc: number | null;
-  cpv: number | null;
-  vtr: number | null;
+export type DailyPerformanceRow = DailyPerformanceFact & {
+  sourceFile: string;
+  reportDate: string;
+  sourceUrl?: string;
+  sourceKind?: string;
 };
 
-export type DailyPerformanceRow = DailyPerformanceFact & {
+export type CreativeDailyRow = CreativeDailyFact & {
   sourceFile: string;
   reportDate: string;
   sourceUrl?: string;
@@ -36,12 +28,17 @@ export function factIdentity(row: Pick<PlacementFact, "platform" | "placement" |
   return `${row.platform}::${row.placement}::${row.sourceSheet}`.toLowerCase();
 }
 
+function loosePlacementKey(value: string) {
+  return value.replace(/\([^)]*\)/g, "").replace(/[<>*_\-\/·]/g, "").replace(/\s+/g, "").toLowerCase();
+}
+
 function extendedBundle(dataset: PublishedDataset) {
   return dataset.bundle as typeof dataset.bundle & {
     sourceUrl?: string;
     sourceKind?: string;
     sourceId?: string;
     dailyPerformance?: DailyPerformanceFact[];
+    creativeDailyPerformance?: CreativeDailyFact[];
   };
 }
 
@@ -85,6 +82,30 @@ export function dailyPerformanceFromDatasets(datasets: PublishedDataset[], start
   return result.sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform, "ko") || a.placement.localeCompare(b.placement, "ko"));
 }
 
+export function creativePerformanceFromDatasets(datasets: PublishedDataset[], date?: string): CreativeDailyRow[] {
+  const seen = new Set<string>();
+  const result: CreativeDailyRow[] = [];
+  for (const dataset of datasets) {
+    const bundle = extendedBundle(dataset);
+    const targetDate = date || dataset.bundle.reportDate;
+    for (const row of bundle.creativeDailyPerformance ?? []) {
+      if (targetDate && row.date !== targetDate) continue;
+      if (!isOperationalPlacement(row.placement)) continue;
+      const id = `${row.date}::${row.platform}::${row.placement}::${row.creative}::${dataset.sourceFile}`.toLowerCase();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      result.push({
+        ...row,
+        sourceFile: dataset.sourceFile,
+        reportDate: dataset.bundle.reportDate,
+        sourceUrl: bundle.sourceUrl,
+        sourceKind: bundle.sourceKind,
+      });
+    }
+  }
+  return result.sort((a, b) => a.platform.localeCompare(b.platform, "ko") || a.placement.localeCompare(b.placement, "ko") || a.creative.localeCompare(b.creative, "ko"));
+}
+
 export function mediaPlansFromDatasets(datasets: PublishedDataset[]): MediaPlanFact[] {
   const seen = new Set<string>();
   const result: MediaPlanFact[] = [];
@@ -118,6 +139,8 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
     groups.set(key, list);
   }
 
+  const cumulativeFromCampaignStart = Boolean(dataset.bundle.campaignStart) && startDate === dataset.bundle.campaignStart;
+
   return [...groups.values()].map((items) => {
     const base = items[0];
     const spendValues = items.map((item) => item.spend).filter((value): value is number => typeof value === "number");
@@ -127,11 +150,23 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
     const impressions = items.reduce((sum, item) => sum + item.impressions, 0);
     const clicks = clickValues.length ? clickValues.reduce((sum, value) => sum + value, 0) : null;
     const views = viewValues.length ? viewValues.reduce((sum, value) => sum + value, 0) : null;
+    const wanted = loosePlacementKey(base.placement);
+    const summaryFact = dataset.bundle.placements.find((row) => {
+      if (row.platform !== base.platform && !row.platform.includes(base.platform) && !base.platform.includes(row.platform)) return false;
+      const current = loosePlacementKey(row.placement);
+      return current === wanted || current.includes(wanted) || wanted.includes(current);
+    });
+    const guaranteed = cumulativeFromCampaignStart ? (summaryFact?.guaranteed ?? "") : "";
+    const guaranteedNumeric = /^\d+(?:\.\d+)?$/.test(guaranteed.replace(/,/g, "")) ? Number(guaranteed.replace(/,/g, "")) : null;
+    const achievement = cumulativeFromCampaignStart
+      ? (guaranteedNumeric && guaranteedNumeric > 0 ? impressions / guaranteedNumeric * 100 : summaryFact?.achievement ?? null)
+      : null;
+
     return {
       platform: base.platform,
       placement: base.placement,
-      achievement: null,
-      guaranteed: "",
+      achievement,
+      guaranteed,
       spend,
       impressions,
       clicks,
@@ -142,7 +177,7 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
       cpm: impressions > 0 && spend !== null ? spend / impressions * 1000 : null,
       cpc: clicks && clicks > 0 && spend !== null ? spend / clicks : clicks === 0 ? 0 : null,
       cpv: views && views > 0 && spend !== null ? spend / views : null,
-      sourceSheet: "일간 성과",
+      sourceSheet: summaryFact?.sourceSheet || base.sourceSheet || "일별 성과",
       sourceFile: dataset.sourceFile,
       reportDate: dataset.bundle.reportDate,
       sourceUrl: bundle.sourceUrl,
