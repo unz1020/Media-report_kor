@@ -1,119 +1,112 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { mediaRows } from "@/lib/mock-data";
+import { useEffect, useMemo, useState } from "react";
+import { useWorkspace } from "@/components/workspace-context";
+import { publishedDatasetsFor, publishedInsightsFor, publishedSnapshotsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { formatCount, formatKrw, formatRate, periodRowsFromSnapshots, rowsFromDatasets, summarizeRows, type ReportingRow } from "@/lib/reporting-data";
 
-const rows = [
-  {id:"meta",parent:null,level:0,media:"Meta",name:"Meta",type:"매체",spend:"₩18.4M",imp:"6.8M",click:"91.4K",ctr:"1.34%",cv:"412",status:"LIVE"},
-  {id:"meta-campaign",parent:"meta",level:1,media:"Meta",name:"9월 브랜딩 캠페인",type:"캠페인",spend:"₩12.1M",imp:"4.2M",click:"61.8K",ctr:"1.47%",cv:"286",status:"LIVE"},
-  {id:"meta-adgroup",parent:"meta",level:2,media:"Meta",name:"Reels · 관심사 타겟",type:"광고그룹",spend:"₩7.2M",imp:"2.4M",click:"39.1K",ctr:"1.63%",cv:"192",status:"LIVE"},
-  {id:"meta-creative",parent:"meta",level:3,media:"Meta",name:"정성편 15s A",type:"소재",spend:"₩3.6M",imp:"1.1M",click:"18.7K",ctr:"1.70%",cv:"98",status:"LIVE"},
-  {id:"meta-placement",parent:"meta",level:4,media:"Meta",name:"Instagram Reels",type:"게재위치",spend:"₩2.1M",imp:"640K",click:"11.6K",ctr:"1.81%",cv:"61",status:"LIVE"},
-  {id:"naver",parent:null,level:0,media:"NAVER",name:"NAVER GFA",type:"매체",spend:"₩14.8M",imp:"5.6M",click:"42.1K",ctr:"0.75%",cv:"181",status:"LIVE"},
-  {id:"naver-campaign",parent:"naver",level:1,media:"NAVER",name:"9월 프리미엄 소파",type:"캠페인",spend:"₩9.4M",imp:"3.8M",click:"30.4K",ctr:"0.80%",cv:"122",status:"LIVE"},
-  {id:"naver-creative",parent:"naver",level:3,media:"NAVER",name:"프리미엄 가죽 소재 A",type:"소재",spend:"₩3.8M",imp:"1.4M",click:"11.6K",ctr:"0.81%",cv:"41",status:"LIVE"},
-  {id:"naver-placement",parent:"naver",level:4,media:"NAVER",name:"GFA Native Feed",type:"게재위치",spend:"₩3.8M",imp:"1.4M",click:"11.6K",ctr:"0.81%",cv:"41",status:"LIVE"},
-  {id:"google",parent:null,level:0,media:"Google / DV360",name:"Google / DV360",type:"매체",spend:"₩11.2M",imp:"3.1M",click:"18.4K",ctr:"0.59%",cv:"167",status:"LIVE"},
-  {id:"google-campaign",parent:"google",level:1,media:"Google / DV360",name:"40주년 Video Reach",type:"캠페인",spend:"₩7.4M",imp:"2.4M",click:"11.1K",ctr:"0.46%",cv:"108",status:"LIVE"},
-  {id:"google-creative",parent:"google",level:3,media:"Google / DV360",name:"브랜드 필름 15s",type:"소재",spend:"₩3.1M",imp:"1.2M",click:"7.7K",ctr:"0.64%",cv:"57",status:"LIVE"},
-  {id:"google-placement",parent:"google",level:4,media:"Google / DV360",name:"YouTube In-stream",type:"게재위치",spend:"₩3.1M",imp:"1.2M",click:"7.7K",ctr:"0.64%",cv:"57",status:"LIVE"},
-  {id:"kakao",parent:null,level:0,media:"Kakao",name:"Kakao",type:"매체",spend:"₩8.6M",imp:"2.4M",click:"13.7K",ctr:"0.57%",cv:"105",status:"LIVE"},
-  {id:"kakao-campaign",parent:"kakao",level:1,media:"Kakao",name:"9월 비즈보드 브랜딩",type:"캠페인",spend:"₩5.7M",imp:"1.7M",click:"10.2K",ctr:"0.60%",cv:"72",status:"LIVE"},
-  {id:"kakao-placement",parent:"kakao",level:4,media:"Kakao",name:"Kakao Bizboard",type:"게재위치",spend:"₩5.7M",imp:"1.7M",click:"10.2K",ctr:"0.60%",cv:"72",status:"LIVE"}
-] as const;
-
-const metricData = {
-  "집행액": {value:"₩60.2M", delta:"+4.8%", points:"0,176 65,162 130,151 195,132 260,126 325,112 390,94 455,89 520,74 585,62 650,57 715,44 780,36 845,25 900,20"},
-  "전환": {value:"905", delta:"+11.8%", points:"0,188 65,184 130,169 195,173 260,151 325,147 390,130 455,124 520,112 585,104 650,86 715,83 780,70 845,62 900,49"},
-  "CTR": {value:"0.93%", delta:"+0.05%p", points:"0,150 65,142 130,155 195,136 260,126 325,118 390,121 455,103 520,98 585,84 650,89 715,73 780,64 845,58 900,52"},
-  "노출": {value:"18.05M", delta:"+9.1%", points:"0,182 65,174 130,158 195,149 260,138 325,123 390,111 455,101 520,88 585,79 650,66 715,55 780,43 845,31 900,24"}
-} as const;
-
-type MetricName = keyof typeof metricData;
-type DetailTab = "캠페인" | "광고그룹" | "소재" | "게재위치";
+function monthStart(month: string) { return `${month}-01`; }
+function monthEnd(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Date(year, monthNumber, 0).toISOString().slice(0, 10);
+}
 
 export default function PerformancePage() {
-  const [selectedMedia, setSelectedMedia] = useState("전체 매체");
-  const [compare, setCompare] = useState(true);
-  const [selectedMetrics, setSelectedMetrics] = useState<MetricName[]>(["집행액", "전환"]);
-  const [activeTab, setActiveTab] = useState<DetailTab>("캠페인");
-  const [expanded, setExpanded] = useState(() => new Set(["meta", "naver", "google", "kakao"]));
+  const { advertiser, month } = useWorkspace();
+  const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
+  const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
+  const [insights, setInsights] = useState<PublishedInsight[]>([]);
+  const [startDate, setStartDate] = useState(monthStart(month));
+  const [endDate, setEndDate] = useState(monthEnd(month));
+  const [media, setMedia] = useState("전체 매체");
 
-  const tableRows = useMemo(() => {
-    const wantedType = activeTab;
-    return rows.filter((row) => {
-      if (selectedMedia !== "전체 매체" && row.media !== selectedMedia) return false;
-      if (row.level === 0) return true;
-      if (!row.parent || !expanded.has(row.parent)) return false;
-      return row.type === wantedType;
-    });
-  }, [activeTab, expanded, selectedMedia]);
+  useEffect(() => {
+    setStartDate(monthStart(month));
+    setEndDate(monthEnd(month));
+  }, [month]);
 
-  const toggleMetric = (metric: MetricName) => {
-    setSelectedMetrics((current) => {
-      if (current.includes(metric)) return current.length === 1 ? current : current.filter((item) => item !== metric);
-      return current.length >= 2 ? [current[1], metric] : [...current, metric];
-    });
-  };
+  useEffect(() => {
+    const load = () => {
+      const nextDatasets = publishedDatasetsFor(advertiser, month);
+      const nextSnapshots = publishedSnapshotsFor(advertiser, month);
+      const nextInsights = publishedInsightsFor(advertiser, month);
+      setDatasets(nextDatasets);
+      setSnapshots(nextSnapshots);
+      setInsights(nextInsights);
+      const latestDate = nextSnapshots.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1) || nextDatasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1);
+      if (latestDate) setEndDate(latestDate);
+    };
+    load();
+    window.addEventListener("media-report-daily-updated", load);
+    window.addEventListener("storage", load);
+    return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
+  }, [advertiser, month]);
 
-  const togglePlatform = (id: string) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  const period = useMemo(() => snapshots.length ? periodRowsFromSnapshots(snapshots, startDate, endDate) : { rows: rowsFromDatasets(datasets), baselineComplete: startDate.endsWith("-01") }, [snapshots, datasets, startDate, endDate]);
+  const mediaOptions = useMemo(() => ["전체 매체", ...Array.from(new Set(period.rows.map((row) => row.platform).filter(Boolean))).sort()], [period.rows]);
+  const rows = useMemo(() => media === "전체 매체" ? period.rows : period.rows.filter((row) => row.platform === media), [period.rows, media]);
+  const summary = useMemo(() => summarizeRows(rows), [rows]);
+  const periodInsights = useMemo(() => insights.filter((item) => item.reportDate >= startDate && item.reportDate <= endDate), [insights, startDate, endDate]);
+  const grouped = useMemo(() => {
+    const map = new Map<string, ReportingRow[]>();
+    for (const row of rows) {
+      const key = `${row.sourceFile}::${row.sourceSheet}`;
+      const list = map.get(key) ?? [];
+      list.push(row);
+      map.set(key, list);
+    }
+    return [...map.entries()];
+  }, [rows]);
 
   return (
     <>
       <div className="page-head refined-head">
-        <div><div className="eyebrow">Performance</div><h1 className="page-title">성과 보고</h1><p className="page-desc">매체 → 캠페인 → 광고그룹 → 소재 → 게재위치까지 실제로 필터링하고 내려가며 확인합니다.</p></div>
-        <div className="page-meta"><span className="view-pill">업데이트 09.15 10:31</span></div>
+        <div><div className="eyebrow">Performance · SOURCE ONLY</div><h1 className="page-title">{advertiser} 성과 보고</h1><p className="page-desc">업로드·연결된 원본 보고서의 수치만 사용합니다. 없는 지표는 추정하지 않습니다.</p></div>
+        <div className="page-meta"><span className="view-pill">{month}</span></div>
       </div>
 
       <div className="report-toolbar performance-toolbar">
         <div className="toolbar-group">
-          <button className="toolbar-control strong-control">2026.09.01 – 09.15</button>
-          <button className={`toolbar-control ${compare ? "strong-control" : "muted-control"}`} onClick={() => setCompare((value) => !value)}>비교 기간 {compare ? "ON" : "OFF"}</button>
-          <select className="toolbar-control" value={selectedMedia} onChange={(event) => setSelectedMedia(event.target.value)} aria-label="매체 필터">
-            <option>전체 매체</option><option>Meta</option><option>NAVER</option><option>Google / DV360</option><option>Kakao</option>
-          </select>
-          <button className="toolbar-control">캠페인 전체</button>
+          <label className="toolbar-label">기간</label>
+          <input className="toolbar-control" type="date" value={startDate} min={monthStart(month)} max={monthEnd(month)} onChange={(event) => setStartDate(event.target.value)} />
+          <span className="toolbar-label">–</span>
+          <input className="toolbar-control" type="date" value={endDate} min={startDate} max={monthEnd(month)} onChange={(event) => setEndDate(event.target.value)} />
+          <select className="toolbar-control" value={media} onChange={(event) => setMedia(event.target.value)}>{mediaOptions.map((item) => <option key={item}>{item}</option>)}</select>
         </div>
-        <div className="toolbar-group right"><button className="toolbar-control">분석 기준</button><button className="toolbar-control">다운로드</button></div>
+        <div className="toolbar-group right"><span className="view-pill">원본 {datasets.length}개 · Snapshot {snapshots.length}개</span></div>
       </div>
 
-      <section className="metric-strip performance-metrics">
-        <article className="metric-card selected-metric"><span className="metric-kicker">집행액</span><strong>₩60.2M</strong><div><b className="metric-up">+4.8%</b><span>{compare ? "직전 동기간" : "현재 기간"}</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">노출</span><strong>18.05M</strong><div><b className="metric-up">+9.1%</b><span>{compare ? "직전 동기간" : "현재 기간"}</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">클릭</span><strong>168.2K</strong><div><b className="metric-up">+7.4%</b><span>{compare ? "직전 동기간" : "현재 기간"}</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">CTR</span><strong>0.93%</strong><div><b className="metric-up">+0.05%p</b><span>{compare ? "직전 동기간" : "현재 기간"}</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">전환</span><strong>905</strong><div><b className="metric-up">+11.8%</b><span>Performance 매체</span></div></article>
-      </section>
+      {!period.baselineComplete && <div className="source-warning">선택한 시작일 직전 Snapshot이 없어 시작일 이전 누적분을 완전히 제외할 수 없습니다. 해당 날짜의 Daily 파일이 쌓이면 자동으로 정확한 기간 차감이 가능합니다.</div>}
 
-      <section className="card section-space report-panel performance-chart-panel">
-        <div className="report-panel-head"><div><h2>일별 성과 추이</h2><p>클릭해서 최대 2개 지표를 비교합니다.</p></div><div className="metric-switch">{(["집행액","전환","CTR","노출"] as MetricName[]).map((metric, index) => <button key={metric} onClick={() => toggleMetric(metric)} className={selectedMetrics.includes(metric) ? `active ${selectedMetrics.indexOf(metric) === 1 ? "secondary" : ""}` : ""}>{metric}</button>)}</div></div>
-        <div className="dual-chart-placeholder">
-          <div className="axis-label left">{selectedMetrics[0]}</div><div className="axis-label right">{selectedMetrics[1] ?? ""}</div>
-          {[1,2,3,4].map(i => <span key={i} className="fake-grid" style={{top:`${i*19}%`}}/>)}
-          <svg viewBox="0 0 900 210" className="performance-svg">
-            <polyline points={metricData[selectedMetrics[0]].points} className="perf-line-a"/>
-            {selectedMetrics[1] && <polyline points={metricData[selectedMetrics[1]].points} className="perf-line-b"/>}
-          </svg>
-          <div className="chart-xlabels"><span>9/1</span><span>9/4</span><span>9/7</span><span>9/10</span><span>9/13</span><span>9/15</span></div>
-        </div>
-      </section>
+      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser}의 Daily Monitoring을 Data Update에서 검수 후 반영하면 이 화면이 원본 수치로 채워집니다.</p></section> : <>
+        <section className="metric-strip performance-metrics">
+          <article className="metric-card selected-metric"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong><div><span>원 단위</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong><div><span>회 단위</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong><div><span>회 단위</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong><div><span>노출 대비 클릭</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">조회 / 전환</span><strong>{summary.views !== null ? formatCount(summary.views) : summary.conversions !== null ? formatCount(summary.conversions, "건") : "데이터 없음"}</strong><div><span>원본 지표 기준</span></div></article>
+        </section>
 
-      <section className="card section-space report-panel">
-        <div className="report-panel-head table-title-row"><div><h2>성과 상세</h2><p>상단 매체 필터와 탭이 실제 표에 반영됩니다. 매체 행을 눌러 펼치거나 접을 수 있습니다.</p></div><div className="table-tools"><button className="toolbar-control">열 설정</button><button className="toolbar-control">세분화</button></div></div>
-        <div className="report-tabs">{(["캠페인","광고그룹","소재","게재위치"] as DetailTab[]).map(tab => <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>
-        <div className="table-wrap report-table-wrap"><table className="report-table hierarchy-table"><thead><tr><th>이름</th><th>단위</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th><th>전환</th><th>상태</th></tr></thead><tbody>{tableRows.map((row)=><tr key={row.id} className={row.level>0?"child-row":""} onClick={() => row.level === 0 && togglePlatform(row.id)} style={{cursor:row.level === 0 ? "pointer" : "default"}}><td><div className="hierarchy-name" style={{paddingLeft:`${Math.min(row.level,1)*22}px`}}>{row.level===0 && <span className="disclosure">{expanded.has(row.id)?'⌄':'›'}</span>}<span className={`platform-dot ${row.media === 'Meta'?'meta':row.media === 'NAVER'?'naver':row.media.startsWith('Google')?'google':row.media === 'Kakao'?'kakao':'neutral'}`}/><strong>{row.name}</strong></div></td><td><span className="row-type">{row.type}</span></td><td className="num-cell">{row.spend}</td><td className="num-cell">{row.imp}</td><td className="num-cell">{row.click}</td><td className="num-cell">{row.ctr}</td><td className="num-cell">{row.cv}</td><td><span className="operation-state live"><i/>{row.status}</span></td></tr>)}</tbody></table></div>
-      </section>
+        <section className="card section-space report-panel">
+          <div className="report-panel-head table-title-row"><div><h2>원본 보고서 구조</h2><p>파일 → 시트 → 지면 순으로 원본과 대조하기 쉽게 표시합니다.</p></div></div>
+          <div className="source-sheet-stack">{grouped.map(([groupKey, sourceRows]) => {
+            const first = sourceRows[0];
+            const hasSpend = sourceRows.some((row) => row.spend !== null && row.spend !== undefined);
+            const hasViews = sourceRows.some((row) => row.views !== null && row.views !== undefined);
+            const hasVtr = sourceRows.some((row) => row.vtr !== null && row.vtr !== undefined);
+            const hasConversions = sourceRows.some((row) => row.conversions !== null && row.conversions !== undefined);
+            return <article className="source-sheet-card" key={groupKey}>
+              <div className="source-sheet-head"><div><strong>{first.sourceSheet}</strong><span>{first.sourceFile}</span></div><span>기준일 {first.reportDate || "미확인"}</span></div>
+              <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>지면</th>{hasSpend && <th>집행액</th>}<th>노출</th><th>클릭</th><th>CTR</th>{hasViews && <th>조회</th>}{hasVtr && <th>VTR</th>}{hasConversions && <th>전환</th>}</tr></thead><tbody>{sourceRows.map((row, index) => <tr key={`${row.platform}-${row.placement}-${index}`}><td>{row.platform}</td><td><strong>{row.placement}</strong></td>{hasSpend && <td className="num-cell">{formatKrw(row.spend)}</td>}<td className="num-cell">{formatCount(row.impressions)}</td><td className="num-cell">{formatCount(row.clicks)}</td><td className="num-cell">{formatRate(row.ctr)}</td>{hasViews && <td className="num-cell">{formatCount(row.views)}</td>}{hasVtr && <td className="num-cell">{formatRate(row.vtr)}</td>}{hasConversions && <td className="num-cell">{formatCount(row.conversions, "건")}</td>}</tr>)}</tbody></table></div>
+            </article>;
+          })}</div>
+        </section>
 
-      <section className="grid two-col section-space">
-        <article className="card report-panel"><div className="report-panel-head"><div><h2>매체 요약</h2><p>현재 필터와 별개인 전체 월 누적</p></div></div><div className="compact-media-list">{mediaRows.slice(0,5).map(row=><div key={row.media}><span className={`platform-dot ${row.className}`}/><strong>{row.media}</strong><span>{row.spend}</span><b>{row.ctr}</b></div>)}</div></article>
-        <article className="card report-panel insight-panel"><div className="report-panel-head"><div><h2>AE Insight</h2><p>Client 공개 전 검토</p></div><span className="view-pill">DRAFT</span></div><div className="insight-copy"><strong>Meta 소재 효율과 Google 전환 성과가 전체 개선을 견인</strong><p>정성편 15s의 CTR 상승과 Google 전환 증가가 확인됩니다. NAVER는 클릭 대비 전환 기여도를 소재 단위로 추가 점검합니다.</p><div className="insight-tags"><span>Meta CTR ↑</span><span>Google CV ↑</span><span>NAVER 점검</span></div></div></article>
-      </section>
+        <section className="card section-space report-panel">
+          <div className="report-panel-head"><div><h2>기간 내 Daily Insight</h2><p>메일 본문에서 가져온 전일 성과 해석입니다. Fact 수치를 덮어쓰지 않습니다.</p></div><span className="view-pill">{periodInsights.length}건</span></div>
+          <div className="insight-timeline">{periodInsights.length ? periodInsights.map((item) => <div key={item.key}><strong>{item.reportDate}</strong><div><b>{item.mailSubject}</b>{item.notes.length ? item.notes.map((note, index) => <p key={index}>{note}</p>) : <p>추출된 운영 메모 없음</p>}</div></div>) : <div className="empty-inline">선택 기간에 Daily Insight가 없습니다.</div>}</div>
+        </section>
+      </>}
     </>
   );
 }
