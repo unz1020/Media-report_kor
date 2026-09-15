@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { ImportedDailyPerformance } from "@/components/imported-daily-performance";
+import { ADVERTISERS, WorkspaceProvider, useWorkspace, type AdvertiserKey } from "@/components/workspace-context";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: "overview" },
   { href: "/performance", label: "Performance", icon: "chart" },
   { href: "/schedule", label: "Schedule", icon: "calendar" },
   { href: "/creative", label: "Creative & Placement", icon: "image" },
-  { href: "/reports", label: "Reports", icon: "report" }
+  { href: "/reports", label: "Reports", icon: "report" },
 ] as const;
 
 function Icon({ name }: { name: string }) {
@@ -22,66 +22,48 @@ function Icon({ name }: { name: string }) {
   return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8"/></svg>;
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { advertiserKey, month, setAdvertiserKey, setMonth } = useWorkspace();
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">M</div>
-          <div className="brand-copy"><strong>Media Report</strong><span>Advertising OS</span></div>
-        </div>
-
+        <div className="brand"><div className="brand-mark">M</div><div className="brand-copy"><strong>Media Report</strong><span>Advertising OS</span></div></div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="nav" aria-label="주 메뉴">
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className={`nav-link ${pathname === item.href ? "active" : ""}`}>
-              <Icon name={item.icon} />
-              {item.label}
-            </Link>
-          ))}
+          {navItems.map((item) => <Link key={item.href} href={item.href} className={`nav-link ${pathname === item.href ? "active" : ""}`}><Icon name={item.icon}/>{item.label}</Link>)}
         </nav>
-
         <div className="sidebar-bottom">
           <div className="nav-label">AE TOOLS</div>
-          <div className="ae-only">
-            <Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}>
-              <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
-              Data Update
-            </Link>
-          </div>
-          <div className="sidebar-user">
-            <div className="avatar">AE</div>
-            <div><strong>박운상</strong><span>Agency workspace</span></div>
-          </div>
+          <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>Data Update</Link></div>
+          <div className="sidebar-user"><div className="avatar">AE</div><div><strong>박운상</strong><span>Agency workspace</span></div></div>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div className="selector-group">
-            <select className="selector" aria-label="광고주 선택" defaultValue="jacomo">
-              <option value="jacomo">자코모</option>
-              <option value="kyowon">교원웰스</option>
-              <option value="solte">솔테라이브러리</option>
+            <select className="selector" aria-label="광고주 선택" value={advertiserKey} onChange={(event) => setAdvertiserKey(event.target.value as AdvertiserKey)}>
+              {Object.entries(ADVERTISERS).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
             </select>
-            <select className="selector" aria-label="조회 월 선택" defaultValue="2026-09">
+            <select className="selector" aria-label="조회 월 선택" value={month} onChange={(event) => setMonth(event.target.value)}>
               <option value="2026-09">2026년 9월</option>
               <option value="2026-08">2026년 8월</option>
             </select>
           </div>
           <div className="top-actions">
-            <span className="sync-label">마지막 업데이트 · 09.15 10:31</span>
-            <Link href="/reports" className="btn"><span>브리핑</span></Link>
+            <span className="sync-label">실데이터 전용 · 광고주별 분리</span>
+            <Link href="/reports" className="btn"><span>리포트</span></Link>
             <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>
           </div>
         </header>
-        <div className="content">
-          {pathname === "/performance" && <ImportedDailyPerformance advertiser="자코모" month="2026-09" />}
-          {children}
-        </div>
+        <div className="content">{children}</div>
       </main>
     </div>
   );
+}
+
+export function AppShell({ children }: { children: ReactNode }) {
+  return <WorkspaceProvider><AppShellInner>{children}</AppShellInner></WorkspaceProvider>;
 }

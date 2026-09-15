@@ -1,79 +1,78 @@
-import { mediaRows, planTrend, spendTrend } from "@/lib/mock-data";
+"use client";
 
-function TrendChart() {
-  const width = 760;
-  const height = 250;
-  const padX = 20;
-  const padY = 20;
-  const makePoints = (values: number[]) => values.map((v, i) => {
-    const x = padX + (i / (values.length - 1)) * (width - padX * 2);
-    const y = height - 34 - (v / 110) * (height - padY * 2 - 16);
-    return `${x},${y}`;
-  }).join(" ");
-  const area = `${padX},${height - 34} ${makePoints(spendTrend)} ${width-padX},${height - 34}`;
-  return (
-    <div className="report-chart">
-      <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="누적 광고비 추이">
-        <defs><linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5965e8" stopOpacity="0.13"/><stop offset="100%" stopColor="#5965e8" stopOpacity="0"/></linearGradient></defs>
-        {[40,80,120,160,200].map(y => <line key={y} x1="20" y1={y} x2="740" y2={y} className="chart-grid-line"/>)}
-        <polygon points={area} className="chart-area" />
-        <polyline points={makePoints(planTrend)} className="chart-line-2" />
-        <polyline points={makePoints(spendTrend)} className="chart-line" />
-        {[0,4,8,12,14].map(i => { const x = padX + (i/14)*(width-padX*2); return <text key={i} x={x} y="244" textAnchor="middle" className="chart-axis">9/{i+1}</text>; })}
-      </svg>
-    </div>
-  );
-}
-
-const attention = [
-  { tone: "danger", label: "종료 임박", value: "2", text: "3일 내 종료되는 프로모션 소재" },
-  { tone: "warning", label: "게재 확인", value: "1", text: "서울버스TV 증빙 업데이트 필요" },
-  { tone: "good", label: "예산 페이스", value: "정상", text: "계획 대비 +1.8%p 범위" },
-];
+import { useEffect, useMemo, useState } from "react";
+import { useWorkspace } from "@/components/workspace-context";
+import { publishedDatasetsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { formatCount, formatKrw, formatRate, mediaPlansFromDatasets, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
 
 export default function OverviewPage() {
+  const { advertiser, month } = useWorkspace();
+  const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
+  const [insights, setInsights] = useState<PublishedInsight[]>([]);
+
+  useEffect(() => {
+    const load = () => {
+      setDatasets(publishedDatasetsFor(advertiser, month));
+      setInsights(publishedInsightsFor(advertiser, month));
+    };
+    load();
+    window.addEventListener("media-report-daily-updated", load);
+    window.addEventListener("storage", load);
+    return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
+  }, [advertiser, month]);
+
+  const rows = useMemo(() => rowsFromDatasets(datasets), [datasets]);
+  const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
+  const summary = useMemo(() => summarizeRows(rows), [rows]);
+  const totalBudget = useMemo(() => {
+    const values = plans.map((item) => item.budget).filter((value): value is number => typeof value === "number");
+    return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+  }, [plans]);
+  const mediaRows = useMemo(() => {
+    const grouped = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const list = grouped.get(row.platform) ?? [];
+      list.push(row);
+      grouped.set(row.platform, list);
+    }
+    return [...grouped.entries()].map(([platform, items]) => ({ platform, summary: summarizeRows(items), items }));
+  }, [rows]);
+  const latestInsight = insights.at(-1);
+  const latestDate = datasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1) || "";
+
   return (
     <>
       <div className="page-head refined-head">
-        <div>
-          <div className="eyebrow">Overview</div>
-          <h1 className="page-title">9월 광고 운영 현황</h1>
-          <p className="page-desc">계획 · 집행 · 성과 · 게재 상태를 하나의 월간 뷰에서 확인합니다.</p>
-        </div>
-        <div className="page-meta"><span className="status-dot-label"><i/> 정상 운영</span><span className="view-pill">Client View</span></div>
+        <div><div className="eyebrow">Overview · SOURCE ONLY</div><h1 className="page-title">{advertiser} {Number(month.slice(5,7))}월 광고 운영 현황</h1><p className="page-desc">실제 반영된 Daily Monitoring과 문서 내 Media Mix만 사용합니다.</p></div>
+        <div className="page-meta"><span className="real-data-note">임의 수치 사용 안 함</span></div>
       </div>
 
-      <div className="report-toolbar">
-        <div className="toolbar-group"><span className="toolbar-label">기간</span><button className="toolbar-control">2026.09.01 – 09.15⌄</button><button className="toolbar-control muted-control">비교 · 08.01 – 08.15</button></div>
-        <div className="toolbar-group right"><button className="toolbar-control">다운로드</button><button className="toolbar-control">공유</button></div>
-      </div>
+      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 {advertiser} 실데이터가 없습니다.</h2><p>Data Update에서 해당 광고주의 Daily Monitoring을 반영하면 Overview가 자동으로 채워집니다.</p></section> : <>
+        <section className="metric-strip">
+          <article className="metric-card primary-metric"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong><div><span>원본 보고서 합계</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">월 예산</span><strong>{formatKrw(totalBudget)}</strong><div><span>Media Mix 기준</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong><div><span>회 단위</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong><div><span>회 단위</span></div></article>
+          <article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong><div><span>기준일 {latestDate || "미확인"}</span></div></article>
+        </section>
 
-      <section className="metric-strip">
-        <article className="metric-card primary-metric"><span className="metric-kicker">집행액</span><strong>₩76.4M</strong><div><b className="metric-up">+6.2%</b><span>직전 동기간</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">월 예산</span><strong>₩120M</strong><div><b>63.7%</b><span>소진</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">노출</span><strong>21.8M</strong><div><b className="metric-up">+9.1%</b><span>직전 동기간</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">클릭</span><strong>192.4K</strong><div><b className="metric-up">+7.4%</b><span>직전 동기간</span></div></article>
-        <article className="metric-card"><span className="metric-kicker">LIVE</span><strong>8 <small>매체</small></strong><div><b>24</b><span>소재 운영 중</span></div></article>
-      </section>
+        <section className="grid two-col section-space">
+          <article className="card report-panel">
+            <div className="report-panel-head"><div><h2>매체 운영 현황</h2><p>반영된 원본 파일에서 확인된 매체만 표시합니다.</p></div><span className="view-pill">{mediaRows.length} 매체</span></div>
+            <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th><th>Source</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.platform}><td><strong>{item.platform}</strong></td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td><td>{new Set(item.items.map((row) => row.sourceFile)).size} file</td></tr>)}</tbody></table></div>
+          </article>
 
-      <section className="overview-layout section-space">
-        <article className="card report-panel main-chart-card">
-          <div className="report-panel-head"><div><h2>성과 추이</h2><p>누적 광고비 · 계획 대비 실제 집행</p></div><div className="metric-switch"><button className="active">광고비</button><button>노출</button><button>클릭</button><button>전환</button></div></div>
-          <TrendChart />
-          <div className="chart-footer"><span><i className="legend-dot"/>실제 집행</span><span><i className="legend-dot gray"/>계획</span><span className="chart-note">현재 페이스 63.7% · 목표 페이스 61.9%</span></div>
-        </article>
+          <aside className="card report-panel">
+            <div className="report-panel-head"><div><h2>최근 Daily Insight</h2><p>메일 본문 기반 · Fact와 분리</p></div></div>
+            <div className="notice-list">{latestInsight ? <><div className="notice"><span className="notice-dot good"/><div><strong>{latestInsight.reportDate}</strong><p>{latestInsight.mailSubject}</p></div></div>{latestInsight.notes.slice(0,5).map((note, index) => <div className="notice" key={index}><span className="notice-dot"/><div><p>{note}</p></div></div>)}</> : <div className="empty-inline">반영된 Daily Insight가 없습니다.</div>}</div>
+          </aside>
+        </section>
 
-        <aside className="card report-panel attention-panel">
-          <div className="report-panel-head"><div><h2>Attention</h2><p>오늘 우선 확인할 운영 항목</p></div><span className="attention-count">3</span></div>
-          <div className="attention-list">{attention.map(item => <div className={`attention-item ${item.tone}`} key={item.label}><div className="attention-icon">{item.tone === 'danger' ? '!' : item.tone === 'warning' ? '•' : '✓'}</div><div className="attention-copy"><div><strong>{item.label}</strong><b>{item.value}</b></div><p>{item.text}</p></div></div>)}</div>
-          <a className="attention-link" href="/data-update">검수 항목 전체 보기 →</a>
-        </aside>
-      </section>
-
-      <section className="card section-space report-panel">
-        <div className="report-panel-head table-title-row"><div><h2>매체 운영 현황</h2><p>Performance / Delivery / Live Only 통합</p></div><div className="table-tools"><button className="toolbar-control">열 설정</button><a href="/performance" className="toolbar-control strong-control">성과 상세 →</a></div></div>
-        <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>측정</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th><th>전환</th><th>운영 상태</th></tr></thead><tbody>{mediaRows.map(row => <tr key={row.media}><td><div className="platform-cell"><span className={`platform-dot ${row.className}`}/><div><strong>{row.media}</strong><small>월간 운영</small></div></div></td><td><span className={`measure-chip ${row.measurement === 'Performance' ? 'perf' : row.measurement === 'Delivery' ? 'delivery' : 'liveonly'}`}>{row.measurement}</span></td><td className="num-cell">{row.spend}</td><td className="num-cell">{row.impressions}</td><td className="num-cell">{row.clicks}</td><td className="num-cell">{row.ctr}</td><td className="num-cell">{row.conversions}</td><td><span className={`operation-state ${row.status === 'LIVE' ? 'live' : 'review'}`}><i/>{row.status}</span></td></tr>)}</tbody></table></div>
-      </section>
+        <section className="card section-space report-panel">
+          <div className="report-panel-head table-title-row"><div><h2>문서에서 확인된 미디어 운영안</h2><p>Excel의 Media Mix / 광고 상품 / 일정 / 예산 필드를 그대로 정규화합니다.</p></div><span className="view-pill">{plans.length}개 항목</span></div>
+          {plans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>예산</th><th>예상 노출</th><th>예상 클릭</th><th>타겟팅</th><th>Source Sheet</th></tr></thead><tbody>{plans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td className="num-cell">{formatKrw(plan.budget)}</td><td className="num-cell">{formatCount(plan.expectedImpressions)}</td><td className="num-cell">{formatCount(plan.expectedClicks)}</td><td>{plan.target || "-"}</td><td>{plan.sourceSheet}</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">현재 반영 파일에서 Media Mix 운영안을 찾지 못했습니다. 운영안 문서를 추가하면 이 영역에 자동 반영됩니다.</div>}
+        </section>
+      </>}
     </>
   );
 }

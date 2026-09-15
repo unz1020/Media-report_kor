@@ -1,62 +1,42 @@
-const reports = [
-  { date: "09.15", title: "9월 15일 데일리 브리핑", desc: "성과 요약 · 주요 변동 · 운영 이슈 · 금일 액션", type: "Briefing", status: "Published" },
-  { date: "09.14", title: "포커스미디어 게재보고", desc: "서울·경기 엘리베이터TV · 40주년 CF 30s", type: "Placement", status: "Verified" },
-  { date: "09.12", title: "서울버스TV 게재보고", desc: "서울 주요 노선 · 신규 CF 런칭 소재", type: "Placement", status: "Review" },
-  { date: "09.10", title: "9월 미디어믹스 v2", desc: "Meta 예산 조정 및 OTT 일정 업데이트", type: "Media Mix", status: "Current" },
-  { date: "09.01", title: "9월 미디어믹스 v1", desc: "최초 승인 집행 계획", type: "Media Mix", status: "Archived" }
-];
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useWorkspace } from "@/components/workspace-context";
+import { publishedDatasetsFor, publishedInsightsFor, publishedSnapshotsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { formatCount, formatKrw, formatRate, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
 
 export default function ReportsPage() {
-  return (
-    <>
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Reports</div>
-          <h1 className="page-title">브리핑 · 보고서</h1>
-          <p className="page-desc">메일 본문으로 전달하던 인사이트와 게재보고, 미디어믹스 이력을 한 공간에서 관리합니다.</p>
-        </div>
-        <div className="page-meta"><button className="btn">새 브리핑</button><button className="btn primary">Publish</button></div>
-      </div>
+  const { advertiser, month } = useWorkspace();
+  const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
+  const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
+  const [insights, setInsights] = useState<PublishedInsight[]>([]);
+  const [from, setFrom] = useState(`${month}-01`);
+  const [to, setTo] = useState(`${month}-${String(new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).getDate()).padStart(2,"0")}`);
 
-      <section className="grid two-col">
-        <article className="card briefing-card">
-          <div className="card-head"><div><h2>오늘의 브리핑</h2><p>광고주 공개용 · 2026.09.15</p></div><span className="badge info">PUBLISHED</span></div>
-          <div className="briefing-body">
-            <span className="briefing-number">MONTHLY MONITORING · DAY 15</span>
-            <h3>전체 집행은 계획 범위 안에서 안정적으로 운영 중입니다.</h3>
-            <p>Meta 정성편과 Google 영상 소재가 효율 개선을 견인하고 있습니다. NAVER는 클릭 대비 전환 기여가 낮아 소재별 성과를 추가 점검할 예정이며, ATL은 포커스미디어 게재가 정상 확인되었습니다.</p>
-            <div className="briefing-points">
-              <div className="briefing-point">성과 · Meta CTR 개선 / Google 전환 상승</div>
-              <div className="briefing-point">운영 · 전체 소진율 63.7%, 계획 대비 정상</div>
-              <div className="briefing-point">게재 · Focus Media 확인 완료 / 서울버스TV 증빙 확인 필요</div>
-              <div className="briefing-point">액션 · 종료 예정 소재 2건 연장 여부 확인</div>
-            </div>
-          </div>
-        </article>
+  useEffect(() => { setFrom(`${month}-01`); setTo(`${month}-${String(new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).getDate()).padStart(2,"0")}`); }, [month]);
+  useEffect(() => {
+    const load = () => { setDatasets(publishedDatasetsFor(advertiser, month)); setSnapshots(publishedSnapshotsFor(advertiser, month)); setInsights(publishedInsightsFor(advertiser, month)); };
+    load(); window.addEventListener("media-report-daily-updated", load); window.addEventListener("storage", load);
+    return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
+  }, [advertiser, month]);
 
-        <article className="card">
-          <div className="card-head"><div><h2>보고 현황</h2><p>이번 달 업로드·공개 상태</p></div><span className="eyebrow">SEPTEMBER</span></div>
-          <div className="progress-list">
-            <div className="notice"><span className="notice-dot good"/><div><strong>Daily Monitoring</strong><p>09.15 데이터까지 반영 · 최신</p></div></div>
-            <div className="notice"><span className="notice-dot good"/><div><strong>Media Mix</strong><p>v2가 현재 승인본으로 적용 중</p></div></div>
-            <div className="notice"><span className="notice-dot"/><div><strong>Placement Report</strong><p>서울버스TV 1건 검수 필요</p></div></div>
-          </div>
-        </article>
+  const filteredInsights = useMemo(() => insights.filter((item) => item.reportDate >= from && item.reportDate <= to), [insights, from, to]);
+  const filteredSnapshots = useMemo(() => snapshots.filter((item) => item.bundle.reportDate >= from && item.bundle.reportDate <= to), [snapshots, from, to]);
+  const summary = useMemo(() => summarizeRows(rowsFromDatasets(datasets)), [datasets]);
+
+  return <>
+    <div className="page-head"><div><div className="eyebrow">Reports · SOURCE HISTORY</div><h1 className="page-title">{advertiser} 리포트</h1><p className="page-desc">Daily Fact 원본, 전일 Insight, Snapshot 이력을 기간별로 확인합니다.</p></div></div>
+    <div className="report-toolbar"><div className="toolbar-group"><span className="toolbar-label">기간</span><input className="toolbar-control" type="date" value={from} onChange={(e)=>setFrom(e.target.value)}/><span>–</span><input className="toolbar-control" type="date" value={to} min={from} onChange={(e)=>setTo(e.target.value)}/></div></div>
+
+    {!datasets.length ? <section className="card card-pad empty-state"><h2>반영된 리포트 데이터가 없습니다.</h2><p>Daily Monitoring을 반영한 뒤 이 화면에서 Fact와 Insight 이력을 확인할 수 있습니다.</p></section> : <>
+      <section className="metric-strip"><article className="metric-card"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong></article><article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong></article><article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong></article><article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong></article><article className="metric-card"><span className="metric-kicker">원본 파일</span><strong>{datasets.length}</strong></article></section>
+
+      <section className="grid two-col section-space">
+        <article className="card report-panel"><div className="report-panel-head"><div><h2>Daily Insight</h2><p>메일 본문에서 가져온 전일 성과 정리</p></div><span className="view-pill">{filteredInsights.length}건</span></div><div className="insight-timeline">{filteredInsights.length ? filteredInsights.map(item=><div key={item.key}><strong>{item.reportDate}</strong><div><b>{item.mailSubject}</b>{item.notes.map((note,index)=><p key={index}>{note}</p>)}</div></div>) : <div className="empty-inline">선택 기간 Insight 없음</div>}</div></article>
+        <article className="card report-panel"><div className="report-panel-head"><div><h2>Snapshot 이력</h2><p>더블체크 가능한 일자별 Fact 보관</p></div><span className="view-pill">{filteredSnapshots.length}건</span></div><div className="progress-list">{filteredSnapshots.length ? filteredSnapshots.map(item=><div className="notice" key={item.key}><span className="notice-dot good"/><div><strong>{item.bundle.reportDate} · {item.sourceFile}</strong><p>{item.bundle.parsedSheets.join(", ") || "파싱 시트 없음"}</p></div></div>) : <div className="empty-inline">선택 기간 Snapshot 없음</div>}</div></article>
       </section>
 
-      <section className="card section-space">
-        <div className="card-head"><div><h2>보고서 히스토리</h2><p>브리핑, 게재보고서, 미디어믹스 버전 이력을 보관합니다.</p></div><button className="btn">전체 파일</button></div>
-        <div className="report-list">
-          {reports.map((report) => (
-            <div className="report-row" key={`${report.date}-${report.title}`}>
-              <div className="report-date">2026.{report.date}</div>
-              <div><div className="report-title">{report.title}</div><div className="report-desc">{report.desc}</div></div>
-              <div className="report-type">{report.type}</div>
-              <span className={`badge ${report.status === 'Review' ? 'review' : report.status === 'Archived' ? 'ended' : 'live'}`}>{report.status}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-    </>
-  );
+      <section className="card section-space report-panel"><div className="report-panel-head"><div><h2>현재 월 최신 원본</h2><p>각 리포트 소스의 최신 누적 Excel</p></div></div><div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>파일</th><th>기준일</th><th>성과 시트</th><th>운영안 시트</th><th>지면</th><th>QA</th></tr></thead><tbody>{datasets.map(item=><tr key={item.key}><td><strong>{item.sourceFile}</strong></td><td>{item.bundle.reportDate || "미확인"}</td><td>{item.bundle.parsedSheets.join(", ") || "-"}</td><td>{item.bundle.planSourceSheets?.join(", ") || "-"}</td><td className="num-cell">{item.bundle.placements.length}개</td><td className="num-cell">{item.bundle.qa.mismatchedMailMetrics + item.bundle.qa.unmatchedMailMetrics}</td></tr>)}</tbody></table></div></section>
+    </>}
+  </>;
 }
