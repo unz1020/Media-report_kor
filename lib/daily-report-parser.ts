@@ -16,6 +16,33 @@ export type PlacementFact = {
   sourceSheet: string;
 };
 
+export type DailyPerformanceFact = {
+  date: string;
+  platform: string;
+  placement: string;
+  spend: number | null;
+  impressions: number;
+  clicks: number | null;
+  views: number | null;
+  ctr: number | null;
+  cpm: number | null;
+  cpc: number | null;
+  cpv: number | null;
+  vtr: number | null;
+  sourceSheet?: string;
+};
+
+export type CreativeDailyFact = {
+  date: string;
+  platform: string;
+  placement: string;
+  creative: string;
+  impressions: number;
+  clicks: number | null;
+  ctr: number | null;
+  sourceSheet: string;
+};
+
 export type MediaPlanFact = {
   platform: string;
   product: string;
@@ -49,6 +76,8 @@ export type DailyBundlePreview = {
   parsedSheets: string[];
   ignoredSheets: string[];
   placements: PlacementFact[];
+  dailyPerformance?: DailyPerformanceFact[];
+  creativeDailyPerformance?: CreativeDailyFact[];
   mediaPlan?: MediaPlanFact[];
   planSourceSheets?: string[];
   mailChecks: MailMetricCheck[];
@@ -107,10 +136,22 @@ function extractMailReportDate(mailBody: string, year: number) {
 
 function extractOperationNotes(mailBody: string) {
   const lines = mailBody.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const notes = lines.filter((line) =>
-    /보너스 집행|라이브 시작|집행 기간|기간\s*:|매체\s*:|전일|성과|효율|상승|하락|예산|노출|클릭|CTR|전환/i.test(line)
-  );
-  return Array.from(new Set(notes)).slice(0, 20);
+  const mediaPattern = /(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)/i;
+  let currentMedia = "";
+  const notes: string[] = [];
+
+  for (const line of lines) {
+    const section = line.match(/^<\s*(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)\s*>$/i)
+      || line.match(/^\d+\)\s*(호갱노노|직방|당근(?:마켓)?|키즈노트|틱톡|애드부스트\s*스크린|애드부스트스크린|네이버(?:\s*GFA)?|카카오(?:\s*모먼트)?)/i);
+    if (section) currentMedia = section[1];
+
+    const useful = /전일|집행 결과|보너스 집행|라이브 시작|집행 기간|기간\s*:|매체\s*:|효율|상승|하락|예산|보장 노출수|Impression|Clicks|CTR|전환|일일 통합 성과 데이터/i.test(line);
+    if (!useful) continue;
+
+    const hasMedia = mediaPattern.test(line);
+    notes.push(currentMedia && !hasMedia ? `[${currentMedia}] ${line}` : line);
+  }
+  return Array.from(new Set(notes)).slice(0, 40);
 }
 
 function extractMailMetrics(mailBody: string) {
