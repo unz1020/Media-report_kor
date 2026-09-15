@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { ImportedDailyPerformance } from "@/components/imported-daily-performance";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: "overview" },
@@ -76,7 +77,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>
           </div>
         </header>
-        <div className="content">{children}</div>
+        <div className="content">
+          {pathname === "/performance" && <ImportedDailyPerformance advertiser="자코모" month="2026-09" />}
+          {children}
+        </div>
       </main>
     </div>
   );
