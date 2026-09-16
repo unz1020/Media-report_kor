@@ -1,6 +1,9 @@
 import type { DailyBundlePreview } from "@/lib/daily-report-parser";
+import type { PlacementProof } from "@/lib/placement-proof";
 
 const LEGACY_STORAGE_KEY = "media-report-daily-v1";
+
+type ProofBundle = DailyBundlePreview & { placementProof?: PlacementProof };
 
 export type PublishedDataset = {
   key: string;
@@ -28,6 +31,7 @@ export type PublishedDailyState = {
   datasets: Record<string, PublishedDataset>;
   snapshots: Record<string, PublishedDataset>;
   insights: Record<string, PublishedInsight>;
+  proofs: Record<string, PlacementProof>;
 };
 
 type RemoteImport = {
@@ -38,7 +42,7 @@ type RemoteImport = {
   mail_date?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  metadata?: { bundle?: DailyBundlePreview } | null;
+  metadata?: { bundle?: ProofBundle } | null;
 };
 
 type RemoteInsight = {
@@ -56,7 +60,7 @@ type RemoteStatePayload = {
 };
 
 function emptyState(): PublishedDailyState {
-  return { datasets: {}, snapshots: {}, insights: {} };
+  return { datasets: {}, snapshots: {}, insights: {}, proofs: {} };
 }
 
 let stateCache: PublishedDailyState = emptyState();
@@ -145,6 +149,11 @@ function stageBundle(
   }
 }
 
+function stageProof(proof: PlacementProof) {
+  const key = proof.key || `${proof.advertiser}::${proof.month}::proof::${proof.messageId}::${proof.placement}`;
+  stateCache.proofs[key] = { ...proof, key, publishedAt: proof.publishedAt || new Date().toISOString() };
+}
+
 function stateFromRemote(payload: RemoteStatePayload) {
   const next = emptyState();
   const importDatasetKey = new Map<string, string>();
@@ -153,6 +162,15 @@ function stateFromRemote(payload: RemoteStatePayload) {
   for (const item of payload.imports ?? []) {
     const bundle = item.metadata?.bundle;
     if (!bundle) continue;
+    if (bundle.placementProof) {
+      const key = `remote-proof::${item.id}`;
+      next.proofs[key] = {
+        ...bundle.placementProof,
+        key,
+        publishedAt: item.updated_at || item.created_at || new Date().toISOString(),
+      };
+      continue;
+    }
     const dataset = datasetFromBundle(bundle, {
       mailSubject: item.mail_subject || "",
       mailDate: item.mail_date || "",
@@ -202,7 +220,6 @@ export async function hydratePublishedDailyState(advertiser: string, month: stri
   try {
     const payload = await requestRemote({ action: "load_state", advertiser, month }) as RemoteStatePayload;
     stateCache = stateFromRemote(payload);
-    // Report data no longer uses browser localStorage. Remove only the legacy report cache.
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     dispatchUpdated();
     dispatchSync("ready");
@@ -247,6 +264,49 @@ export function publishDailyBundles(
       const message = error instanceof Error ? error.message : "Supabase 저장 실패";
       dispatchSync("error", message);
       console.error("Failed to persist Daily report to Supabase", error);
+    }
+  })();
+}
+
+export function publishPlacementProof(proof: PlacementProof) {
+  if (typeof window === "undefined") return;
+  stageProof(proof);
+  dispatchUpdated();
+  dispatchSync("saving");
+
+  const bundle: ProofBundle = {
+    advertiser: proof.advertiser,
+    reportDate: proof.reportDate,
+    campaignStart: proof.periodStart || `${proof.month}-01`,
+    campaignEnd: proof.periodEnd || proof.reportDate,
+    sourceFile: proof.sourceFile,
+    parsedSheets: [],
+    ignoredSheets: [],
+    placements: [],
+    dailyPerformance: [],
+    creativeDailyPerformance: [],
+    mediaPlan: [],
+    planSourceSheets: [],
+    mailChecks: [],
+    operationNotes: [],
+    qa: { matchedMailMetrics: 0, mismatchedMailMetrics: 0, unmatchedMailMetrics: 0, ignoredSheetCount: 0 },
+    placementProof: proof,
+  };
+
+  void (async () => {
+    try {
+      await requestRemote({
+        action: "publish_bundle",
+        bundle,
+        mailSubject: proof.mailSubject,
+        mailDate: proof.mailDate,
+        sourceType: "placement_proof",
+      });
+      await hydratePublishedDailyState(proof.advertiser, proof.month);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "게재 보고 저장 실패";
+      dispatchSync("error", message);
+      console.error("Failed to persist placement proof to Supabase", error);
     }
   })();
 }
@@ -304,4 +364,10 @@ export function publishedInsightsFor(advertiser: string, month?: string) {
   return Object.values(stateCache.insights)
     .filter((item) => item.advertiser === advertiser && (!month || item.reportDate.startsWith(month)))
     .sort((a, b) => a.reportDate.localeCompare(b.reportDate));
+}
+
+export function publishedPlacementProofsFor(advertiser: string, month?: string) {
+  return Object.values(stateCache.proofs)
+    .filter((item) => item.advertiser === advertiser && (!month || item.month === month))
+    .sort((a, b) => (b.verificationDate || b.reportDate).localeCompare(a.verificationDate || a.reportDate));
 }
