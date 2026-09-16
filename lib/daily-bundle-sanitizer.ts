@@ -7,45 +7,84 @@ type ContextInput = {
   mailDate?: string;
 };
 
-type ContextYear = {
+type ContextDate = {
   year: number;
+  month: number | null;
   strong: boolean;
+  forceYear: boolean;
 };
 
-function inferContextYear(input: ContextInput): ContextYear {
-  const values = [input.filename, input.mailSubject, input.mailBody].filter(Boolean).join("\n");
+function validMonth(value: number) {
+  return value >= 1 && value <= 12 ? value : null;
+}
 
-  const explicit = values.match(/\b(20\d{2})\b/);
-  if (explicit) return { year: Number(explicit[1]), strong: true };
+function inferContextDate(input: ContextInput): ContextDate {
+  const primary = [input.filename, input.mailSubject].filter(Boolean).join("\n");
+  const all = [input.filename, input.mailSubject, input.mailBody].filter(Boolean).join("\n");
 
-  const compact = values.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
-  if (compact) return { year: 2000 + Number(compact[1]), strong: true };
+  // 파일명/메일 제목의 260916, 26년 9월은 해당 리포트 자체의 강한 날짜 문맥이다.
+  const primaryCompact = primary.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
+  if (primaryCompact) {
+    return { year: 2000 + Number(primaryCompact[1]), month: Number(primaryCompact[2]), strong: true, forceYear: true };
+  }
 
-  const korean = values.match(/(?:^|\D)(\d{2})\s*년\s*(?:0?[1-9]|1[0-2])\s*월/);
-  if (korean) return { year: 2000 + Number(korean[1]), strong: true };
+  const primaryKorean = primary.match(/(?:^|\D)(\d{2})\s*년\s*(0?[1-9]|1[0-2])\s*월/);
+  if (primaryKorean) {
+    return { year: 2000 + Number(primaryKorean[1]), month: Number(primaryKorean[2]), strong: true, forceYear: true };
+  }
+
+  const primaryFull = primary.match(/\b(20\d{2})[-/.\s년]+(0?[1-9]|1[0-2])(?:[-/.\s월]|\b)/);
+  if (primaryFull) {
+    return { year: Number(primaryFull[1]), month: Number(primaryFull[2]), strong: true, forceYear: true };
+  }
+
+  const explicit = all.match(/\b(20\d{2})\b/);
+  if (explicit) return { year: Number(explicit[1]), month: null, strong: true, forceYear: false };
+
+  const compact = all.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
+  if (compact) return { year: 2000 + Number(compact[1]), month: Number(compact[2]), strong: true, forceYear: false };
+
+  const korean = all.match(/(?:^|\D)(\d{2})\s*년\s*(0?[1-9]|1[0-2])\s*월/);
+  if (korean) return { year: 2000 + Number(korean[1]), month: Number(korean[2]), strong: true, forceYear: false };
 
   if (input.mailDate) {
     const parsed = new Date(input.mailDate);
-    if (!Number.isNaN(parsed.getTime())) return { year: parsed.getUTCFullYear(), strong: false };
+    if (!Number.isNaN(parsed.getTime())) {
+      return { year: parsed.getUTCFullYear(), month: validMonth(parsed.getUTCMonth() + 1), strong: false, forceYear: false };
+    }
   }
 
-  return { year: new Date().getFullYear(), strong: false };
+  const now = new Date();
+  return { year: now.getFullYear(), month: validMonth(now.getMonth() + 1), strong: false, forceYear: false };
 }
 
-function normalizeIsoDate(value: string | undefined, context: ContextYear) {
+function normalizeIsoDate(value: string | undefined, context: ContextDate) {
   if (!value) return value || "";
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
   const year = Number(match[1]);
 
-  // 엑셀 serial/date-format 오류로 1995, 2036처럼 문맥과 명백히 다른 연도가 들어오는 경우가 있다.
-  // 파일명/메일 제목에 260916, 26년 9월처럼 강한 연도 힌트가 있으면 큰 차이만 보정한다.
+  // Excel serial/date-format 오류로 1995, 2036처럼 문맥과 명백히 다른 연도가 들어오는 경우를 보정한다.
+  // 파일명/메일 제목이 260916, 26년 9월처럼 리포트 자체를 특정하면 2025처럼 1년 차이도 파일 문맥을 우선한다.
   const legacyWrongYear = year >= 1900 && year < 2000 && context.year >= 2000;
+  const strictMismatch = context.forceYear && year !== context.year;
   const contextMismatch = context.strong && Math.abs(year - context.year) >= 5;
-  if (legacyWrongYear || contextMismatch) {
+  if (legacyWrongYear || strictMismatch || contextMismatch) {
     return `${context.year}-${match[2]}-${match[3]}`;
   }
   return value;
+}
+
+function inferredCampaignPeriod(bundle: DailyBundlePreview, context: ContextDate) {
+  let campaignStart = normalizeIsoDate(bundle.campaignStart, context);
+  let campaignEnd = normalizeIsoDate(bundle.campaignEnd, context);
+  if ((!campaignStart || !campaignEnd) && context.forceYear && context.month) {
+    const month = String(context.month).padStart(2, "0");
+    const lastDay = new Date(Date.UTC(context.year, context.month, 0)).getUTCDate();
+    campaignStart ||= `${context.year}-${month}-01`;
+    campaignEnd ||= `${context.year}-${month}-${String(lastDay).padStart(2, "0")}`;
+  }
+  return { campaignStart, campaignEnd };
 }
 
 function isRawSheet(name: string | undefined) {
@@ -69,8 +108,6 @@ function normalizeAchievement<T extends { guaranteed?: string; impressions: numb
   if (!guaranteed) return row;
   const calculated = row.impressions / guaranteed * 100;
   const current = row.achievement;
-  // Excel 퍼센트 원값이 1.07(=107%)처럼 들어와 ratio heuristic이 오해석되는 경우를 방지한다.
-  // 보장노출수가 숫자로 명시된 지면은 원본 노출/보장노출 관계를 우선한다.
   if (current === null || current === undefined || Math.abs(current - calculated) > 0.5) {
     return { ...row, achievement: calculated };
   }
@@ -78,7 +115,8 @@ function normalizeAchievement<T extends { guaranteed?: string; impressions: numb
 }
 
 export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextInput = {}): DailyBundlePreview {
-  const contextYear = inferContextYear({ ...input, filename: input.filename || bundle.sourceFile });
+  const contextDate = inferContextDate({ ...input, filename: input.filename || bundle.sourceFile });
+  const { campaignStart, campaignEnd } = inferredCampaignPeriod(bundle, contextDate);
   const placements = [...(bundle.placements || [])];
   const hasSummarySheet = placements.some((row) => /^summary$/i.test(row.sourceSheet || ""));
   const helperSheets = new Set<string>();
@@ -99,18 +137,18 @@ export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextIn
 
   const cleanDaily = (bundle.dailyPerformance || []).filter((row) => !isRawSheet(row.sourceSheet)).map((row) => ({
     ...row,
-    date: normalizeIsoDate(row.date, contextYear),
-  }));
+    date: normalizeIsoDate(row.date, contextDate),
+  })).filter((row) => (!campaignStart || row.date >= campaignStart) && (!bundle.reportDate || row.date <= normalizeIsoDate(bundle.reportDate, contextDate)));
 
   const cleanCreative = (bundle.creativeDailyPerformance || []).filter((row) => !isRawSheet(row.sourceSheet)).map((row) => ({
     ...row,
-    date: normalizeIsoDate(row.date, contextYear),
+    date: normalizeIsoDate(row.date, contextDate),
   }));
 
   const cleanPlans = (bundle.mediaPlan || []).map((row) => ({
     ...row,
-    periodStart: normalizeIsoDate(row.periodStart, contextYear),
-    periodEnd: normalizeIsoDate(row.periodEnd, contextYear),
+    periodStart: normalizeIsoDate(row.periodStart, contextDate),
+    periodEnd: normalizeIsoDate(row.periodEnd, contextDate),
   }));
 
   const parsedSheets = Array.from(new Set(cleanPlacements.map((row) => row.sourceSheet).filter(Boolean)));
@@ -118,9 +156,9 @@ export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextIn
 
   return {
     ...bundle,
-    reportDate: normalizeIsoDate(bundle.reportDate, contextYear),
-    campaignStart: normalizeIsoDate(bundle.campaignStart, contextYear),
-    campaignEnd: normalizeIsoDate(bundle.campaignEnd, contextYear),
+    reportDate: normalizeIsoDate(bundle.reportDate, contextDate),
+    campaignStart,
+    campaignEnd,
     placements: cleanPlacements,
     dailyPerformance: cleanDaily,
     creativeDailyPerformance: cleanCreative,
