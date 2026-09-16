@@ -12,6 +12,8 @@ import type { PlacementProof, PlacementProofAttachment } from "@/lib/placement-p
 import { mediaPlansFromDatasets } from "@/lib/reporting-data";
 import styles from "./creative.module.css";
 
+type ProofRecord = PlacementProof & { proofId?: string; creativeName?: string };
+
 function attachmentUrl(proof: PlacementProof, file: PlacementProofAttachment, download = false) {
   const params = new URLSearchParams({
     messageId: proof.messageId,
@@ -36,14 +38,14 @@ function formatWon(value: number | null) {
 export default function CreativePage() {
   const { advertiser, month } = useWorkspace();
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
-  const [proofs, setProofs] = useState<PlacementProof[]>([]);
+  const [proofs, setProofs] = useState<ProofRecord[]>([]);
   const [uploadingKey, setUploadingKey] = useState("");
   const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
     const load = () => {
       setDatasets(publishedDatasetsFor(advertiser, month));
-      setProofs(publishedPlacementProofsFor(advertiser, month));
+      setProofs(publishedPlacementProofsFor(advertiser, month) as ProofRecord[]);
     };
     load();
     window.addEventListener("media-report-daily-updated", load);
@@ -55,10 +57,12 @@ export default function CreativePage() {
   }, [advertiser, month]);
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
+  const placementCount = useMemo(() => new Set(proofs.map((proof) => `${proof.media}::${proof.placement}`)).size, [proofs]);
+  const creativeCount = useMemo(() => proofs.filter((proof) => Boolean(proof.creativeName?.trim())).length, [proofs]);
 
-  async function replaceProofImage(proof: PlacementProof, file?: File) {
+  async function replaceProofImage(proof: ProofRecord, file?: File) {
     if (!file) return;
-    const key = proof.key || `${proof.messageId}-${proof.placement}`;
+    const key = proof.key || proof.proofId || `${proof.messageId}-${proof.placement}-${proof.creativeName || "default"}`;
     setUploadingKey(key);
     setUploadError("");
     try {
@@ -83,20 +87,20 @@ export default function CreativePage() {
       <div>
         <div className="eyebrow">소재 · 게재지면</div>
         <h1 className="page-title">{advertiser} 게재 확인</h1>
-        <p className="page-desc">게재 보고 메일과 첨부 원본을 기준으로 실제 노출이 확인된 지면을 먼저 보여주고, 운영안의 연결 대기 지면은 아래에서 별도로 관리합니다.</p>
+        <p className="page-desc">게재 지면 단위로 확인하고, 디지털 매체에서 같은 지면에 여러 소재가 운영되면 소재명을 별도로 구분해 관리합니다.</p>
       </div>
       <div className="page-meta"><span className="view-pill">{month}</span></div>
     </div>
 
     {proofs.length > 0 && <section className={styles.proofSection}>
       <div className={styles.sectionHead}>
-        <div><h2>게재 확인 완료</h2><p>왼쪽은 게재 사진만, 오른쪽은 보고서에서 확인한 운영 정보를 표시합니다.</p></div>
-        <span className={styles.countBadge}>{proofs.length}개 지면 확인</span>
+        <div><h2>게재 확인 완료</h2><p>같은 지면이어도 소재가 다르면 별도 카드로 구분됩니다. 각 카드의 왼쪽 이미지는 개별 교체할 수 있습니다.</p></div>
+        <span className={styles.countBadge}>{placementCount}개 지면{creativeCount ? ` · ${creativeCount}개 소재 구분` : ""}</span>
       </div>
       {uploadError && <div className={styles.uploadError}>{uploadError}</div>}
       <div className={styles.proofGrid}>
         {proofs.map((proof) => {
-          const proofKey = proof.key || `${proof.messageId}-${proof.placement}`;
+          const proofKey = proof.key || proof.proofId || `${proof.messageId}-${proof.placement}-${proof.creativeName || "default"}`;
           const image = proof.attachments.find((item) => item.kind === "image");
           const reports = proof.attachments.filter((item) => item.kind === "report");
           const visualUrl = manualImageUrl(proof) || (image ? attachmentUrl(proof, image) : "");
@@ -104,7 +108,7 @@ export default function CreativePage() {
           return <article className={styles.proofCard} key={proofKey}>
             <div className={styles.visual}>
               {visualUrl
-                ? <img src={visualUrl} alt={`${proof.placement} 게재 확인 이미지`} />
+                ? <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
                 : <div className={styles.visualFallback}>게재 사진을 등록해주세요.</div>}
               <span className={styles.visualBadge}>{proof.status}</span>
               <label className={styles.replaceImageButton}>
@@ -123,7 +127,11 @@ export default function CreativePage() {
             </div>
             <div className={styles.proofBody}>
               <span className={styles.proofEyebrow}>{proof.media} · {proof.verificationDate} 확인</span>
-              <div className={styles.proofTitle}><h3>{proof.placement}</h3><span className={styles.serviceBadge}>{proof.serviceType}</span></div>
+              <div className={styles.proofTitle}>
+                <h3>{proof.placement}</h3>
+                <span className={styles.serviceBadge}>{proof.serviceType}</span>
+                {proof.creativeName && <span className={styles.creativeBadge}>소재 · {proof.creativeName}</span>}
+              </div>
               <div className={styles.metaGrid}>
                 <div><span>노출 기간</span><strong>{proof.periodStart || "-"} ~ {proof.periodEnd || "-"}</strong></div>
                 <div><span>매체 위치</span><strong>{proof.location || "-"}</strong></div>
@@ -131,6 +139,7 @@ export default function CreativePage() {
                 <div><span>1일 편성</span><strong>{proof.dailyFrequency ? `${proof.dailyFrequency.toLocaleString("ko-KR")}회` : "-"}</strong></div>
                 <div><span>소재 길이</span><strong>{proof.durationSec ? `${proof.durationSec}초` : "-"}</strong></div>
                 <div><span>캠페인 내용</span><strong>{proof.campaignName || "-"}</strong></div>
+                {proof.creativeName && <div><span>운영 소재</span><strong>{proof.creativeName}</strong></div>}
               </div>
               {proof.budgetReference !== null && <div className={styles.reference}><strong>연계 집행 기준 {formatWon(proof.budgetReference)}</strong> · 서비스 노출 지면 자체의 별도 집행액으로 계산하지 않습니다.</div>}
               <div className={styles.fileLinks}>
@@ -143,7 +152,7 @@ export default function CreativePage() {
     </section>}
 
     <section className={`card card-pad ${styles.infoCard}`}>
-      <div className="report-panel-head"><div><h2>자료 연결 방식</h2><p>게재 보고서의 표·설명은 오른쪽 정보 영역으로 정리하고, 왼쪽 이미지는 실제 게재 사진만 사용합니다. 자동 추출이 애매하면 카드에서 사진만 바로 교체할 수 있습니다.</p></div></div>
+      <div className="report-panel-head"><div><h2>자료 연결 방식</h2><p>한 보고서에 지면이 여러 개면 데이터 업데이트에서 지면을 추가하고, 같은 디지털 지면에 여러 소재가 운영되면 소재별 항목을 추가합니다. 각 항목은 게재 사진도 개별 관리됩니다.</p></div></div>
     </section>
 
     <section className="card section-space report-panel">
