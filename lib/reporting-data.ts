@@ -186,6 +186,11 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
   });
 }
 
+function hasDailyCoverage(dataset: PublishedDataset, startDate: string, endDate: string) {
+  const bundle = extendedBundle(dataset);
+  return (bundle.dailyPerformance ?? []).some((row) => row.date >= startDate && row.date <= endDate && isOperationalPlacement(row.placement));
+}
+
 export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate: string, endDate: string) {
   const grouped = new Map<string, PublishedDataset[]>();
   for (const snapshot of snapshots) {
@@ -199,12 +204,21 @@ export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate
   let baselineComplete = true;
   for (const list of grouped.values()) {
     const sorted = [...list].sort((a, b) => a.bundle.reportDate.localeCompare(b.bundle.reportDate));
-    const end = sorted.filter((item) => item.bundle.reportDate <= endDate).at(-1);
-    if (!end) continue;
 
-    const exactDailyRows = rowsFromDailyPerformance(end, startDate, endDate);
-    if (exactDailyRows) {
-      rows.push(...exactDailyRows);
+    // 최신 리포트 안에 과거 일별 Fact가 포함되어 있으면, 조회 종료일보다 늦게 수신된 스냅샷이라도
+    // 해당 기간의 실제 일별 데이터만 골라 합산한다. 예: 9/15 리포트로 9/1~9/10 조회.
+    const dailyCarrier = [...sorted].reverse().find((item) => hasDailyCoverage(item, startDate, endDate));
+    if (dailyCarrier) {
+      const exactDailyRows = rowsFromDailyPerformance(dailyCarrier, startDate, endDate);
+      if (exactDailyRows) {
+        rows.push(...exactDailyRows);
+        continue;
+      }
+    }
+
+    const end = sorted.filter((item) => item.bundle.reportDate <= endDate).at(-1);
+    if (!end) {
+      if (startDate.slice(-2) !== "01") baselineComplete = false;
       continue;
     }
 
