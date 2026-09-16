@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
 import {
+  hydratePublishedDailyState,
   publishedDatasetsFor,
   publishedPlacementProofsFor,
   type PublishedDataset,
@@ -22,6 +23,12 @@ function attachmentUrl(proof: PlacementProof, file: PlacementProofAttachment, do
   return `/api/gmail/attachment?${params.toString()}`;
 }
 
+function manualImageUrl(proof: PlacementProof) {
+  if (!proof.manualImagePath) return "";
+  const params = new URLSearchParams({ advertiser: proof.advertiser, path: proof.manualImagePath });
+  return `/api/reporting/proof-image?${params.toString()}`;
+}
+
 function formatWon(value: number | null) {
   return value === null ? "-" : `${Math.round(value).toLocaleString("ko-KR")}원`;
 }
@@ -30,6 +37,8 @@ export default function CreativePage() {
   const { advertiser, month } = useWorkspace();
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [proofs, setProofs] = useState<PlacementProof[]>([]);
+  const [uploadingKey, setUploadingKey] = useState("");
+  const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
     const load = () => {
@@ -47,6 +56,28 @@ export default function CreativePage() {
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
 
+  async function replaceProofImage(proof: PlacementProof, file?: File) {
+    if (!file) return;
+    const key = proof.key || `${proof.messageId}-${proof.placement}`;
+    setUploadingKey(key);
+    setUploadError("");
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("advertiser", proof.advertiser);
+      form.set("reportDate", proof.reportDate);
+      form.set("sourceFile", proof.sourceFile);
+      const response = await fetch("/api/reporting/proof-image", { method: "POST", body: form });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "이미지 교체에 실패했습니다.");
+      await hydratePublishedDailyState(advertiser, month);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "이미지 교체에 실패했습니다.");
+    } finally {
+      setUploadingKey("");
+    }
+  }
+
   return <>
     <div className="page-head refined-head">
       <div>
@@ -59,24 +90,40 @@ export default function CreativePage() {
 
     {proofs.length > 0 && <section className={styles.proofSection}>
       <div className={styles.sectionHead}>
-        <div><h2>게재 확인 완료</h2><p>메일 본문과 게재 보고서에서 실제 지면·기간·위치를 확인한 자료입니다.</p></div>
+        <div><h2>게재 확인 완료</h2><p>왼쪽은 게재 사진만, 오른쪽은 보고서에서 확인한 운영 정보를 표시합니다.</p></div>
         <span className={styles.countBadge}>{proofs.length}개 지면 확인</span>
       </div>
+      {uploadError && <div className={styles.uploadError}>{uploadError}</div>}
       <div className={styles.proofGrid}>
         {proofs.map((proof) => {
+          const proofKey = proof.key || `${proof.messageId}-${proof.placement}`;
           const image = proof.attachments.find((item) => item.kind === "image");
           const reports = proof.attachments.filter((item) => item.kind === "report");
-          return <article className={styles.proofCard} key={proof.key || `${proof.messageId}-${proof.placement}`}>
+          const visualUrl = manualImageUrl(proof) || (image ? attachmentUrl(proof, image) : "");
+          const uploading = uploadingKey === proofKey;
+          return <article className={styles.proofCard} key={proofKey}>
             <div className={styles.visual}>
-              {image
-                ? <img src={attachmentUrl(proof, image)} alt={`${proof.placement} 게재 확인 이미지`} />
-                : <div className={styles.visualFallback}>게재 보고서는 연결되어 있으나<br/>별도 이미지 첨부가 없습니다.</div>}
+              {visualUrl
+                ? <img src={visualUrl} alt={`${proof.placement} 게재 확인 이미지`} />
+                : <div className={styles.visualFallback}>게재 사진을 등록해주세요.</div>}
               <span className={styles.visualBadge}>{proof.status}</span>
+              <label className={styles.replaceImageButton}>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={uploading}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    void replaceProofImage(proof, file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                {uploading ? "업로드 중…" : proof.manualImagePath ? "게재 사진 다시 교체" : "게재 사진 교체"}
+              </label>
             </div>
             <div className={styles.proofBody}>
               <span className={styles.proofEyebrow}>{proof.media} · {proof.verificationDate} 확인</span>
               <div className={styles.proofTitle}><h3>{proof.placement}</h3><span className={styles.serviceBadge}>{proof.serviceType}</span></div>
-              <p className={styles.sourceSummary}>{proof.sourceSummary}</p>
               <div className={styles.metaGrid}>
                 <div><span>노출 기간</span><strong>{proof.periodStart || "-"} ~ {proof.periodEnd || "-"}</strong></div>
                 <div><span>매체 위치</span><strong>{proof.location || "-"}</strong></div>
@@ -96,7 +143,7 @@ export default function CreativePage() {
     </section>}
 
     <section className={`card card-pad ${styles.infoCard}`}>
-      <div className="report-panel-head"><div><h2>자료 연결 방식</h2><p>게재 보고 메일은 실제 노출 확인 자료로 자동 연결하고, 소재 원본은 Google Drive 폴더 또는 일괄 업로드로 보완합니다.</p></div></div>
+      <div className="report-panel-head"><div><h2>자료 연결 방식</h2><p>게재 보고서의 표·설명은 오른쪽 정보 영역으로 정리하고, 왼쪽 이미지는 실제 게재 사진만 사용합니다. 자동 추출이 애매하면 카드에서 사진만 바로 교체할 수 있습니다.</p></div></div>
     </section>
 
     <section className="card section-space report-panel">
