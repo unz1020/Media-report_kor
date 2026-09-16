@@ -43,7 +43,17 @@ export async function POST(request: NextRequest) {
     const mailBody = payload.mailBody || "";
     const parsedBundle = parseDailyWorkbookBuffer(bytes, payload.filename, mailBody);
     let bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
-    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate, bundle.campaignStart);
+
+    // 일부 매체 XLSB는 내부 날짜 연도가 전년도처럼 저장되어 있다.
+    // 보정된 기준일은 사용하되, 원본 캠페인 시작연도가 기준일과 다르면 supplemental 단계에서는
+    // 시작일 필터를 잠시 비우고 읽은 뒤 최종 sanitizer에서 파일명/메일 문맥으로 연도와 월을 정규화한다.
+    const parsedStartYear = parsedBundle.campaignStart?.slice(0, 4) || "";
+    const reportYear = bundle.reportDate?.slice(0, 4) || "";
+    const supplementalCampaignStart = parsedStartYear && parsedStartYear === reportYear
+      ? parsedBundle.campaignStart
+      : "";
+
+    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate, supplementalCampaignStart);
     if (supplementalDaily.length) {
       bundle = sanitizeDailyBundle({
         ...bundle,
