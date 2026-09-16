@@ -141,6 +141,10 @@ export async function GET(request: NextRequest) {
     const current = decryptToken(cookie);
     const { token, refreshed } = await ensureFreshToken(current);
     const baseQuery = request.nextUrl.searchParams.get("q") || "자코모";
+    const attachmentMode = request.nextUrl.searchParams.get("attachmentMode") || "excel";
+    const attachmentPattern = attachmentMode === "placement"
+      ? /\.(pdf|pptx?|png|jpe?g|webp)$/i
+      : /\.(xlsx|xls|xlsb)$/i;
     const q = `${baseQuery} after:${bounds.start} before:${bounds.end}`;
 
     const list = await gmailJson<{ messages?: { id: string }[] }>(
@@ -161,9 +165,9 @@ export async function GET(request: NextRequest) {
     for (const item of list.messages ?? []) {
       const message = await gmailJson<GmailMessage>(token.access_token, `messages/${item.id}?format=full`);
       const attachments = collectParts(message.payload)
-        .filter((part) => Boolean(part.filename?.toLowerCase().match(/\.(xlsx|xls|xlsb)$/) && part.body?.attachmentId))
+        .filter((part) => Boolean(part.filename?.toLowerCase().match(attachmentPattern) && part.body?.attachmentId))
         .map((part) => ({
-          filename: part.filename || "daily.xlsx",
+          filename: part.filename || (attachmentMode === "placement" ? "placement-report" : "daily.xlsx"),
           attachmentId: part.body?.attachmentId || "",
           mimeType: part.mimeType,
         }));
