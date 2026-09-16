@@ -65,6 +65,7 @@ function ratioPercent(value: unknown) {
 
 function extractMailReportDate(mailBody: string, year: number) {
   const patterns = [
+    /(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?[^\n]{0,48}?데일리\s*리포트\s*업데이트\s*기준/i,
     /(?:\*\s*)?(\d{1,2})\/(\d{1,2})\([^)]*\)자/,
     /(?:기준|업데이트)[^\n]{0,24}?(\d{1,2})\/(\d{1,2})/,
     /(\d{1,2})\/(\d{1,2})자/,
@@ -466,11 +467,16 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
   const plan = parseMediaPlans(book, matrices, meta.inferredYear);
   const mailMetrics = extractMailMetrics(mailBody);
   const mailChecks: MailMetricCheck[] = mailMetrics.map((metric) => {
+    const exactMetricCandidate = placements.find((placement) => {
+      const ctrDiff = placement.ctr === null ? 999 : Math.abs(placement.ctr - metric.ctr);
+      return placement.impressions === metric.impressions && placement.clicks === metric.clicks && ctrDiff <= 0.01;
+    });
     const wanted = normalizedPlacement(metric.placement);
-    const candidate = placements.find((placement) => {
+    const nameCandidate = placements.find((placement) => {
       const current = normalizedPlacement(placement.placement);
       return current === wanted || current.includes(wanted) || wanted.includes(current);
     });
+    const candidate = exactMetricCandidate || nameCandidate;
     if (!candidate) return { ...metric, status: "unmatched" };
     const ctrDiff = candidate.ctr === null ? 999 : Math.abs(candidate.ctr - metric.ctr);
     const status = candidate.impressions === metric.impressions && candidate.clicks === metric.clicks && ctrDiff <= 0.01 ? "match" : "mismatch";
