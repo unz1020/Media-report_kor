@@ -50,6 +50,9 @@ function guaranteedNumber(value: string) {
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
+function dateForDay(month: string, day: number) {
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
 
 type UiRow = ReportingRow & { media: string };
 type UiCreativeRow = CreativeDailyRow & { media: string };
@@ -102,10 +105,6 @@ function dailyPresence(media: string, rows: DailyPerformanceRow[]) {
     cpm: rows.some((row) => row.cpm !== null && row.cpm !== undefined),
     cpv: rows.some((row) => row.cpv !== null && row.cpv !== undefined),
   };
-}
-
-function sourceUsesAgencyLabels(rows: UiRow[]) {
-  return rows.some((row) => /total/i.test(row.sourceSheet) && !/^summary$/i.test(row.sourceSheet));
 }
 
 function renderTotal(media: string, rows: UiRow[], presence: MetricPresence) {
@@ -216,13 +215,33 @@ export default function PerformancePage() {
     }).filter((item): item is PublishedInsight => item !== null).slice(-2);
   }
 
+  function applyPreset(kind: "month" | "early" | "middle" | "late") {
+    if (kind === "month") {
+      setStartDate(monthStart(month));
+      setEndDate(latestDataDate);
+      return;
+    }
+    if (kind === "early") {
+      setStartDate(dateForDay(month, 1));
+      setEndDate(dateForDay(month, 10) <= latestDataDate ? dateForDay(month, 10) : latestDataDate);
+      return;
+    }
+    if (kind === "middle") {
+      setStartDate(dateForDay(month, 11));
+      setEndDate(dateForDay(month, 20) <= latestDataDate ? dateForDay(month, 20) : latestDataDate);
+      return;
+    }
+    setStartDate(dateForDay(month, 21));
+    setEndDate(latestDataDate);
+  }
+
   return (
     <>
       <div className="page-head refined-head">
         <div>
-          <div className="eyebrow">Performance</div>
+          <div className="eyebrow">성과 분석</div>
           <h1 className="page-title">{advertiser} 성과 보고</h1>
-          <p className="page-desc">광고 지면 성과는 누적·기간별로, 소재별 성과는 해당 기준일 하루 성과로 확인합니다.</p>
+          <p className="page-desc">원하는 기간을 직접 선택해 지면 성과를 합산하고, 소재별 성과는 선택한 기준일의 하루 성과로 확인합니다.</p>
         </div>
         <div className="page-meta"><span className="view-pill">{month}</span></div>
       </div>
@@ -230,22 +249,26 @@ export default function PerformancePage() {
       <div className="report-toolbar performance-toolbar">
         <div className="toolbar-group">
           {viewMode === "placement" ? <>
-            <label className="toolbar-label">성과 기간</label>
+            <label className="toolbar-label">조회 기간</label>
             <input className="toolbar-control" type="date" value={startDate} min={monthStart(month)} max={endDate} onChange={(event) => setStartDate(event.target.value)} />
             <span className="toolbar-label">–</span>
             <input className="toolbar-control" type="date" value={endDate} min={startDate} max={latestDataDate} onChange={(event) => setEndDate(event.target.value)} />
+            <button className="btn" onClick={() => applyPreset("month")}>월 누적</button>
+            <button className="btn" onClick={() => applyPreset("early")}>1~10일</button>
+            <button className="btn" onClick={() => applyPreset("middle")} disabled={latestDataDate < dateForDay(month, 11)}>11~20일</button>
+            <button className="btn" onClick={() => applyPreset("late")} disabled={latestDataDate < dateForDay(month, 21)}>21일~최신</button>
           </> : <>
             <label className="toolbar-label">소재 기준일</label>
             <input className="toolbar-control" type="date" value={endDate} min={monthStart(month)} max={latestDataDate} onChange={(event) => setEndDate(event.target.value)} />
             <span className="view-pill">1일 성과</span>
           </>}
         </div>
-        <div className="toolbar-group right"><span className="view-pill">Daily 업데이트 {datasets.length}건 · 최신 {latestDataDate}</span></div>
+        <div className="toolbar-group right"><span className="view-pill">데일리 업데이트 {datasets.length}건 · 최신 {latestDataDate}</span></div>
       </div>
 
-      {viewMode === "placement" && !period.baselineComplete && <div className="source-warning">선택한 시작일 직전 데이터가 없어 일부 매체는 시작일 이전 누적분을 완전히 제외하지 못할 수 있습니다.</div>}
+      {viewMode === "placement" && !period.baselineComplete && <div className="source-warning">일별 데이터가 없는 일부 매체는 선택 시작일 직전 누적 스냅샷이 있어야 정확한 기간 차감이 가능합니다. 일별 데이터가 있는 매체는 선택 기간을 직접 합산합니다.</div>}
 
-      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser} Daily Monitoring을 Data Update에서 검수 후 반영하면 실제 엑셀 수치로 표가 생성됩니다.</p></section> : <>
+      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser} 데일리 리포트를 데이터 업데이트에서 검수 후 반영하면 실제 엑셀 수치로 표가 생성됩니다.</p></section> : <>
         <div className={styles.primaryTabs} role="tablist" aria-label="성과 구분">
           <button className={viewMode === "placement" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("placement"); setSelectedMedia("전체 매체"); }}>광고 지면</button>
           <button className={viewMode === "creative" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("creative"); setSelectedMedia("전체 매체"); }}>소재별</button>
@@ -260,7 +283,6 @@ export default function PerformancePage() {
           {placementGroups.map((group) => {
             const presence = metricPresence(group.media, group.rows);
             const total = renderTotal(group.media, group.rows, presence);
-            const agencyLabels = sourceUsesAgencyLabels(group.rows);
             const mediaDaily = dailyRows.filter((row) => canonicalMedia(row.platform) === group.media);
             const dailyMetrics = dailyPresence(group.media, mediaDaily);
             const mediaInsights = relevantInsights(group.media);
@@ -278,8 +300,8 @@ export default function PerformancePage() {
                     {presence.achievement && <th>달성률</th>}
                     {presence.guaranteed && <th>보장노출수</th>}
                     {presence.spend && <th>집행액</th>}
-                    <th>{agencyLabels ? "A.Imps" : "노출"}</th>
-                    {presence.clicks && <th>{agencyLabels ? "A.Clicks" : "클릭"}</th>}
+                    <th>노출</th>
+                    {presence.clicks && <th>클릭</th>}
                     <th>CTR(%)</th>
                     {presence.views && <th>조회수</th>}
                     {presence.vtr && <th>VTR(%)</th>}
@@ -306,7 +328,7 @@ export default function PerformancePage() {
                       {presence.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}
                     </tr>)}
                     <tr className={styles.totalRow}>
-                      <td colSpan={2}>Total</td>
+                      <td colSpan={2}>합계</td>
                       {presence.achievement && <td className={styles.numCell}>{formatAchievement(total.achievement)}</td>}
                       {presence.guaranteed && <td className={styles.numCell}>{total.guaranteed === null ? "-" : formatBareCount(total.guaranteed)}</td>}
                       {presence.spend && <td className={styles.numCell}>{formatWon(total.summary.spend)}</td>}
@@ -325,14 +347,14 @@ export default function PerformancePage() {
               </div>
 
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
-                <div className={styles.insightTitle}><strong>Daily Insight</strong><span>메일 본문 기준</span></div>
+                <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <div className={styles.insightItem} key={item.key}><strong>{item.reportDate}</strong><div>{item.notes.slice(0, 8).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>)}</div></div>)}</div>
               </div>}
 
               <div className={styles.detailBar}>
                 <details className={styles.detailBlock}>
                   <summary>일별 성과 데이터 보기</summary>
-                  {mediaDaily.length ? <div className={styles.dailyTableWrap}><table className={styles.dailyTable}><thead><tr><th>일자</th><th>광고 지면</th>{dailyMetrics.spend && <th>집행액</th>}<th>노출</th>{dailyMetrics.clicks && <th>클릭</th>}<th>CTR</th>{dailyMetrics.views && <th>조회</th>}{dailyMetrics.vtr && <th>VTR</th>}{dailyMetrics.cpm && <th>CPM</th>}{dailyMetrics.cpc && <th>CPC</th>}{dailyMetrics.cpv && <th>CPV</th>}</tr></thead><tbody>{mediaDaily.map((row, index) => <tr key={`${row.date}-${row.platform}-${row.placement}-${index}`}><td>{row.date}</td><td>{row.placement}</td>{dailyMetrics.spend && <td className={styles.numCell}>{formatWon(row.spend)}</td>}<td className={styles.numCell}>{formatBareCount(row.impressions)}</td>{dailyMetrics.clicks && <td className={styles.numCell}>{formatBareCount(row.clicks)}</td>}<td className={styles.numCell}>{formatRate(row.ctr)}</td>{dailyMetrics.views && <td className={styles.numCell}>{formatBareCount(row.views)}</td>}{dailyMetrics.vtr && <td className={styles.numCell}>{formatRate(row.vtr)}</td>}{dailyMetrics.cpm && <td className={styles.numCell}>{formatWon(row.cpm)}</td>}{dailyMetrics.cpc && <td className={styles.numCell}>{formatWon(row.cpc)}</td>}{dailyMetrics.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}</tr>)}</tbody></table></div> : <div className={styles.detailEmpty}>이 매체의 일별 성과 데이터가 아직 연결되지 않았습니다.</div>}
+                  {mediaDaily.length ? <div className={styles.dailyTableWrap}><table className={styles.dailyTable}><thead><tr><th>일자</th><th>광고 지면</th>{dailyMetrics.spend && <th>집행액</th>}<th>노출</th>{dailyMetrics.clicks && <th>클릭</th>}<th>CTR</th>{dailyMetrics.views && <th>조회</th>}{dailyMetrics.vtr && <th>VTR</th>}{dailyMetrics.cpm && <th>CPM</th>}{dailyMetrics.cpc && <th>CPC</th>}{dailyMetrics.cpv && <th>CPV</th>}</tr></thead><tbody>{mediaDaily.map((row, index) => <tr key={`${row.date}-${row.platform}-${row.placement}-${index}`}><td>{row.date}</td><td>{row.placement}</td>{dailyMetrics.spend && <td className={styles.numCell}>{formatWon(row.spend)}</td>}<td className={styles.numCell}>{formatBareCount(row.impressions)}</td>{dailyMetrics.clicks && <td className={styles.numCell}>{formatBareCount(row.clicks)}</td>}<td className={styles.numCell}>{formatRate(row.ctr)}</td>{dailyMetrics.views && <td className={styles.numCell}>{formatBareCount(row.views)}</td>}{dailyMetrics.vtr && <td className={styles.numCell}>{formatRate(row.vtr)}</td>}{dailyMetrics.cpm && <td className={styles.numCell}>{formatWon(row.cpm)}</td>}{dailyMetrics.cpc && <td className={styles.numCell}>{formatWon(row.cpc)}</td>}{dailyMetrics.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}</tr>)}</tbody></table></div> : <div className={styles.detailEmpty}>이 매체의 일별 성과 데이터가 아직 연결되지 않았습니다. 현재는 누적 스냅샷이 쌓이는 구간부터 기간 차감 조회가 가능합니다.</div>}
                 </details>
               </div>
             </article>;
@@ -348,24 +370,24 @@ export default function PerformancePage() {
               </header>
               <div className={styles.summaryTableWrap}>
                 <table className={styles.summaryTable}>
-                  <thead><tr><th>매체</th><th>광고 지면</th><th>소재</th><th>A.Imps</th><th>A.Clicks</th><th>CTR(%)</th></tr></thead>
+                  <thead><tr><th>매체</th><th>광고 지면</th><th>소재</th><th>노출</th><th>클릭</th><th>CTR(%)</th></tr></thead>
                   <tbody>
                     {group.rows.map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${row.creative}-${index}`}>
                       {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}>{group.media}</td>}
                       <td className={styles.placementCell}>{row.placement}</td><td className={styles.placementCell}>{row.creative}</td>
                       <td className={styles.numCell}>{formatBareCount(row.impressions)}</td><td className={styles.numCell}>{formatBareCount(row.clicks)}</td><td className={styles.numCell}>{formatRate(row.ctr)}</td>
                     </tr>)}
-                    <tr className={styles.totalRow}><td colSpan={3}>Total · {endDate}</td><td className={styles.numCell}>{formatBareCount(total.impressions)}</td><td className={styles.numCell}>{formatBareCount(total.clicks)}</td><td className={styles.numCell}>{formatRate(total.ctr)}</td></tr>
+                    <tr className={styles.totalRow}><td colSpan={3}>합계 · {endDate}</td><td className={styles.numCell}>{formatBareCount(total.impressions)}</td><td className={styles.numCell}>{formatBareCount(total.clicks)}</td><td className={styles.numCell}>{formatRate(total.ctr)}</td></tr>
                   </tbody>
                 </table>
               </div>
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
-                <div className={styles.insightTitle}><strong>Daily Insight</strong><span>{endDate} 기준 · 메일 본문</span></div>
+                <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <div className={styles.insightItem} key={item.key}><strong>{item.reportDate}</strong><div>{item.notes.slice(0, 8).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>)}</div></div>)}</div>
               </div>}
             </article>;
           })}
-        </section> : <section className="card card-pad empty-state"><h2>{endDate} 소재별 성과가 없습니다.</h2><p>소재별 일별 성과가 포함된 Daily 파일을 다시 반영하면 해당 기준일 하루 성과만 표시됩니다.</p></section>}
+        </section> : <section className="card card-pad empty-state"><h2>{endDate} 소재별 성과가 없습니다.</h2><p>소재별 일별 성과가 포함된 데일리 파일을 다시 반영하면 해당 기준일 하루 성과만 표시됩니다.</p></section>}
       </>}
     </>
   );
