@@ -1,0 +1,70 @@
+.proofSection {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.sectionHead h2 { margin: 0 0 4px; color: #101828; font-size: 19px; }
+.sectionHead p { margin: 0; color: #667085; font-size: 12px; line-height: 1.6; }
+.countBadge { padding: 6px 9px; border-radius: 999px; background: #ecfdf3; color: #027a48; font-size: 11px; font-weight: 850; }
+
+.proofGrid { display: grid; gap: 14px; }
+.proofCard {
+  display: grid;
+  grid-template-columns: minmax(260px, .9fr) minmax(0, 1.5fr);
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid #dde3ea;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, .04);
+}
+
+.visual {
+  position: relative;
+  min-height: 260px;
+  background: #eff2f6;
+  overflow: hidden;
+}
+.visual img { width: 100%; height: 100%; min-height: 260px; object-fit: cover; display: block; }
+.visualFallback { height: 100%; min-height: 260px; display: grid; place-items: center; padding: 24px; color: #667085; font-size: 12px; text-align: center; line-height: 1.7; }
+.visualBadge { position: absolute; top: 14px; left: 14px; padding: 6px 9px; border-radius: 999px; background: rgba(2, 122, 72, .93); color: #fff; font-size: 10px; font-weight: 900; backdrop-filter: blur(8px); }
+
+.proofBody { display: flex; flex-direction: column; padding: 20px 22px; }
+.proofEyebrow { color: #7569aa; font-size: 10px; font-weight: 900; letter-spacing: .05em; }
+.proofTitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 5px 0 4px; }
+.proofTitle h3 { margin: 0; color: #101828; font-size: 22px; letter-spacing: -.02em; }
+.serviceBadge { padding: 5px 8px; border-radius: 7px; background: #f0edfb; color: #5e548b; font-size: 10px; font-weight: 850; }
+.sourceSummary { margin: 0 0 16px; color: #667085; font-size: 11px; line-height: 1.55; }
+
+.metaGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.metaGrid div { padding: 9px 10px; border: 1px solid #edf0f4; border-radius: 9px; background: #fafbfc; }
+.metaGrid span { display: block; margin-bottom: 3px; color: #98a2b3; font-size: 9.5px; font-weight: 800; }
+.metaGrid strong { display: block; color: #344054; font-size: 11.5px; line-height: 1.45; }
+
+.reference { margin-top: 12px; padding: 10px 12px; border-left: 3px solid #b8afd9; background: #f9f8fd; color: #475467; font-size: 11px; line-height: 1.6; }
+.reference strong { color: #344054; }
+
+.fileLinks { display: flex; gap: 7px; flex-wrap: wrap; margin-top: auto; padding-top: 14px; }
+.fileLinks a { padding: 7px 9px; border: 1px solid #dce1e8; border-radius: 8px; background: #fff; color: #475467; font-size: 10.5px; font-weight: 750; text-decoration: none; }
+.fileLinks a:hover { border-color: #aeb7c4; color: #101828; }
+
+.infoCard { margin-bottom: 18px; }
+
+@media (max-width: 980px) {
+  .proofCard { grid-template-columns: 1fr; }
+  .visual, .visual img, .visualFallback { min-height: 220px; max-height: 360px; }
+  .metaGrid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 620px) {
+  .sectionHead { align-items: flex-start; flex-direction: column; }
+  .proofBody { padding: 17px; }
+  .metaGrid { grid-template-columns: 1fr; }
+}
