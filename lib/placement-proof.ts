@@ -29,6 +29,7 @@ export type PlacementProof = {
   sourceFile: string;
   sourceSummary: string;
   attachments: PlacementProofAttachment[];
+  manualImagePath?: string;
   publishedAt?: string;
 };
 
