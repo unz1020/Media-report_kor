@@ -13,12 +13,13 @@
 .sectionHead h2 { margin: 0 0 4px; color: #101828; font-size: 19px; }
 .sectionHead p { margin: 0; color: #667085; font-size: 12px; line-height: 1.6; }
 .countBadge { padding: 6px 9px; border-radius: 999px; background: #ecfdf3; color: #027a48; font-size: 11px; font-weight: 850; }
+.uploadError { padding: 10px 12px; border: 1px solid #fecdca; border-radius: 10px; background: #fef3f2; color: #b42318; font-size: 11px; font-weight: 700; }
 
 .proofGrid { display: grid; gap: 14px; }
 .proofCard {
   display: grid;
-  grid-template-columns: minmax(260px, .9fr) minmax(0, 1.5fr);
-  min-height: 260px;
+  grid-template-columns: minmax(320px, 1.05fr) minmax(0, 1.45fr);
+  min-height: 280px;
   overflow: hidden;
   border: 1px solid #dde3ea;
   border-radius: 16px;
@@ -28,20 +29,39 @@
 
 .visual {
   position: relative;
-  min-height: 260px;
+  min-height: 280px;
   background: #eff2f6;
   overflow: hidden;
 }
-.visual img { width: 100%; height: 100%; min-height: 260px; object-fit: cover; display: block; }
-.visualFallback { height: 100%; min-height: 260px; display: grid; place-items: center; padding: 24px; color: #667085; font-size: 12px; text-align: center; line-height: 1.7; }
+.visual img { width: 100%; height: 100%; min-height: 280px; object-fit: cover; display: block; }
+.visualFallback { height: 100%; min-height: 280px; display: grid; place-items: center; padding: 24px; color: #667085; font-size: 12px; text-align: center; line-height: 1.7; }
 .visualBadge { position: absolute; top: 14px; left: 14px; padding: 6px 9px; border-radius: 999px; background: rgba(2, 122, 72, .93); color: #fff; font-size: 10px; font-weight: 900; backdrop-filter: blur(8px); }
+.replaceImageButton {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(255,255,255,.66);
+  border-radius: 9px;
+  background: rgba(17, 24, 39, .78);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 850;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.replaceImageButton:hover { background: rgba(17, 24, 39, .9); }
+.replaceImageButton input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .proofBody { display: flex; flex-direction: column; padding: 20px 22px; }
 .proofEyebrow { color: #7569aa; font-size: 10px; font-weight: 900; letter-spacing: .05em; }
-.proofTitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 5px 0 4px; }
+.proofTitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 5px 0 15px; }
 .proofTitle h3 { margin: 0; color: #101828; font-size: 22px; letter-spacing: -.02em; }
 .serviceBadge { padding: 5px 8px; border-radius: 7px; background: #f0edfb; color: #5e548b; font-size: 10px; font-weight: 850; }
-.sourceSummary { margin: 0 0 16px; color: #667085; font-size: 11px; line-height: 1.55; }
 
 .metaGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .metaGrid div { padding: 9px 10px; border: 1px solid #edf0f4; border-radius: 9px; background: #fafbfc; }
@@ -59,7 +79,7 @@
 
 @media (max-width: 980px) {
   .proofCard { grid-template-columns: 1fr; }
-  .visual, .visual img, .visualFallback { min-height: 220px; max-height: 360px; }
+  .visual, .visual img, .visualFallback { min-height: 230px; max-height: 420px; }
   .metaGrid { grid-template-columns: 1fr 1fr; }
 }
 
