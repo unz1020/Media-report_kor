@@ -7,6 +7,7 @@ import {
   gmailCookieOptions,
 } from "@/lib/gmail-oauth";
 import { parseDailyWorkbookBuffer } from "@/lib/server-daily-parser";
+import { parseSupplementalDailyPerformance } from "@/lib/supplemental-daily-parser";
 import { sanitizeDailyBundle } from "@/lib/daily-bundle-sanitizer";
 import { extractStructuredOperationNotes } from "@/lib/mail-insight";
 
@@ -41,7 +42,14 @@ export async function POST(request: NextRequest) {
     const bytes = Buffer.from(attachment.data, "base64url");
     const mailBody = payload.mailBody || "";
     const parsedBundle = parseDailyWorkbookBuffer(bytes, payload.filename, mailBody);
-    const bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
+    let bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
+    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate);
+    if (supplementalDaily.length) {
+      bundle = sanitizeDailyBundle({
+        ...bundle,
+        dailyPerformance: [...(bundle.dailyPerformance || []), ...supplementalDaily],
+      }, { filename: payload.filename, mailBody });
+    }
     const structuredNotes = extractStructuredOperationNotes(mailBody);
     if (structuredNotes.length) bundle.operationNotes = structuredNotes;
 
