@@ -129,9 +129,15 @@ function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string, c
     const vtrCol = metricColumn(metricRow, start, end, ["VTR", "재생률", "재생률(2초 기준)"]);
     if (impCol < 0) return;
 
+    let sawDate = false;
     for (let r = metricRowIndex + 1; r < rows.length; r++) {
       const row = rows[r] ?? [];
       const date = asDate(row[dateCol]);
+      if (!date) {
+        if (sawDate) break;
+        continue;
+      }
+      sawDate = true;
       if (!inCampaign(date, campaignStart, reportDate)) continue;
       const impressions = optionalNum(row[impCol]);
       const spend = spendCol >= 0 ? optionalNum(row[spendCol]) : null;
@@ -178,9 +184,15 @@ function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string, camp
   const viewsCol = findIndex(header, ["조회", "조회수", "시청 완료 수", "재생"]), vtrCol = findIndex(header, ["VTR", "재생률"]);
   const campaignCol = findIndex(header, ["캠페인", "캠페인명", "Campaign"]);
   const result: DailyPerformanceFact[] = [];
+  let sawDate = false;
   for (let r = headerRow + 1; r < rows.length; r++) {
     const row = rows[r] ?? [];
     const date = asDate(row[dateCol]);
+    if (!date) {
+      if (sawDate) break;
+      continue;
+    }
+    sawDate = true;
     if (!inCampaign(date, campaignStart, reportDate)) continue;
     const impressions = optionalNum(row[impCol]);
     if (impressions === null) continue;
