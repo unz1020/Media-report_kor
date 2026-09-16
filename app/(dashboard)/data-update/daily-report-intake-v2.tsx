@@ -39,25 +39,37 @@ function kstTodayString() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
+function dateFromMonthDay(monthText: string, dayText: string, year: number) {
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function mailReportDate(body: string, fallbackDate: string) {
   const year = Number(fallbackDate.slice(0, 4)) || new Date().getFullYear();
+
+  const primaryPatterns = [
+    /(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?[^\n]{0,60}?데일리\s*리포트\s*업데이트\s*기준/i,
+    /(?:전일|성과\s*기준일|기준일)[^\d\n]{0,30}(\d{1,2})\/(\d{1,2})/i,
+  ];
+  for (const pattern of primaryPatterns) {
+    const match = body.match(pattern);
+    if (!match) continue;
+    const value = dateFromMonthDay(match[1], match[2], year);
+    if (value) return value;
+  }
+
   const fallback = new Date(`${fallbackDate}T00:00:00Z`);
   const candidates: string[] = [];
-  const patterns = [
-    /(?:전일|성과\s*기준일|기준일|업데이트)[^\d\n]{0,30}(\d{1,2})\/(\d{1,2})/gi,
-    /(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?\s*(?:자|기준|까지|성과)/gi,
-  ];
-
-  patterns.forEach((pattern) => {
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(body))) {
-      const month = Number(match[1]);
-      const day = Number(match[2]);
-      if (month < 1 || month > 12 || day < 1 || day > 31) continue;
-      const value = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const parsed = new Date(`${value}T00:00:00Z`);
-      if (!Number.isNaN(parsed.getTime()) && (Number.isNaN(fallback.getTime()) || parsed <= fallback)) candidates.push(value);
-    }
+  body.split(/\r?\n/).forEach((line) => {
+    if (/마감\s*전/i.test(line)) return;
+    const match = line.match(/(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?\s*(?:자|기준|까지|성과)/i);
+    if (!match) return;
+    const value = dateFromMonthDay(match[1], match[2], year);
+    if (!value) return;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    if (!Number.isNaN(parsed.getTime()) && (Number.isNaN(fallback.getTime()) || parsed <= fallback)) candidates.push(value);
   });
 
   if (!candidates.length) return fallbackDate;
