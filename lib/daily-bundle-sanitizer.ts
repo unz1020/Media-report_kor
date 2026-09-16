@@ -7,33 +7,43 @@ type ContextInput = {
   mailDate?: string;
 };
 
-function inferContextYear(input: ContextInput) {
+type ContextYear = {
+  year: number;
+  strong: boolean;
+};
+
+function inferContextYear(input: ContextInput): ContextYear {
   const values = [input.filename, input.mailSubject, input.mailBody].filter(Boolean).join("\n");
 
   const explicit = values.match(/\b(20\d{2})\b/);
-  if (explicit) return Number(explicit[1]);
+  if (explicit) return { year: Number(explicit[1]), strong: true };
 
   const compact = values.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
-  if (compact) return 2000 + Number(compact[1]);
+  if (compact) return { year: 2000 + Number(compact[1]), strong: true };
 
   const korean = values.match(/(?:^|\D)(\d{2})\s*년\s*(?:0?[1-9]|1[0-2])\s*월/);
-  if (korean) return 2000 + Number(korean[1]);
+  if (korean) return { year: 2000 + Number(korean[1]), strong: true };
 
   if (input.mailDate) {
     const parsed = new Date(input.mailDate);
-    if (!Number.isNaN(parsed.getTime())) return parsed.getUTCFullYear();
+    if (!Number.isNaN(parsed.getTime())) return { year: parsed.getUTCFullYear(), strong: false };
   }
 
-  return new Date().getFullYear();
+  return { year: new Date().getFullYear(), strong: false };
 }
 
-function normalizeIsoDate(value: string | undefined, contextYear: number) {
+function normalizeIsoDate(value: string | undefined, context: ContextYear) {
   if (!value) return value || "";
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
   const year = Number(match[1]);
-  if (year >= 1900 && year < 2000 && contextYear >= 2000) {
-    return `${contextYear}-${match[2]}-${match[3]}`;
+
+  // 엑셀 serial/date-format 오류로 1995, 2036처럼 문맥과 명백히 다른 연도가 들어오는 경우가 있다.
+  // 파일명/메일 제목에 260916, 26년 9월처럼 강한 연도 힌트가 있으면 큰 차이만 보정한다.
+  const legacyWrongYear = year >= 1900 && year < 2000 && context.year >= 2000;
+  const contextMismatch = context.strong && Math.abs(year - context.year) >= 5;
+  if (legacyWrongYear || contextMismatch) {
+    return `${context.year}-${match[2]}-${match[3]}`;
   }
   return value;
 }
