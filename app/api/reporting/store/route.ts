@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
         mailSubject: body.mailSubject,
         mailDate: body.mailDate,
       });
+      if (body.sourceType === "placement_proof") body.sourceType = "gmail_pdf";
     }
 
     const edgeResponse = await fetch(REPORTING_EDGE_URL, {
