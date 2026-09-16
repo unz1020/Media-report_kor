@@ -6,6 +6,8 @@ import {
   GMAIL_TOKEN_COOKIE,
   gmailCookieOptions,
 } from "@/lib/gmail-oauth";
+import { sanitizeDailyBundle } from "@/lib/daily-bundle-sanitizer";
+import type { DailyBundlePreview } from "@/lib/daily-report-parser";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,14 @@ export async function POST(request: NextRequest) {
     const storedToken = decryptToken(cookieValue);
     const { token, refreshed } = await ensureFreshToken(storedToken);
     const body = await request.json();
+
+    if (body?.action === "publish_bundle" && body.bundle) {
+      body.bundle = sanitizeDailyBundle(body.bundle as DailyBundlePreview, {
+        filename: body.bundle.sourceFile,
+        mailSubject: body.mailSubject,
+        mailDate: body.mailDate,
+      });
+    }
 
     const edgeResponse = await fetch(REPORTING_EDGE_URL, {
       method: "POST",
