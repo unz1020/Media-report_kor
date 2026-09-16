@@ -39,13 +39,33 @@ function kstTodayString() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-function mailMeta(message: GmailMessage, fallbackDate: string) {
+function mailReportDate(body: string, fallbackDate: string) {
   const year = Number(fallbackDate.slice(0, 4)) || new Date().getFullYear();
-  const dateMatch = message.body.match(/(?:\*\s*)?(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?자/) ||
-    message.body.match(/(?:기준|업데이트)[^\n]{0,24}?(\d{1,2})\/(\d{1,2})/);
-  const reportDate = dateMatch
-    ? `${year}-${dateMatch[1].padStart(2, "0")}-${dateMatch[2].padStart(2, "0")}`
-    : fallbackDate;
+  const fallback = new Date(`${fallbackDate}T00:00:00Z`);
+  const candidates: string[] = [];
+  const patterns = [
+    /(?:전일|성과\s*기준일|기준일|업데이트)[^\d\n]{0,30}(\d{1,2})\/(\d{1,2})/gi,
+    /(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?\s*(?:자|기준|까지|성과)/gi,
+  ];
+
+  patterns.forEach((pattern) => {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(body))) {
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+      const value = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const parsed = new Date(`${value}T00:00:00Z`);
+      if (!Number.isNaN(parsed.getTime()) && (Number.isNaN(fallback.getTime()) || parsed <= fallback)) candidates.push(value);
+    }
+  });
+
+  if (!candidates.length) return fallbackDate;
+  return candidates.sort().at(-1) || fallbackDate;
+}
+
+function mailMeta(message: GmailMessage, fallbackDate: string) {
+  const reportDate = mailReportDate(message.body, fallbackDate);
   const advertiser = /자코모/i.test(`${message.subject}\n${message.body}`) ? "자코모" : "미확인";
   const notes = Array.from(new Set(
     message.body
@@ -154,7 +174,7 @@ export function DailyReportIntakeV2() {
       const messages = (payload.messages || []) as GmailMessage[];
       setBatchDateLabel(payload.date || selectedMailDate);
       setMessageCount(messages.length);
-      if (!messages.length) throw new Error(`${selectedMailDate}에 수신된 자코모 Daily Report 메일이 없습니다.`);
+      if (!messages.length) throw new Error(`${selectedMailDate}에 수신된 자코모 데일리 리포트 메일이 없습니다.`);
 
       const next: BatchItem[] = [];
       for (const message of messages) {
@@ -168,14 +188,14 @@ export function DailyReportIntakeV2() {
           try {
             item.bundle = await parseGmailAttachment(message, attachment);
           } catch (itemError) {
-            item.error = itemError instanceof Error ? itemError.message : "파싱 실패";
+            item.error = itemError instanceof Error ? itemError.message : "분석 실패";
           }
           next.push(item);
           setBatchItems([...next]);
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Gmail Daily Report 처리 중 오류가 발생했습니다.");
+      setError(e instanceof Error ? e.message : "Gmail 데일리 리포트 처리 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -183,7 +203,7 @@ export function DailyReportIntakeV2() {
 
   async function analyzeManual() {
     if (!file) {
-      setError("Daily Monitoring Excel 파일을 선택해주세요.");
+      setError("데일리 모니터링 Excel 파일을 선택해주세요.");
       return;
     }
     setLoading(true);
@@ -245,11 +265,11 @@ export function DailyReportIntakeV2() {
 
       <div className={styles.dailyGrid}>
         <article className={styles.dailyCard}>
-          <div className="eyebrow">DAILY SOURCE</div>
-          <h2>{mode === "gmail" ? "날짜별 Daily Report 수집" : "직접 업로드"}</h2>
+          <div className="eyebrow">데일리 자료</div>
+          <h2>{mode === "gmail" ? "날짜별 데일리 리포트 수집" : "직접 업로드"}</h2>
           {mode === "gmail" ? (
             <>
-              <p>메일 수신일을 선택해 해당 날짜의 자코모 Daily Report를 가져옵니다. 성과 기준일은 Excel과 메일 본문에서 별도로 판별합니다.</p>
+              <p>메일 수신일을 선택해 해당 날짜의 자코모 데일리 리포트를 가져옵니다. 성과 기준일은 Excel과 메일 본문에서 별도로 판별합니다.</p>
               <div className={styles.gmailRule}><span>연결 상태</span><strong>{gmailChecked ? (gmailConnected ? "Gmail 연결됨" : "연결 필요") : "확인 중…"}</strong></div>
               <div className={styles.filterRule}>
                 <span>메일 수신일</span>
@@ -258,14 +278,14 @@ export function DailyReportIntakeV2() {
                   value={selectedMailDate}
                   max={kstTodayString()}
                   onChange={(event) => changeMailDate(event.target.value)}
-                  aria-label="Daily Report 메일 수신일"
+                  aria-label="데일리 리포트 메일 수신일"
                   style={{ height: 36, border: "1px solid #d8deea", borderRadius: 8, padding: "0 10px", color: "#344054", background: "#fff", fontWeight: 700 }}
                 />
               </div>
               <div className={styles.filterRule}><span>수집 기준</span><strong>선택일 + 자코모 + 제목에 데일리 리포트 / Daily Report</strong></div>
               {gmailConnected ? (
                 <div className={styles.gmailActionRow}>
-                  <button className={styles.connectButton} onClick={loadSelectedDateFromGmail} disabled={loading || !selectedMailDate}>{loading ? `${selectedMailDate} 메일 분석 중…` : `${selectedMailDate} Daily 불러오기`}</button>
+                  <button className={styles.connectButton} onClick={loadSelectedDateFromGmail} disabled={loading || !selectedMailDate}>{loading ? `${selectedMailDate} 메일 분석 중…` : `${selectedMailDate} 데일리 불러오기`}</button>
                   <button className={styles.disconnectButton} onClick={disconnectGmail}>연결 해제</button>
                 </div>
               ) : (
@@ -274,23 +294,23 @@ export function DailyReportIntakeV2() {
             </>
           ) : (
             <>
-              <p>Excel/XLSB는 월간 누적 Fact, 메일 본문은 해당 기준일의 전일 성과 Insight로 처리합니다.</p>
-              <label className={styles.uploadLabel}><span>Daily Monitoring 파일</span><input type="file" accept=".xlsx,.xls,.xlsb" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><b>{file ? file.name : "Excel 파일 선택"}</b></label>
-              <label className={styles.mailLabel}><span>메일 본문</span><textarea value={mailBody} onChange={(event) => setMailBody(event.target.value)} placeholder="받은 Daily Report 메일 본문을 그대로 붙여넣으세요." /></label>
-              <button className={styles.analyzeButton} onClick={analyzeManual} disabled={loading}>{loading ? "분석 중…" : "Daily Bundle 분석"}</button>
+              <p>Excel/XLSB는 월간 누적 성과, 메일 본문은 해당 기준일의 전일 성과 인사이트로 처리합니다.</p>
+              <label className={styles.uploadLabel}><span>데일리 모니터링 파일</span><input type="file" accept=".xlsx,.xls,.xlsb" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><b>{file ? file.name : "Excel 파일 선택"}</b></label>
+              <label className={styles.mailLabel}><span>메일 본문</span><textarea value={mailBody} onChange={(event) => setMailBody(event.target.value)} placeholder="받은 데일리 리포트 메일 본문을 그대로 붙여넣으세요." /></label>
+              <button className={styles.analyzeButton} onClick={analyzeManual} disabled={loading}>{loading ? "분석 중…" : "데일리 자료 분석"}</button>
             </>
           )}
           {error && <div className={styles.errorText}>{error}</div>}
         </article>
 
         <article className={styles.dailyCard}>
-          <div className="eyebrow">UPDATE RULE</div>
-          <h2>Daily 업데이트 기준</h2>
+          <div className="eyebrow">업데이트 기준</div>
+          <h2>데일리 업데이트 기준</h2>
           <div className={styles.ruleStack}>
             <div><span>01</span><strong>메일 수신일</strong><p>오늘뿐 아니라 원하는 날짜를 선택해 그날 수신한 리포트를 다시 불러올 수 있습니다.</p></div>
-            <div><span>02</span><strong>Fact 파일</strong><p>한 메일의 XLSX/XLSB 여러 개는 내부 Fact 파일로 각각 파싱합니다.</p></div>
+            <div><span>02</span><strong>성과 파일</strong><p>한 메일의 XLSX/XLSB 여러 개는 내부 성과 파일로 각각 분석합니다.</p></div>
             <div><span>03</span><strong>성과 기준일</strong><p>메일을 받은 날짜와 성과 기준일은 분리하고, Excel·메일 본문 기준일을 우선합니다.</p></div>
-            <div><span>04</span><strong>메일 본문</strong><p>메일 본문은 해당 기준일의 운영 Insight로 한 번만 저장합니다.</p></div>
+            <div><span>04</span><strong>메일 본문</strong><p>메일 본문은 해당 기준일의 운영 인사이트로 한 번만 저장합니다.</p></div>
           </div>
         </article>
       </div>
@@ -299,11 +319,11 @@ export function DailyReportIntakeV2() {
         <div className={styles.batchArea}>
           <div className={styles.bundleHead}>
             <div>
-              <div className="eyebrow">SELECTED BATCH</div>
-              <h2>{batchDateLabel || selectedMailDate} · Daily 메일 {messageCount}건</h2>
-              <p>Fact 파일 {factAttachmentCount}개 · Fact 준비 {readyBatch.length}개 · 메일만 {mailOnlyItems.length}건</p>
+              <div className="eyebrow">불러오기 결과</div>
+              <h2>{batchDateLabel || selectedMailDate} · 데일리 메일 {messageCount}건</h2>
+              <p>성과 파일 {factAttachmentCount}개 · 반영 준비 {readyBatch.length}개 · 메일만 {mailOnlyItems.length}건</p>
             </div>
-            <div className={issueCount ? styles.bundleReview : styles.bundleStatus}>{issueCount ? `REVIEW ${issueCount}` : "QA PASS"}</div>
+            <div className={issueCount ? styles.bundleReview : styles.bundleStatus}>{issueCount ? `확인 필요 ${issueCount}` : "검수 완료"}</div>
           </div>
 
           <div className={styles.batchList}>
@@ -314,6 +334,7 @@ export function DailyReportIntakeV2() {
               const structureIssue = attachmentItems.some((item) => item.bundle && item.bundle.placements.length === 0);
               const mailOnly = attachmentItems.length === 0;
               const totalPlacements = validItems.reduce((sum, item) => sum + (item.bundle?.placements.length ?? 0), 0);
+              const totalDailyRows = validItems.reduce((sum, item) => sum + (item.bundle?.dailyPerformance?.length ?? 0), 0);
               const totalQa = validItems.reduce((sum, item) => sum + (item.bundle ? item.bundle.qa.mismatchedMailMetrics + item.bundle.qa.unmatchedMailMetrics : 0), 0);
               const reportDate = validItems[0]?.bundle?.reportDate || mailMeta(group.message, batchDateLabel || selectedMailDate).reportDate;
               return (
@@ -330,9 +351,10 @@ export function DailyReportIntakeV2() {
                   </div>
                   <div className={styles.mailMetrics}>
                     <span>기준일 <b>{reportDate}</b></span>
-                    <span>Fact <b>{attachmentItems.length}</b></span>
+                    <span>성과파일 <b>{attachmentItems.length}</b></span>
                     <span>지면 <b>{totalPlacements}</b></span>
-                    <span>QA <b>{totalQa}</b></span>
+                    <span>일별 <b>{totalDailyRows}</b></span>
+                    <span>검수 <b>{totalQa}</b></span>
                   </div>
                   {mailOnly ? <b className={styles.batchMailOnly}>메일만</b>
                     : failed ? <b className={styles.batchError}>실패</b>
@@ -347,14 +369,14 @@ export function DailyReportIntakeV2() {
 
       {singleResult && (
         <div className={styles.previewArea}>
-          <div className={styles.bundleHead}><div><div className="eyebrow">DAILY BUNDLE PREVIEW</div><h2>{singleResult.advertiser} · {singleResult.reportDate}</h2><p>{singleResult.sourceFile}</p></div><div className={styles.bundleStatus}>QA PREVIEW</div></div>
+          <div className={styles.bundleHead}><div><div className="eyebrow">자료 미리보기</div><h2>{singleResult.advertiser} · {singleResult.reportDate}</h2><p>{singleResult.sourceFile}</p></div><div className={styles.bundleStatus}>검수 미리보기</div></div>
           <div className={styles.previewGrid}>
             <article className={styles.previewCard}>
-              <div className={styles.previewCardHead}><strong>Excel Fact</strong><span>{singleResult.placements.length}개 지면</span></div>
-              <div className={styles.factTableWrap}><table className={styles.factTable}><thead><tr><th>매체</th><th>지면</th><th>IMP</th><th>Click</th><th>CTR</th></tr></thead><tbody>{singleResult.placements.slice(0, 12).map((item) => <tr key={`${item.sourceSheet}-${item.placement}`}><td>{item.platform}</td><td>{item.placement}</td><td>{item.impressions.toLocaleString()}</td><td>{item.clicks.toLocaleString()}</td><td>{item.ctr === null ? "-" : `${item.ctr.toFixed(2)}%`}</td></tr>)}</tbody></table></div>
+              <div className={styles.previewCardHead}><strong>Excel 성과</strong><span>{singleResult.placements.length}개 지면 · 일별 {singleResult.dailyPerformance?.length ?? 0}건</span></div>
+              <div className={styles.factTableWrap}><table className={styles.factTable}><thead><tr><th>매체</th><th>지면</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{singleResult.placements.slice(0, 12).map((item) => <tr key={`${item.sourceSheet}-${item.placement}`}><td>{item.platform}</td><td>{item.placement}</td><td>{item.impressions.toLocaleString()}</td><td>{item.clicks.toLocaleString()}</td><td>{item.ctr === null ? "-" : `${item.ctr.toFixed(2)}%`}</td></tr>)}</tbody></table></div>
             </article>
             <article className={styles.previewCard}>
-              <div className={styles.previewCardHead}><strong>Mail Insight</strong><span>{singleResult.operationNotes.length}개 메모</span></div>
+              <div className={styles.previewCardHead}><strong>메일 인사이트</strong><span>{singleResult.operationNotes.length}개 메모</span></div>
               <div className={styles.noteList}>{singleResult.operationNotes.length ? singleResult.operationNotes.map((note) => <div key={note}>{note}</div>) : <p>추출된 운영메모가 없습니다.</p>}</div>
             </article>
           </div>
@@ -363,8 +385,8 @@ export function DailyReportIntakeV2() {
 
       {((mode === "gmail" && groupedMessages.length > 0) || (mode === "manual" && manualResult)) && (
         <div className={styles.publishBar}>
-          <div><strong>{publishedCount ? `대시보드 반영 완료 · ${publishedCount}개 데이터` : `검수 완료 · Fact ${mode === "gmail" ? readyBatch.length : 1}개 + Insight ${mode === "gmail" ? messageCount : 1}건`}</strong><span>정상 Fact만 반영하고, Daily 메일 본문은 기준일별 Insight로 저장합니다.</span></div>
-          <button disabled={!canPublish} onClick={publishBatch}>{publishedCount ? "다시 반영" : "검수 완료 후 Dashboard 반영"}</button>
+          <div><strong>{publishedCount ? `대시보드 반영 완료 · ${publishedCount}개 데이터` : `검수 완료 · 성과파일 ${mode === "gmail" ? readyBatch.length : 1}개 + 인사이트 ${mode === "gmail" ? messageCount : 1}건`}</strong><span>정상 성과만 반영하고, 데일리 메일 본문은 기준일별 인사이트로 저장합니다.</span></div>
+          <button disabled={!canPublish} onClick={publishBatch}>{publishedCount ? "다시 반영" : "검수 완료 후 대시보드 반영"}</button>
         </div>
       )}
     </section>
