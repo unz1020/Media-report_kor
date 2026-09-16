@@ -62,6 +62,7 @@
 .proofTitle { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 5px 0 15px; }
 .proofTitle h3 { margin: 0; color: #101828; font-size: 22px; letter-spacing: -.02em; }
 .serviceBadge { padding: 5px 8px; border-radius: 7px; background: #f0edfb; color: #5e548b; font-size: 10px; font-weight: 850; }
+.creativeBadge { padding: 5px 8px; border: 1px solid #d9d6fe; border-radius: 7px; background: #f7f5ff; color: #5145cd; font-size: 10px; font-weight: 850; }
 
 .metaGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .metaGrid div { padding: 9px 10px; border: 1px solid #edf0f4; border-radius: 9px; background: #fafbfc; }
