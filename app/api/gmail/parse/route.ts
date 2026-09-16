@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const mailBody = payload.mailBody || "";
     const parsedBundle = parseDailyWorkbookBuffer(bytes, payload.filename, mailBody);
     let bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
-    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate);
+    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate, bundle.campaignStart);
     if (supplementalDaily.length) {
       bundle = sanitizeDailyBundle({
         ...bundle,
