@@ -6,11 +6,11 @@ import type { ReactNode } from "react";
 import { ADVERTISERS, WorkspaceProvider, useWorkspace, type AdvertiserKey } from "@/components/workspace-context";
 
 const navItems = [
-  { href: "/overview", label: "Overview", icon: "overview" },
-  { href: "/performance", label: "Performance", icon: "chart" },
-  { href: "/schedule", label: "Schedule", icon: "calendar" },
-  { href: "/creative", label: "Creative & Placement", icon: "image" },
-  { href: "/reports", label: "Reports", icon: "report" },
+  { href: "/overview", label: "개요", icon: "overview" },
+  { href: "/performance", label: "성과", icon: "chart" },
+  { href: "/schedule", label: "일정", icon: "calendar" },
+  { href: "/creative", label: "소재 · 게재지면", icon: "image" },
+  { href: "/reports", label: "리포트", icon: "report" },
 ] as const;
 
 function Icon({ name }: { name: string }) {
@@ -26,11 +26,11 @@ function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { advertiserKey, month, setAdvertiserKey, setMonth, dataSyncState, dataSyncError } = useWorkspace();
   const syncText = dataSyncState === "saving"
-    ? "Supabase 저장 중…"
+    ? "DB 저장 중…"
     : dataSyncState === "loading"
-      ? "Supabase 동기화 중…"
+      ? "DB 동기화 중…"
       : dataSyncState === "ready"
-        ? "Supabase 동기화됨"
+        ? "DB 동기화 완료"
         : dataSyncState === "error"
           ? "DB 연결 확인"
           : "DB 준비";
@@ -38,15 +38,15 @@ function AppShellInner({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">M</div><div className="brand-copy"><strong>Media Report</strong><span>Advertising OS</span></div></div>
-        <div className="nav-label">WORKSPACE</div>
+        <div className="brand"><div className="brand-mark">M</div><div className="brand-copy"><strong>Media Report</strong><span>광고 운영 대시보드</span></div></div>
+        <div className="nav-label">업무 메뉴</div>
         <nav className="nav" aria-label="주 메뉴">
           {navItems.map((item) => <Link key={item.href} href={item.href} className={`nav-link ${pathname === item.href ? "active" : ""}`}><Icon name={item.icon}/>{item.label}</Link>)}
         </nav>
         <div className="sidebar-bottom">
-          <div className="nav-label">AE TOOLS</div>
-          <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>Data Update</Link></div>
-          <div className="sidebar-user"><div className="avatar">AE</div><div><strong>박운상</strong><span>Agency workspace</span></div></div>
+          <div className="nav-label">AE 도구</div>
+          <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>데이터 업데이트</Link></div>
+          <div className="sidebar-user"><div className="avatar">AE</div><div><strong>박운상</strong><span>대행사 워크스페이스</span></div></div>
         </div>
       </aside>
 
