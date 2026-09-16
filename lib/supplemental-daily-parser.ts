@@ -45,6 +45,12 @@ function metricColumnPreferred(row: unknown[], start: number, end: number, alias
   }
   return -1;
 }
+function inCampaign(date: string, campaignStart: string, reportDate: string) {
+  if (!date) return false;
+  if (campaignStart && date < campaignStart) return false;
+  if (reportDate && date > reportDate) return false;
+  return true;
+}
 
 function platformForSheet(sheetName: string) {
   if (/^GFA$/i.test(sheetName)) return "네이버 GFA";
@@ -69,31 +75,36 @@ function shouldUseGroup(sheetName: string, group: string) {
   const normalized = key(group);
   if (/^(직방|호갱노노).*total/i.test(sheetName)) return false;
   if (/^GFA$/i.test(sheetName) || /^KAKAO$/i.test(sheetName)) return normalized !== "total";
-  if (/(당근|키즈노트|틱톡).*Total/i.test(sheetName)) return normalized === "total";
+  if (/당근.*Total/i.test(sheetName) || /키즈노트.*Total/i.test(sheetName)) return normalized === "total";
+  if (/틱톡.*Total/i.test(sheetName)) return normalized !== "total";
   if (/애드부스트.*Total/i.test(sheetName)) return normalized !== "totaldooh커스텀패키지서비스제외";
   return false;
 }
 
-function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string): DailyPerformanceFact[] {
+function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string, campaignStart: string): DailyPerformanceFact[] {
   const result: DailyPerformanceFact[] = [];
   if (!/^GFA$/i.test(sheetName) && !/^KAKAO$/i.test(sheetName) && !/(당근|키즈노트|틱톡|애드부스트).*Total/i.test(sheetName)) return result;
 
   let groupRowIndex = -1;
+  let metricRowIndex = -1;
   let dateCol = -1;
   for (let i = 0; i < rows.length - 1; i++) {
     const idx = findIndex(rows[i], ["Date", "DATE", "날짜", "일자"]);
     if (idx < 0) continue;
-    const next = rows[i + 1] ?? [];
-    if (findIndex(next, ["Impression", "Impressions", "노출", "노출수"]) >= 0) {
-      groupRowIndex = i;
-      dateCol = idx;
-      break;
+    for (let j = i + 1; j <= Math.min(i + 3, rows.length - 1); j++) {
+      if (findIndex(rows[j] ?? [], ["Impression", "Impressions", "노출", "노출수"]) >= 0) {
+        groupRowIndex = i;
+        metricRowIndex = j;
+        dateCol = idx;
+        break;
+      }
     }
+    if (groupRowIndex >= 0) break;
   }
-  if (groupRowIndex < 0 || dateCol < 0) return result;
+  if (groupRowIndex < 0 || metricRowIndex < 0 || dateCol < 0) return result;
 
   const groupRow = rows[groupRowIndex] ?? [];
-  const metricRow = rows[groupRowIndex + 1] ?? [];
+  const metricRow = rows[metricRowIndex] ?? [];
   const starts: number[] = [];
   for (let i = dateCol + 1; i < groupRow.length; i++) if (text(groupRow[i])) starts.push(i);
   const platform = platformForSheet(sheetName);
@@ -113,10 +124,10 @@ function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string): 
     const vtrCol = metricColumn(metricRow, start, end, ["VTR", "재생률", "재생률(2초 기준)"]);
     if (impCol < 0) return;
 
-    for (let r = groupRowIndex + 2; r < rows.length; r++) {
+    for (let r = metricRowIndex + 1; r < rows.length; r++) {
       const row = rows[r] ?? [];
       const date = asDate(row[dateCol]);
-      if (!date || (reportDate && date > reportDate)) continue;
+      if (!inCampaign(date, campaignStart, reportDate)) continue;
       const impressions = optionalNum(row[impCol]);
       const spend = spendCol >= 0 ? optionalNum(row[spendCol]) : null;
       const clicks = clickCol >= 0 ? optionalNum(row[clickCol]) : null;
@@ -144,7 +155,7 @@ function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string): 
   return result;
 }
 
-function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string): DailyPerformanceFact[] {
+function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string, campaignStart: string): DailyPerformanceFact[] {
   if (!/일자별|daily/i.test(sheetName)) return [];
   const headerRow = rows.findIndex((row) => {
     const date = findIndex(row, ["Date", "DATE", "날짜", "일자"]);
@@ -165,7 +176,7 @@ function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string): Dai
   for (let r = headerRow + 1; r < rows.length; r++) {
     const row = rows[r] ?? [];
     const date = asDate(row[dateCol]);
-    if (!date || (reportDate && date > reportDate)) continue;
+    if (!inCampaign(date, campaignStart, reportDate)) continue;
     const impressions = optionalNum(row[impCol]);
     if (impressions === null) continue;
     const clicks = clickCol >= 0 ? optionalNum(row[clickCol]) : null;
@@ -188,14 +199,14 @@ function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string): Dai
   return result;
 }
 
-export function parseSupplementalDailyPerformance(buffer: Buffer, reportDate: string): DailyPerformanceFact[] {
+export function parseSupplementalDailyPerformance(buffer: Buffer, reportDate: string, campaignStart = ""): DailyPerformanceFact[] {
   const book = XLSX.read(buffer, { type: "buffer", cellDates: true, cellFormula: false });
   const result: DailyPerformanceFact[] = [];
   for (const sheetName of book.SheetNames) {
     if (/^raw|media\s*mix|소재별|타게팅별/i.test(sheetName)) continue;
     const rows = rowsFor(book, sheetName);
-    result.push(...groupedDailyRows(sheetName, rows, reportDate));
-    result.push(...flatDailyRows(sheetName, rows, reportDate));
+    result.push(...groupedDailyRows(sheetName, rows, reportDate, campaignStart));
+    result.push(...flatDailyRows(sheetName, rows, reportDate, campaignStart));
   }
 
   const seen = new Set<string>();
