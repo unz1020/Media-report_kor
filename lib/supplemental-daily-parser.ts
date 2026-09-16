@@ -81,28 +81,33 @@ function shouldUseGroup(sheetName: string, group: string) {
   return false;
 }
 
+function findGroupedTable(rows: Matrix, sheetName: string) {
+  const isGfaOrKakao = /^GFA$/i.test(sheetName) || /^KAKAO$/i.test(sheetName);
+  const titleIndex = isGfaOrKakao
+    ? rows.findIndex((row) => row.some((value) => /total\s*daily\s*report/i.test(text(value))))
+    : -1;
+  const searchStart = titleIndex >= 0 ? titleIndex + 1 : 0;
+  const searchEnd = titleIndex >= 0 ? Math.min(rows.length, titleIndex + 5) : rows.length;
+
+  for (let i = searchStart; i < searchEnd; i++) {
+    const dateCol = findIndex(rows[i] ?? [], ["Date", "DATE", "날짜", "일자"]);
+    if (dateCol < 0) continue;
+    for (let j = i + 1; j <= Math.min(i + 3, rows.length - 1); j++) {
+      if (findIndex(rows[j] ?? [], ["Impression", "Impressions", "노출", "노출수"]) >= 0) {
+        return { groupRowIndex: i, metricRowIndex: j, dateCol };
+      }
+    }
+  }
+  return null;
+}
+
 function groupedDailyRows(sheetName: string, rows: Matrix, reportDate: string, campaignStart: string): DailyPerformanceFact[] {
   const result: DailyPerformanceFact[] = [];
   if (!/^GFA$/i.test(sheetName) && !/^KAKAO$/i.test(sheetName) && !/(당근|키즈노트|틱톡|애드부스트).*Total/i.test(sheetName)) return result;
 
-  let groupRowIndex = -1;
-  let metricRowIndex = -1;
-  let dateCol = -1;
-  for (let i = 0; i < rows.length - 1; i++) {
-    const idx = findIndex(rows[i], ["Date", "DATE", "날짜", "일자"]);
-    if (idx < 0) continue;
-    for (let j = i + 1; j <= Math.min(i + 3, rows.length - 1); j++) {
-      if (findIndex(rows[j] ?? [], ["Impression", "Impressions", "노출", "노출수"]) >= 0) {
-        groupRowIndex = i;
-        metricRowIndex = j;
-        dateCol = idx;
-        break;
-      }
-    }
-    if (groupRowIndex >= 0) break;
-  }
-  if (groupRowIndex < 0 || metricRowIndex < 0 || dateCol < 0) return result;
-
+  const table = findGroupedTable(rows, sheetName);
+  if (!table) return result;
+  const { groupRowIndex, metricRowIndex, dateCol } = table;
   const groupRow = rows[groupRowIndex] ?? [];
   const metricRow = rows[metricRowIndex] ?? [];
   const starts: number[] = [];
