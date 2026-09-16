@@ -47,6 +47,26 @@ function isSummaryLabel(value: string | undefined) {
   return /^(?:kpi|result|achievement(?:\s*\(%\))?|grand\s*total|total|달성률|달성율)$/i.test(value.trim());
 }
 
+function numericGuaranteed(value: string | undefined) {
+  const normalized = String(value || "").replace(/,/g, "").trim();
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeAchievement<T extends { guaranteed?: string; impressions: number; achievement?: number | null }>(row: T): T {
+  const guaranteed = numericGuaranteed(row.guaranteed);
+  if (!guaranteed) return row;
+  const calculated = row.impressions / guaranteed * 100;
+  const current = row.achievement;
+  // Excel 퍼센트 원값이 1.07(=107%)처럼 들어와 ratio heuristic이 오해석되는 경우를 방지한다.
+  // 보장노출수가 숫자로 명시된 지면은 원본 노출/보장노출 관계를 우선한다.
+  if (current === null || current === undefined || Math.abs(current - calculated) > 0.5) {
+    return { ...row, achievement: calculated };
+  }
+  return row;
+}
+
 export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextInput = {}): DailyBundlePreview {
   const contextYear = inferContextYear({ ...input, filename: input.filename || bundle.sourceFile });
   const placements = [...(bundle.placements || [])];
@@ -65,7 +85,7 @@ export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextIn
     const remove = isRawSheet(sheet) || isSummaryLabel(row.placement) || (hasSummarySheet && helperSheets.has(sheet) && !/^summary$/i.test(sheet));
     if (remove && sheet) removedSheets.add(sheet);
     return !remove;
-  });
+  }).map(normalizeAchievement);
 
   const cleanDaily = (bundle.dailyPerformance || []).filter((row) => !isRawSheet(row.sourceSheet)).map((row) => ({
     ...row,
