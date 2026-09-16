@@ -69,17 +69,45 @@ function header(message: GmailMessage, name: string) {
   return message.payload?.headers?.find((item) => item.name.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
-function kstDayBounds(now = new Date()) {
+function currentKstDate() {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(now);
+  }).formatToParts(new Date());
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
-  const year = get("year");
-  const month = get("month");
-  const day = get("day");
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+  };
+}
+
+function kstDayBounds(dateValue?: string) {
+  let year: number;
+  let month: number;
+  let day: number;
+
+  if (dateValue) {
+    const match = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) throw new Error("INVALID_DATE");
+    year = Number(match[1]);
+    month = Number(match[2]);
+    day = Number(match[3]);
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (
+      check.getUTCFullYear() !== year ||
+      check.getUTCMonth() !== month - 1 ||
+      check.getUTCDate() !== day
+    ) throw new Error("INVALID_DATE");
+  } else {
+    const current = currentKstDate();
+    year = current.year;
+    month = current.month;
+    day = current.day;
+  }
+
   const startMs = Date.UTC(year, month - 1, day, 0, 0, 0) - 9 * 60 * 60 * 1000;
   return {
     date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
@@ -101,11 +129,18 @@ export async function GET(request: NextRequest) {
   const cookie = request.cookies.get(GMAIL_TOKEN_COOKIE)?.value;
   if (!cookie) return NextResponse.json({ error: "Gmail is not connected" }, { status: 401 });
 
+  const requestedDate = request.nextUrl.searchParams.get("date") || undefined;
+  let bounds: ReturnType<typeof kstDayBounds>;
+  try {
+    bounds = kstDayBounds(requestedDate);
+  } catch {
+    return NextResponse.json({ error: "날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식으로 선택해주세요." }, { status: 400 });
+  }
+
   try {
     const current = decryptToken(cookie);
     const { token, refreshed } = await ensureFreshToken(current);
     const baseQuery = request.nextUrl.searchParams.get("q") || "자코모";
-    const bounds = kstDayBounds();
     const q = `${baseQuery} after:${bounds.start} before:${bounds.end}`;
 
     const list = await gmailJson<{ messages?: { id: string }[] }>(
@@ -149,7 +184,7 @@ export async function GET(request: NextRequest) {
     return response;
   } catch (error) {
     console.error(error);
-    const message = error instanceof Error ? error.message : "Failed to read today's Gmail";
+    const message = error instanceof Error ? error.message : "Failed to read Gmail for selected date";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

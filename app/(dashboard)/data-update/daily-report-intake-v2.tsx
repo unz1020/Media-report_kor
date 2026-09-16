@@ -28,6 +28,17 @@ type MessageGroup = { message: GmailMessage; items: BatchItem[] };
 
 const DAILY_QUERY = '자코모 {subject:"데일리 리포트" subject:"Daily Report"}';
 
+function kstTodayString() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 function mailMeta(message: GmailMessage, fallbackDate: string) {
   const year = Number(fallbackDate.slice(0, 4)) || new Date().getFullYear();
   const dateMatch = message.body.match(/(?:\*\s*)?(\d{1,2})\/(\d{1,2})(?:\([^)]*\))?자/) ||
@@ -56,7 +67,8 @@ export function DailyReportIntakeV2() {
   const [error, setError] = useState("");
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailChecked, setGmailChecked] = useState(false);
-  const [todayLabel, setTodayLabel] = useState("");
+  const [selectedMailDate, setSelectedMailDate] = useState(kstTodayString);
+  const [batchDateLabel, setBatchDateLabel] = useState("");
   const [publishedCount, setPublishedCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
 
@@ -115,20 +127,34 @@ export function DailyReportIntakeV2() {
     return payload.bundle as DailyBundlePreview;
   }
 
-  async function loadTodayFromGmail() {
+  function changeMailDate(value: string) {
+    setSelectedMailDate(value);
+    setBatchItems([]);
+    setBatchDateLabel("");
+    setPublishedCount(0);
+    setMessageCount(0);
+    setError("");
+  }
+
+  async function loadSelectedDateFromGmail() {
+    if (!selectedMailDate) {
+      setError("가져올 메일 수신일을 선택해주세요.");
+      return;
+    }
     setLoading(true);
     setError("");
     setPublishedCount(0);
     setBatchItems([]);
     setMessageCount(0);
     try {
-      const response = await fetch(`/api/gmail/today?q=${encodeURIComponent(DAILY_QUERY)}`, { cache: "no-store" });
+      const params = new URLSearchParams({ q: DAILY_QUERY, date: selectedMailDate });
+      const response = await fetch(`/api/gmail/today?${params.toString()}`, { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Gmail 조회에 실패했습니다.");
       const messages = (payload.messages || []) as GmailMessage[];
-      setTodayLabel(payload.date || "오늘");
+      setBatchDateLabel(payload.date || selectedMailDate);
       setMessageCount(messages.length);
-      if (!messages.length) throw new Error("오늘 수신된 자코모 Daily Report 메일이 없습니다.");
+      if (!messages.length) throw new Error(`${selectedMailDate}에 수신된 자코모 Daily Report 메일이 없습니다.`);
 
       const next: BatchItem[] = [];
       for (const message of messages) {
@@ -188,7 +214,7 @@ export function DailyReportIntakeV2() {
     if (targets.length) publishDailyBundles(targets);
 
     mailOnlyItems.forEach((item) => {
-      const meta = mailMeta(item.message, todayLabel);
+      const meta = mailMeta(item.message, batchDateLabel || selectedMailDate);
       publishMailOnlyInsight({
         advertiser: meta.advertiser,
         reportDate: meta.reportDate,
@@ -220,15 +246,26 @@ export function DailyReportIntakeV2() {
       <div className={styles.dailyGrid}>
         <article className={styles.dailyCard}>
           <div className="eyebrow">DAILY SOURCE</div>
-          <h2>{mode === "gmail" ? "오늘 Daily Report 일괄 수집" : "직접 업로드"}</h2>
+          <h2>{mode === "gmail" ? "날짜별 Daily Report 수집" : "직접 업로드"}</h2>
           {mode === "gmail" ? (
             <>
-              <p>오늘 받은 자코모 Daily Report 메일만 가져옵니다. 개발 알림·GitHub 메일 등은 자동 제외합니다.</p>
+              <p>메일 수신일을 선택해 해당 날짜의 자코모 Daily Report를 가져옵니다. 성과 기준일은 Excel과 메일 본문에서 별도로 판별합니다.</p>
               <div className={styles.gmailRule}><span>연결 상태</span><strong>{gmailChecked ? (gmailConnected ? "Gmail 연결됨" : "연결 필요") : "확인 중…"}</strong></div>
-              <div className={styles.filterRule}><span>수집 기준</span><strong>자코모 + 제목에 데일리 리포트 / Daily Report</strong></div>
+              <div className={styles.filterRule}>
+                <span>메일 수신일</span>
+                <input
+                  type="date"
+                  value={selectedMailDate}
+                  max={kstTodayString()}
+                  onChange={(event) => changeMailDate(event.target.value)}
+                  aria-label="Daily Report 메일 수신일"
+                  style={{ height: 36, border: "1px solid #d8deea", borderRadius: 8, padding: "0 10px", color: "#344054", background: "#fff", fontWeight: 700 }}
+                />
+              </div>
+              <div className={styles.filterRule}><span>수집 기준</span><strong>선택일 + 자코모 + 제목에 데일리 리포트 / Daily Report</strong></div>
               {gmailConnected ? (
                 <div className={styles.gmailActionRow}>
-                  <button className={styles.connectButton} onClick={loadTodayFromGmail} disabled={loading}>{loading ? "오늘 메일 분석 중…" : "오늘 Daily 전체 불러오기"}</button>
+                  <button className={styles.connectButton} onClick={loadSelectedDateFromGmail} disabled={loading || !selectedMailDate}>{loading ? `${selectedMailDate} 메일 분석 중…` : `${selectedMailDate} Daily 불러오기`}</button>
                   <button className={styles.disconnectButton} onClick={disconnectGmail}>연결 해제</button>
                 </div>
               ) : (
@@ -250,10 +287,10 @@ export function DailyReportIntakeV2() {
           <div className="eyebrow">UPDATE RULE</div>
           <h2>Daily 업데이트 기준</h2>
           <div className={styles.ruleStack}>
-            <div><span>01</span><strong>메일 기준</strong><p>같은 메일에 파일이 여러 개 있어도 메일은 1건으로 표시합니다.</p></div>
+            <div><span>01</span><strong>메일 수신일</strong><p>오늘뿐 아니라 원하는 날짜를 선택해 그날 수신한 리포트를 다시 불러올 수 있습니다.</p></div>
             <div><span>02</span><strong>Fact 파일</strong><p>한 메일의 XLSX/XLSB 여러 개는 내부 Fact 파일로 각각 파싱합니다.</p></div>
-            <div><span>03</span><strong>메일 본문</strong><p>메일 본문은 전일 성과 Insight로 한 번만 저장합니다.</p></div>
-            <div><span>04</span><strong>첨부 없음</strong><p>DV360처럼 첨부가 없으면 Fact 없음으로 표시하고 Insight만 저장합니다.</p></div>
+            <div><span>03</span><strong>성과 기준일</strong><p>메일을 받은 날짜와 성과 기준일은 분리하고, Excel·메일 본문 기준일을 우선합니다.</p></div>
+            <div><span>04</span><strong>메일 본문</strong><p>메일 본문은 해당 기준일의 운영 Insight로 한 번만 저장합니다.</p></div>
           </div>
         </article>
       </div>
@@ -262,8 +299,8 @@ export function DailyReportIntakeV2() {
         <div className={styles.batchArea}>
           <div className={styles.bundleHead}>
             <div>
-              <div className="eyebrow">TODAY BATCH</div>
-              <h2>{todayLabel} · Daily 메일 {messageCount}건</h2>
+              <div className="eyebrow">SELECTED BATCH</div>
+              <h2>{batchDateLabel || selectedMailDate} · Daily 메일 {messageCount}건</h2>
               <p>Fact 파일 {factAttachmentCount}개 · Fact 준비 {readyBatch.length}개 · 메일만 {mailOnlyItems.length}건</p>
             </div>
             <div className={issueCount ? styles.bundleReview : styles.bundleStatus}>{issueCount ? `REVIEW ${issueCount}` : "QA PASS"}</div>
@@ -278,7 +315,7 @@ export function DailyReportIntakeV2() {
               const mailOnly = attachmentItems.length === 0;
               const totalPlacements = validItems.reduce((sum, item) => sum + (item.bundle?.placements.length ?? 0), 0);
               const totalQa = validItems.reduce((sum, item) => sum + (item.bundle ? item.bundle.qa.mismatchedMailMetrics + item.bundle.qa.unmatchedMailMetrics : 0), 0);
-              const reportDate = validItems[0]?.bundle?.reportDate || mailMeta(group.message, todayLabel).reportDate;
+              const reportDate = validItems[0]?.bundle?.reportDate || mailMeta(group.message, batchDateLabel || selectedMailDate).reportDate;
               return (
                 <article key={group.message.id} className={styles.mailRow}>
                   <div className={styles.mailMain}>
