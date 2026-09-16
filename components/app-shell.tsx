@@ -24,7 +24,16 @@ function Icon({ name }: { name: string }) {
 
 function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { advertiserKey, month, setAdvertiserKey, setMonth } = useWorkspace();
+  const { advertiserKey, month, setAdvertiserKey, setMonth, dataSyncState, dataSyncError } = useWorkspace();
+  const syncText = dataSyncState === "saving"
+    ? "Supabase 저장 중…"
+    : dataSyncState === "loading"
+      ? "Supabase 동기화 중…"
+      : dataSyncState === "ready"
+        ? "Supabase 동기화됨"
+        : dataSyncState === "error"
+          ? "DB 연결 확인"
+          : "DB 준비";
 
   return (
     <div className="app-shell">
@@ -53,7 +62,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
             </select>
           </div>
           <div className="top-actions">
-            <span className="sync-label">실데이터 전용 · 광고주별 분리</span>
+            <span className="sync-label" title={dataSyncError || "보고서 데이터는 Supabase에서 광고주별로 동기화됩니다."}>{syncText}</span>
             <Link href="/reports" className="btn"><span>리포트</span></Link>
             <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>
           </div>
