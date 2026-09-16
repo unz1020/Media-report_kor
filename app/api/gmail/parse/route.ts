@@ -42,11 +42,14 @@ export async function POST(request: NextRequest) {
     const bytes = Buffer.from(attachment.data, "base64url");
     const mailBody = payload.mailBody || "";
     const parsedBundle = parseDailyWorkbookBuffer(bytes, payload.filename, mailBody);
-    const supplementalDaily = parseSupplementalDailyPerformance(bytes, parsedBundle.reportDate);
+    let bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
+    const supplementalDaily = parseSupplementalDailyPerformance(bytes, bundle.reportDate);
     if (supplementalDaily.length) {
-      parsedBundle.dailyPerformance = [...(parsedBundle.dailyPerformance || []), ...supplementalDaily];
+      bundle = sanitizeDailyBundle({
+        ...bundle,
+        dailyPerformance: [...(bundle.dailyPerformance || []), ...supplementalDaily],
+      }, { filename: payload.filename, mailBody });
     }
-    const bundle = sanitizeDailyBundle(parsedBundle, { filename: payload.filename, mailBody });
     const structuredNotes = extractStructuredOperationNotes(mailBody);
     if (structuredNotes.length) bundle.operationNotes = structuredNotes;
 
