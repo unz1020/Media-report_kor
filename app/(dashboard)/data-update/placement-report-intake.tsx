@@ -16,7 +16,8 @@ type GmailMessage = {
   body: string;
   attachments: GmailAttachment[];
 };
-type ProofResult = { message: GmailMessage; proof: PlacementProof; warning?: string; pdfParsed?: boolean };
+type ProofRecord = PlacementProof & { proofId?: string; creativeName?: string };
+type ProofResult = { message: GmailMessage; proof: ProofRecord; warning?: string; pdfParsed?: boolean };
 
 function kstTodayString() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -31,6 +32,10 @@ function kstTodayString() {
 
 function formatWon(value: number | null) {
   return value === null ? "-" : `${Math.round(value).toLocaleString("ko-KR")}원`;
+}
+
+function cloneId(messageId: string, kind: "placement" | "creative") {
+  return `${messageId}:${kind}:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export function PlacementReportIntake() {
@@ -74,7 +79,10 @@ export function PlacementReportIntake() {
         });
         const proofPayload = await proofResponse.json();
         if (!proofResponse.ok) throw new Error(proofPayload.error || `${message.subject} 분석 실패`);
-        parsed.push({ message, proof: proofPayload.proof, warning: proofPayload.warning, pdfParsed: proofPayload.pdfParsed });
+        const proof = proofPayload.proof as ProofRecord;
+        proof.proofId = proof.proofId || `${message.id}:base`;
+        proof.key = proof.key || `${advertiser}::${month}::proof::${proof.proofId}`;
+        parsed.push({ message, proof, warning: proofPayload.warning, pdfParsed: proofPayload.pdfParsed });
       }
       setResults(parsed);
     } catch (e) {
@@ -84,7 +92,51 @@ export function PlacementReportIntake() {
     }
   }
 
+  function updateProof(index: number, patch: Partial<ProofRecord>) {
+    setResults((current) => current.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const nextProof = { ...item.proof, ...patch };
+      nextProof.status = nextProof.placement.trim() ? "게재 확인" : "확인 필요";
+      return { ...item, proof: nextProof };
+    }));
+    setPublished(false);
+  }
+
+  function addDraft(index: number, kind: "placement" | "creative") {
+    setResults((current) => {
+      const source = current[index];
+      if (!source) return current;
+      const id = cloneId(source.message.id, kind);
+      const samePlacementCreativeCount = current.filter((item) =>
+        item.message.id === source.message.id && item.proof.placement === source.proof.placement && item.proof.creativeName
+      ).length;
+      const proof: ProofRecord = {
+        ...source.proof,
+        key: `${advertiser}::${month}::proof::${id}`,
+        proofId: id,
+        sourceFile: `${source.proof.sourceFile}__${id.split(":").slice(-2).join("-")}`,
+        placement: kind === "placement" ? "" : source.proof.placement,
+        creativeName: kind === "creative" ? `소재 ${samePlacementCreativeCount + 1}` : "",
+        status: kind === "placement" ? "확인 필요" : source.proof.status,
+      };
+      const clone: ProofResult = { ...source, proof };
+      return [...current.slice(0, index + 1), clone, ...current.slice(index + 1)];
+    });
+    setPublished(false);
+  }
+
+  function removeDraft(index: number) {
+    setResults((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setPublished(false);
+  }
+
   function publish() {
+    const invalid = visibleResults.find((item) => !item.proof.placement.trim());
+    if (invalid) {
+      setError("게재 지면명이 비어 있는 항목이 있습니다. 지면명을 입력한 뒤 반영해주세요.");
+      return;
+    }
+    setError("");
     visibleResults.forEach((item) => publishPlacementProof(item.proof));
     setPublished(true);
   }
@@ -95,7 +147,7 @@ export function PlacementReportIntake() {
         <div>
           <div className="eyebrow">게재 확인 · Gmail</div>
           <h2>게재 보고서 자동 수집</h2>
-          <p>메일의 게첨·게재 보고서와 PDF를 읽어 실제 노출 지면, 기간, 위치, 방영시간, 1일 편성 횟수를 확인 자료로 저장합니다. 성과 수치와는 분리해 관리합니다.</p>
+          <p>메일과 보고서에서 기본 지면을 읽은 뒤, 한 보고서에 지면이 여러 개면 지면을 추가하고 디지털 매체에서 같은 지면에 여러 소재가 돌면 소재별 항목으로 분리해 저장합니다.</p>
         </div>
         <span className="view-pill">{advertiser} · {month}</span>
       </div>
@@ -107,20 +159,33 @@ export function PlacementReportIntake() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {published && <div className={styles.notice}>게재 확인 자료를 소재 · 게재지면 화면에 반영했습니다.</div>}
+      {published && <div className={styles.notice}>게재 확인 자료를 지면·소재별로 소재 · 게재지면 화면에 반영했습니다.</div>}
 
       {visibleResults.length ? <>
         <div className={styles.grid}>
-          {visibleResults.map(({ message, proof, warning, pdfParsed }) => <article key={message.id} className={styles.card}>
+          {visibleResults.map(({ message, proof, warning, pdfParsed }, index) => <article key={proof.key || `${message.id}-${index}`} className={styles.card}>
             <div>
-              <div className={styles.cardTitle}><span className={styles.status}>{proof.status}</span><strong>{proof.placement}</strong></div>
+              <div className={styles.cardTitle}>
+                <span className={styles.status}>{proof.status}</span>
+                <strong>{proof.placement || "새 게재 지면"}</strong>
+                {proof.creativeName && <span className={styles.variantBadge}>{proof.creativeName}</span>}
+              </div>
               <div className={styles.source}>{message.subject}</div>
+              <div className={styles.editor}>
+                <label><span>매체</span><input value={proof.media} onChange={(event) => updateProof(index, { media: event.target.value })} /></label>
+                <label><span>게재 지면</span><input value={proof.placement} placeholder="예: 네이버 메인 / 아이파크 싱크월" onChange={(event) => updateProof(index, { placement: event.target.value })} /></label>
+                <label><span>소재명 · 선택</span><input value={proof.creativeName || ""} placeholder="예: 브랜딩 A / 정성편 15초" onChange={(event) => updateProof(index, { creativeName: event.target.value })} /></label>
+              </div>
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondary} onClick={() => addDraft(index, "placement")}>+ 지면 추가</button>
+                <button type="button" className={styles.secondary} onClick={() => addDraft(index, "creative")}>+ 같은 지면 소재 추가</button>
+                {visibleResults.length > 1 && <button type="button" className={styles.remove} onClick={() => removeDraft(index)}>항목 삭제</button>}
+              </div>
               <div className={styles.files}>{proof.attachments.map((file) => <span key={`${file.filename}-${file.attachmentId}`}>{file.filename}</span>)}</div>
               {warning && <div className={styles.warning}>PDF 상세 분석 일부 실패 · 메일 내용으로 우선 인식: {warning}</div>}
               {!warning && pdfParsed && <div className={styles.warning} style={{ color: "#027a48" }}>PDF 상세정보까지 확인됨</div>}
             </div>
             <div className={styles.meta}>
-              <div><span>연계 매체</span><strong>{proof.media}</strong></div>
               <div><span>구분</span><strong>{proof.serviceType}</strong></div>
               <div><span>노출 기간</span><strong>{proof.periodStart || "-"} ~ {proof.periodEnd || "-"}</strong></div>
               <div><span>확인 기준일</span><strong>{proof.verificationDate || proof.reportDate}</strong></div>
