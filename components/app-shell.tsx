@@ -24,7 +24,15 @@ function Icon({ name }: { name: string }) {
 
 function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { advertiserKey, month, setAdvertiserKey, setMonth, dataSyncState, dataSyncError } = useWorkspace();
+  const { advertiserKey, month, months, setAdvertiserKey, setMonth, dataSyncState, dataSyncError,
+    session, sessionLoading, sessionError, refreshSession, canEdit, allowedAdvertiserKeys, reloadData } = useWorkspace();
+  if (sessionLoading) return <main className="workspace-gate"><h1>계정 확인 중…</h1></main>;
+  if (!session) return <main className="workspace-gate">
+    <div className="brand-mark">M</div><h1>Media Report 로그인</h1>
+    <p>{sessionError === "WORKSPACE_ACCESS_DENIED" ? "등록되지 않았거나 접근이 해제된 계정입니다. 관리자에게 팀 계정 등록을 요청하세요." : "등록된 Google 계정으로 로그인해 팀 리포트를 확인하세요."}</p>
+    <a className="btn primary" href="/api/gmail/connect?mode=workspace">Google 계정으로 로그인</a>
+    <button className="btn" onClick={() => void refreshSession()}>다시 확인</button>
+  </main>;
   const syncText = dataSyncState === "saving"
     ? "DB 저장 중…"
     : dataSyncState === "loading"
@@ -45,8 +53,10 @@ function AppShellInner({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <div className="nav-label">AE 도구</div>
-          <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>데이터 업데이트</Link></div>
-          <div className="sidebar-user"><div className="avatar">AE</div><div><strong>박운상</strong><span>대행사 워크스페이스</span></div></div>
+          {canEdit && <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><Icon name="report"/>데이터 업데이트</Link></div>}
+          <Link href="/team" className={`nav-link ${pathname === "/team" ? "active" : ""}`}><Icon name="overview"/>팀 관리</Link>
+          <div className="sidebar-user"><div className="avatar">{session.user.role === "admin" ? "관리" : "AE"}</div><div><strong>{session.user.display_name || session.user.email}</strong><span>{canEdit ? "편집 가능" : "조회 전용"}</span></div></div>
+          <button className="btn" onClick={async () => { await fetch("/api/gmail/disconnect", { method: "POST" }); await refreshSession(); }}>로그아웃</button>
         </div>
       </aside>
 
@@ -54,20 +64,20 @@ function AppShellInner({ children }: { children: ReactNode }) {
         <header className="topbar">
           <div className="selector-group">
             <select className="selector" aria-label="광고주 선택" value={advertiserKey} onChange={(event) => setAdvertiserKey(event.target.value as AdvertiserKey)}>
-              {Object.entries(ADVERTISERS).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}
+              {allowedAdvertiserKeys.map(key => <option key={key} value={key}>{ADVERTISERS[key].label}</option>)}
             </select>
             <select className="selector" aria-label="조회 월 선택" value={month} onChange={(event) => setMonth(event.target.value)}>
-              <option value="2026-09">2026년 9월</option>
-              <option value="2026-08">2026년 8월</option>
+              {months.map(value => <option key={value} value={value}>{value.slice(0,4)}년 {Number(value.slice(5))}월</option>)}
             </select>
           </div>
           <div className="top-actions">
             <span className="sync-label" title={dataSyncError || "보고서 데이터는 Supabase에서 광고주별로 동기화됩니다."}>{syncText}</span>
             <Link href="/reports" className="btn"><span>리포트</span></Link>
-            <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>
+            <button className="btn" onClick={() => void reloadData()}>새로고침</button>
+            {canEdit && <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>}
           </div>
         </header>
-        <div className="content">{children}</div>
+        <div className="content">{!allowedAdvertiserKeys.length ? <p>접근 가능한 광고주가 없습니다. 관리자에게 권한을 요청하세요.</p> : pathname === "/data-update" && !canEdit ? <p>조회 전용 계정입니다. 담당 관리자에게 편집 권한을 요청하세요.</p> : children}</div>
       </main>
     </div>
   );
