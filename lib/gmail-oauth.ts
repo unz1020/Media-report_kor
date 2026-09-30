@@ -42,15 +42,15 @@ export function decryptToken(value: string): GoogleTokenBundle {
   return JSON.parse(decrypted) as GoogleTokenBundle;
 }
 
-export function buildGoogleAuthUrl(origin: string, state: string) {
+export function buildGoogleAuthUrl(origin: string, state: string, readGmail = true) {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${origin}/api/gmail/callback`;
   const params = new URLSearchParams({
     client_id: requireEnv("GOOGLE_CLIENT_ID"),
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: GMAIL_SCOPE,
+    scope: readGmail ? GMAIL_SCOPE : "openid email",
     access_type: "offline",
-    prompt: "consent",
+    prompt: "select_account consent",
     include_granted_scopes: "true",
     state,
   });

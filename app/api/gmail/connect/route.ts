@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const state = crypto.randomBytes(24).toString("base64url");
-    const response = NextResponse.redirect(buildGoogleAuthUrl(request.nextUrl.origin, state));
+    const response = NextResponse.redirect(buildGoogleAuthUrl(request.nextUrl.origin, state, request.nextUrl.searchParams.get("mode") !== "workspace"));
     response.cookies.set(GMAIL_STATE_COOKIE, state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

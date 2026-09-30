@@ -64,6 +64,12 @@ function emptyState(): PublishedDailyState {
 }
 
 let stateCache: PublishedDailyState = emptyState();
+let hydrationGeneration = 0;
+export function clearPublishedDailyState() {
+  hydrationGeneration++;
+  stateCache = emptyState();
+  dispatchUpdated();
+}
 
 function dispatchUpdated() {
   if (typeof window === "undefined") return;
@@ -216,15 +222,21 @@ export function readPublishedDailyState(): PublishedDailyState {
 
 export async function hydratePublishedDailyState(advertiser: string, month: string) {
   if (typeof window === "undefined") return;
+  const generation = ++hydrationGeneration;
   dispatchSync("loading");
   try {
     const payload = await requestRemote({ action: "load_state", advertiser, month }) as RemoteStatePayload;
+    if (generation !== hydrationGeneration) return;
     stateCache = stateFromRemote(payload);
+    for (const insight of Object.values(stateCache.insights)) insight.advertiser ||= advertiser;
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     dispatchUpdated();
     dispatchSync("ready");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Supabase 동기화 실패";
+    if (generation !== hydrationGeneration) return;
+    stateCache = emptyState();
+    dispatchUpdated();
     dispatchSync("error", message);
     throw error;
   }
@@ -237,35 +249,29 @@ export function publishDailyBundle(
   publishDailyBundles([{ bundle, ...meta }]);
 }
 
-export function publishDailyBundles(
+export async function publishDailyBundles(
   items: Array<{ bundle: DailyBundlePreview; mailSubject?: string; mailDate?: string; sourceType?: string }>,
 ) {
-  if (typeof window === "undefined" || !items.length) return;
-  items.forEach((item) => stageBundle(item.bundle, item));
-  dispatchUpdated();
+  if (typeof window === "undefined" || !items.length) return false;
+  const generation = hydrationGeneration;
   dispatchSync("saving");
-
-  void (async () => {
-    try {
-      for (const item of items) {
-        await requestRemote({
-          action: "publish_bundle",
-          bundle: item.bundle,
-          mailSubject: item.mailSubject || "",
-          mailDate: item.mailDate || "",
-          sourceType: item.sourceType || (item.mailSubject === "직접 업로드" ? "manual_excel" : "gmail_excel"),
-        });
-      }
-      const first = items[0].bundle;
-      const month = (first.campaignStart || first.reportDate || "").slice(0, 7);
-      if (month) await hydratePublishedDailyState(first.advertiser, month);
-      else dispatchSync("ready");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Supabase 저장 실패";
-      dispatchSync("error", message);
-      console.error("Failed to persist Daily report to Supabase", error);
+  try {
+    for (const item of items) {
+      await requestRemote({ action: "publish_bundle", bundle: item.bundle,
+        mailSubject: item.mailSubject || "", mailDate: item.mailDate || "",
+        sourceType: item.sourceType || (item.mailSubject === "직접 업로드" ? "manual_excel" : "gmail_excel") });
     }
-  })();
+    if (generation === hydrationGeneration) {
+      const first = items[0].bundle;
+      const month = (first.campaignStart || first.reportDate || "").slice(0,7);
+      if (month) await hydratePublishedDailyState(first.advertiser, month);
+    }
+    dispatchSync("ready");
+    return true;
+  } catch (error) {
+    dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
+    return false;
+  }
 }
 
 export function publishPlacementProof(proof: PlacementProof) {
@@ -311,41 +317,21 @@ export function publishPlacementProof(proof: PlacementProof) {
   })();
 }
 
-export function publishMailOnlyInsight(input: {
-  advertiser: string;
-  reportDate: string;
-  mailSubject: string;
-  mailDate?: string;
-  notes: string[];
+export async function publishMailOnlyInsight(input: {
+  advertiser: string; reportDate: string; mailSubject: string; mailDate?: string; notes: string[];
 }) {
-  if (typeof window === "undefined") return;
-  const publishedAt = new Date().toISOString();
-  const key = `${input.advertiser}::${input.reportDate}::mail::${input.mailSubject.toLowerCase()}`;
-  stateCache.insights[key] = {
-    key,
-    advertiser: input.advertiser,
-    reportDate: input.reportDate,
-    datasetKey: "mail-only",
-    mailSubject: input.mailSubject,
-    mailDate: input.mailDate || "",
-    notes: input.notes,
-    publishedAt,
-  };
-  dispatchUpdated();
+  if (typeof window === "undefined") return false;
+  const generation = hydrationGeneration;
   dispatchSync("saving");
-
-  void (async () => {
-    try {
-      await requestRemote({ action: "publish_mail_only", input });
-      const month = input.reportDate.slice(0, 7);
-      if (month) await hydratePublishedDailyState(input.advertiser, month);
-      else dispatchSync("ready");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Supabase 저장 실패";
-      dispatchSync("error", message);
-      console.error("Failed to persist mail insight to Supabase", error);
-    }
-  })();
+  try {
+    await requestRemote({ action: "publish_mail_only", input });
+    if (generation === hydrationGeneration) await hydratePublishedDailyState(input.advertiser, input.reportDate.slice(0,7));
+    dispatchSync("ready");
+    return true;
+  } catch (error) {
+    dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
+    return false;
+  }
 }
 
 export function publishedDatasetsFor(advertiser: string, month?: string) {

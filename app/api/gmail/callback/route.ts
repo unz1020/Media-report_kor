@@ -22,6 +22,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const token = await exchangeCodeForToken(code, request.nextUrl.origin);
+    const accessResponse = await fetch("https://akxuvlzaldoygmetzrdq.supabase.co/functions/v1/workspace-team", {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token.access_token}` },
+      body: JSON.stringify({ action: "session" }), cache: "no-store",
+    });
+    if (!accessResponse.ok) {
+      const response = NextResponse.redirect(new URL("/overview?access=denied", request.url));
+      response.cookies.delete(GMAIL_TOKEN_COOKIE);
+      response.cookies.delete(GMAIL_STATE_COOKIE);
+      return response;
+    }
     const response = NextResponse.redirect(new URL("/data-update?gmail=connected", request.url));
     response.cookies.set(GMAIL_TOKEN_COOKIE, encryptToken(token), gmailCookieOptions());
     response.cookies.delete(GMAIL_STATE_COOKIE);

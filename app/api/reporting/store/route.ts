@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 const REPORTING_EDGE_URL = "https://akxuvlzaldoygmetzrdq.supabase.co/functions/v1/reporting-store";
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "ORIGIN_DENIED" }, { status: 403 });
   const cookieValue = request.cookies.get(GMAIL_TOKEN_COOKIE)?.value;
   if (!cookieValue) {
     return NextResponse.json({ error: "GMAIL_CONNECTION_REQUIRED" }, { status: 401 });
