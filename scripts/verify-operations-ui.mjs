@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
+const rootUrl = "http://127.0.0.1:3000";
+let response = await fetch(rootUrl + "/api/reporting/store", { method: "POST", headers: { origin: rootUrl, "content-type": "application/json" }, body: JSON.stringify({ action: "save_manual_proof" }) });
+assert.equal(response.status, 401);
+response = await fetch(rootUrl + "/api/reporting/store", { method: "POST", headers: { origin: "https://foreign.example", "content-type": "application/json" }, body: "{}" });
+assert.equal(response.status, 403);
+response = await fetch(rootUrl + "/api/reporting/proof-image", { method: "POST", headers: { origin: "https://foreign.example" } });
+assert.equal(response.status, 403);
+
 const browser = await chromium.launch({ headless: true });
 let access = "editor";
 let savedProof;
@@ -118,4 +126,8 @@ try {
   await visible(page.getByRole("heading", { name: "수정한 소재", exact: true }));
   assert.deepEqual(errors, []);
   console.log("Browser checks passed: history, mail-only insights, pre-setup, UTM, image failure/retry, edit, month isolation, viewer.");
+} catch (error) {
+  console.error("Browser state:", await page.locator("body").innerText());
+  console.error("Browser errors:", errors);
+  throw error;
 } finally { await browser.close(); }
