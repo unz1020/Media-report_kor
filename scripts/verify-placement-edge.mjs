@@ -12,6 +12,8 @@ const insightValidation = { exports: {} };
 vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/insight-input.ts", "utf8")), {
   exports: insightValidation.exports, Date, Error,
 });
+const layoutValidation = { exports: {} };
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/layout-input.ts", "utf8")), { exports: layoutValidation.exports, Date, Error, Set, Object });
 let access = "editor", verified = true, active = true, concurrent = false;
 let handler;
 let rpcError = "";
@@ -51,7 +53,7 @@ class Query {
 }
 const source = fs.readFileSync("supabase/functions/reporting-store/index.ts", "utf8");
 vm.runInNewContext(compile(source), {
-  exports: {}, require: name => name === "./placement-input.ts" ? validation.exports : name === "./insight-input.ts" ? insightValidation.exports : { createClient: () => ({ from: table => new Query(table), rpc: async (name, args) => { assert.equal(name, "edit_daily_insight"); assert.equal(args.caller_email, "fixture@example.com"); assert.equal(args.advertiser_id_input, "fixture-advertiser"); return { data: { updatedAt: "2026-10-01T05:00:00Z" }, error: rpcError ? { message: rpcError } : null }; } }) },
+  exports: {}, require: name => name === "./placement-input.ts" ? validation.exports : name === "./insight-input.ts" ? insightValidation.exports : name === "./layout-input.ts" ? layoutValidation.exports : { createClient: () => ({ from: table => new Query(table), rpc: async (name, args) => { assert.ok(["edit_daily_insight", "save_dashboard_layout"].includes(name)); assert.equal(args.caller_email, "fixture@example.com"); assert.equal(args.advertiser_id_input, "fixture-advertiser"); return { data: { updatedAt: "2026-10-01T05:00:00Z" }, error: rpcError ? { message: rpcError } : null }; } }) },
   Deno: { env: { get: () => "fixture" }, serve: fn => { handler = fn; } }, crypto: { randomUUID },
   Response, Request, URL, Date, Error, Set, Map,
   fetch: async () => new Response(JSON.stringify({ email: "fixture@example.com", verified_email: verified }), { status: 200 }),
@@ -130,6 +132,22 @@ const reportImport = rows.report_imports.find(row => row.source_file === "fixtur
 reportImport.metadata.insightOverride = { notes: ["사이트에서 수정한 보고서 문구"] };
 assert.equal((await publish({ action: "publish_bundle", bundle: reportBundle })).status, 200);
 assert.deepEqual(rows.daily_insights.find(row => row.import_id === reportImport.id).notes, ["사이트에서 수정한 보고서 문구"]);
+async function layoutCall(action, input, token = true) {
+  return handler(new Request("https://example.com", { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer fixture" } : {}) }, body: JSON.stringify(action === "save_layout" ? { action, input } : { action, ...input }) }));
+}
+const layoutInput = { advertiser: "자코모", page: "overview", expectedUpdatedAt: null, layout: { version: 1, order: ["overview:인사이트"], widths: { "overview:인사이트": 30 } } };
+assert.equal((await layoutCall("load_layout", layoutInput)).status, 200);
+assert.equal((await layoutCall("save_layout", layoutInput, false)).status, 401);
+access="viewer";
+assert.equal((await layoutCall("load_layout", layoutInput)).status, 200);
+assert.equal((await layoutCall("save_layout", layoutInput)).status, 403); access="editor";
+assert.equal((await layoutCall("save_layout", layoutInput)).status, 200);
+assert.equal((await layoutCall("save_layout", { ...layoutInput, page: "unknown" })).status, 400);
+for(const layout of [{ version: 1, order: ["a","a"], widths: {} }, {version:1,order:["a"],widths:{a:999}}, {version:1,order:["a"],widths:{unknown:30}}, {order:["a"],widths:{}}]) {
+  assert.equal((await layoutCall("save_layout", { ...layoutInput, layout })).status, 400);
+}
+rpcError="LAYOUT_CHANGED";assert.equal((await layoutCall("save_layout", layoutInput)).status,409);rpcError="";
+console.log("Layout Edge checks passed: verified editors, viewer read, invalid page/layout denial, width validation and stale save rejection.");
 console.log("Insight checks passed: authenticated editors, validation, conflicts, missing source, re-import preservation.");
 console.log("Edge handler checks passed: authentication, active user, viewer denial, allowlisted input, create/edit, image preservation, scope and concurrency.");
 

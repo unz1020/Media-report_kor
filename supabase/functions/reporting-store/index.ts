@@ -1,3 +1,4 @@
+import { layoutPage, normalizeLayout } from "./layout-input.ts";
 import { normalizeInsightInput, retainInsightOverride } from "./insight-input.ts";
 import { normalizePlacementInput } from "./placement-input.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.3";
@@ -227,6 +228,31 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const action = String(body.action || "");
 
+    if (action === "load_layout" || action === "save_layout") {
+      const input = action === "save_layout" ? body.input || {} : body;
+      let page;
+      try { page = layoutPage(input.page); }
+      catch { return json({ error: "INVALID_LAYOUT_PAGE" }, 400); }
+      const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(input.advertiser || ""));
+      if (action === "load_layout") {
+        const { data, error } = await supabase.from("dashboard_layouts").select("layout, updated_at")
+          .eq("advertiser_id", advertiser.id).eq("page", page).maybeSingle();
+        if (error) throw error;
+        return json({ layout: data?.layout || null, updatedAt: data?.updated_at || null });
+      }
+      if (!["owner", "editor"].includes(accessLevel)) return json({ error: "WRITE_ACCESS_DENIED" }, 403);
+      let layout;
+      try { layout = normalizeLayout(input.layout); }
+      catch { return json({ error: "INVALID_LAYOUT" }, 400); }
+      if (input.expectedUpdatedAt != null && (typeof input.expectedUpdatedAt !== "string" || Number.isNaN(Date.parse(input.expectedUpdatedAt)))) return json({ error: "INVALID_LAYOUT_VERSION" }, 400);
+      const { data, error } = await supabase.rpc("save_dashboard_layout", {
+        caller_email: user.email, advertiser_id_input: advertiser.id, page_input: page,
+        expected_updated_at_input: input.expectedUpdatedAt || null, layout_input: layout,
+      });
+      if (error) throw new Error(error.message);
+      return json(data);
+    }
+
     if (action === "load_state") {
       const month = String(body.month || "");
       if (!/^\d{4}-\d{2}$/.test(month)) return json({ error: "INVALID_MONTH" }, 400);
@@ -383,7 +409,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message === "INSIGHT_CHANGED" ? 409 : message === "INSIGHT_NOT_FOUND" ? 404 : message.startsWith("INVALID_INSIGHT") ? 400 : message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
+    const status = (message === "INSIGHT_CHANGED" || message === "LAYOUT_CHANGED") ? 409 : message === "INSIGHT_NOT_FOUND" ? 404 : (message.startsWith("INVALID_INSIGHT") || message.startsWith("INVALID_LAYOUT")) ? 400 : message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
     return json({ error: message }, status);
   }
 });

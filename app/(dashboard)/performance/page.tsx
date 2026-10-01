@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import {
   publishedDatasetsFor,
@@ -245,8 +246,9 @@ export default function PerformancePage() {
         </div>
         <div className="page-meta"><span className="view-pill">{month}</span></div>
       </div>
+<LayoutCanvas page="performance">
 
-      <div className="report-toolbar performance-toolbar">
+      <LayoutPanel id="performance:조회 기간 · 필터:1" title="조회 기간 · 필터"><div className="report-toolbar performance-toolbar">
         <div className="toolbar-group">
           {viewMode === "placement" ? <>
             <label className="toolbar-label">조회 기간</label>
@@ -264,22 +266,22 @@ export default function PerformancePage() {
           </>}
         </div>
         <div className="toolbar-group right"><span className="view-pill">데일리 업데이트 {datasets.length}건 · 최신 {latestDataDate}</span></div>
-      </div>
+      </div></LayoutPanel>
 
-      {viewMode === "placement" && !period.baselineComplete && <div className="source-warning">일별 데이터가 없는 일부 매체는 선택 시작일 직전 누적 스냅샷이 있어야 정확한 기간 차감이 가능합니다. 일별 데이터가 있는 매체는 선택 기간을 직접 합산합니다.</div>}
+      {viewMode === "placement" && !period.baselineComplete && <LayoutPanel id="performance:기간 집계 안내:2" title="기간 집계 안내"><div className="source-warning">일별 데이터가 없는 일부 매체는 선택 시작일 직전 누적 스냅샷이 있어야 정확한 기간 차감이 가능합니다. 일별 데이터가 있는 매체는 선택 기간을 직접 합산합니다.</div></LayoutPanel>}
 
-      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser} 데일리 리포트를 데이터 업데이트에서 검수 후 반영하면 실제 엑셀 수치로 표가 생성됩니다.</p></section> : <>
-        <div className={styles.primaryTabs} role="tablist" aria-label="성과 구분">
+      {!datasets.length ? <LayoutPanel id="performance:아직 반영된 성과 데이터가 없습니다.:3" title="아직 반영된 성과 데이터가 없습니다."><section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser} 데일리 리포트를 데이터 업데이트에서 검수 후 반영하면 실제 엑셀 수치로 표가 생성됩니다.</p></section></LayoutPanel> : <>
+        <LayoutPanel id="performance:성과 보기 방식:4" title="성과 보기 방식"><div className={styles.primaryTabs} role="tablist" aria-label="성과 구분">
           <button className={viewMode === "placement" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("placement"); setSelectedMedia("전체 매체"); }}>광고 지면</button>
           <button className={viewMode === "creative" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("creative"); setSelectedMedia("전체 매체"); }}>소재별</button>
-        </div>
+        </div></LayoutPanel>
 
-        <div className={styles.mediaFilterBar} aria-label="매체 필터">
+        <LayoutPanel id="performance:매체 필터:5" title="매체 필터"><div className={styles.mediaFilterBar} aria-label="매체 필터">
           <button className={selectedMedia === "전체 매체" ? styles.mediaFilterActive : styles.mediaFilter} onClick={() => setSelectedMedia("전체 매체")}>전체 매체</button>
           {mediaNames.map((media) => <button key={media} className={selectedMedia === media ? styles.mediaFilterActive : styles.mediaFilter} onClick={() => setSelectedMedia(media)}>{media}</button>)}
-        </div>
+        </div></LayoutPanel>
 
-        {viewMode === "placement" ? <section className={styles.summaryStack}>
+        {viewMode === "placement" ? <LayoutGroup>
           {placementGroups.map((group) => {
             const presence = metricPresence(group.media, group.rows);
             const total = renderTotal(group.media, group.rows, presence);
@@ -287,7 +289,7 @@ export default function PerformancePage() {
             const dailyMetrics = dailyPresence(group.media, mediaDaily);
             const mediaInsights = relevantInsights(group.media);
 
-            return <article key={group.media} className={styles.summaryCard}>
+            return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
               <header className={styles.summaryHeader}>
                 <div><span>매체</span><h2>{group.media}</h2></div>
                 <div className={styles.summaryMeta}><span>성과 기간 {startDate} ~ {endDate}</span><span>{group.rows.length}개 광고 지면</span></div>
@@ -357,13 +359,13 @@ export default function PerformancePage() {
                   {mediaDaily.length ? <div className={styles.dailyTableWrap}><table className={styles.dailyTable}><thead><tr><th>일자</th><th>광고 지면</th>{dailyMetrics.spend && <th>집행액</th>}<th>노출</th>{dailyMetrics.clicks && <th>클릭</th>}<th>CTR</th>{dailyMetrics.views && <th>조회</th>}{dailyMetrics.vtr && <th>VTR</th>}{dailyMetrics.cpm && <th>CPM</th>}{dailyMetrics.cpc && <th>CPC</th>}{dailyMetrics.cpv && <th>CPV</th>}</tr></thead><tbody>{mediaDaily.map((row, index) => <tr key={`${row.date}-${row.platform}-${row.placement}-${index}`}><td>{row.date}</td><td>{row.placement}</td>{dailyMetrics.spend && <td className={styles.numCell}>{formatWon(row.spend)}</td>}<td className={styles.numCell}>{formatBareCount(row.impressions)}</td>{dailyMetrics.clicks && <td className={styles.numCell}>{formatBareCount(row.clicks)}</td>}<td className={styles.numCell}>{formatRate(row.ctr)}</td>{dailyMetrics.views && <td className={styles.numCell}>{formatBareCount(row.views)}</td>}{dailyMetrics.vtr && <td className={styles.numCell}>{formatRate(row.vtr)}</td>}{dailyMetrics.cpm && <td className={styles.numCell}>{formatWon(row.cpm)}</td>}{dailyMetrics.cpc && <td className={styles.numCell}>{formatWon(row.cpc)}</td>}{dailyMetrics.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}</tr>)}</tbody></table></div> : <div className={styles.detailEmpty}>이 매체의 일별 성과 데이터가 아직 연결되지 않았습니다. 현재는 누적 스냅샷이 쌓이는 구간부터 기간 차감 조회가 가능합니다.</div>}
                 </details>
               </div>
-            </article>;
+            </article></LayoutPanel>;
           })}
-        </section> : creativeGroups.length ? <section className={styles.summaryStack}>
+        </LayoutGroup> : creativeGroups.length ? <LayoutGroup>
           {creativeGroups.map((group) => {
             const total = creativeTotal(group.rows);
             const mediaInsights = relevantInsights(group.media);
-            return <article key={group.media} className={styles.summaryCard}>
+            return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
               <header className={styles.summaryHeader}>
                 <div><span>매체</span><h2>{group.media}</h2></div>
                 <div className={styles.summaryMeta}><span>전일 1일 성과 · {endDate}</span><span>{group.rows.length}개 소재</span></div>
@@ -385,10 +387,11 @@ export default function PerformancePage() {
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <div className={styles.insightItem} key={item.key}><strong>{item.reportDate}</strong><div>{item.notes.slice(0, 8).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>)}</div></div>)}</div>
               </div>}
-            </article>;
+            </article></LayoutPanel>;
           })}
-        </section> : <section className="card card-pad empty-state"><h2>{endDate} 소재별 성과가 없습니다.</h2><p>소재별 일별 성과가 포함된 데일리 파일을 다시 반영하면 해당 기준일 하루 성과만 표시됩니다.</p></section>}
+        </LayoutGroup> : <LayoutPanel id="performance:소재별 성과가 없습니다.:8" title="소재별 성과가 없습니다."><section className="card card-pad empty-state"><h2>{endDate} 소재별 성과가 없습니다.</h2><p>소재별 일별 성과가 포함된 데일리 파일을 다시 반영하면 해당 기준일 하루 성과만 표시됩니다.</p></section></LayoutPanel>}
       </>}
-    </>
+    </LayoutCanvas>
+</>
   );
 }
