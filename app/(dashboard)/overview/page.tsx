@@ -71,7 +71,7 @@ export default function OverviewPage() {
         <DailyInsightHistory key={advertiser + month} insights={insights} />
       </section>
 
-      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 {advertiser} 실데이터가 없습니다.</h2><p>데이터 업데이트에서 해당 광고주의 데일리 리포트를 반영하면 개요가 자동으로 채워집니다.</p></section> : <>
+      {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 {advertiser} 성과 데이터가 없습니다.</h2><p>데이터 업데이트에서 해당 광고주의 성과 리포트를 반영하면 집행액과 매체별 성과가 자동으로 채워집니다.</p></section> : <>
         <section className="metric-strip">
           <article className="metric-card primary-metric"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong><div><span>원본 보고서 합계</span></div></article>
           <article className="metric-card"><span className="metric-kicker">월 예산</span><strong>{formatKrw(totalBudget)}</strong><div><span>미디어 운영안 기준</span></div></article>

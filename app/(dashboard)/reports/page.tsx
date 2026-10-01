@@ -34,7 +34,7 @@ export default function ReportsPage() {
       <DailyInsightHistory key={advertiser + month} insights={filteredInsights} />
     </section>
 
-    {!datasets.length ? <section className="card card-pad empty-state"><h2>반영된 리포트 데이터가 없습니다.</h2><p>Daily Monitoring을 반영한 뒤 이 화면에서 Fact와 Insight 이력을 확인할 수 있습니다.</p></section> : <>
+    {!datasets.length ? <section className="card card-pad empty-state"><h2>반영된 성과 데이터가 없습니다.</h2><p>성과 리포트를 반영하면 성과 요약과 원본 이력이 추가됩니다.</p></section> : <>
       <section className="metric-strip"><article className="metric-card"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong></article><article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong></article><article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong></article><article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong></article><article className="metric-card"><span className="metric-kicker">원본 파일</span><strong>{datasets.length}</strong></article></section>
 
       <section className="section-space">
