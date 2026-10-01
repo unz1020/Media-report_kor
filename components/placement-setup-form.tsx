@@ -112,7 +112,7 @@ export function PlacementSetupForm({ proof, initial, onClose }: {
           <label className={styles.wide}>매체 미리보기 URL<input type="url" maxLength={4000} value={previewUrl} placeholder="https://" onChange={e => setPreviewUrl(e.target.value)} /></label>
           <label className={styles.wide}>랜딩 URL<input type="url" maxLength={4000} value={landingUrl} placeholder="기존 UTM이 포함된 전체 URL도 입력할 수 있습니다." onChange={e => setLandingUrl(e.target.value)} /></label>
           {UTM_KEYS.map(key => <label key={key}>{key}<input maxLength={500} value={utm[key] || ""} onChange={e => setUtm(current => ({ ...current, [key]: e.target.value }))} /></label>)}
-          <label className={styles.wide}>미리보기 / 게재 이미지<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => { setFile(e.target.files?.[0]); setError(""); }} /><small>PNG, JPG, WEBP · 최대 4MB</small></label>
+          <label className={styles.wide}>미리보기 / 게재 이미지<input type="file" aria-label="미리보기 / 게재 이미지" accept="image/png,image/jpeg,image/webp" onChange={e => { setFile(e.target.files?.[0]); setError(""); }} /><small>PNG, JPG, WEBP · 최대 4MB</small></label>
         </div>
         {(filePreview || currentImage) && <img className={styles.image} src={filePreview || currentImage} alt="등록할 지면 이미지 미리보기" />}
         {finalUrl.error && <p className={styles.error}>{finalUrl.error}</p>}
