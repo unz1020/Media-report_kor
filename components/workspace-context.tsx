@@ -63,11 +63,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (savedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(savedMonth)) setMonthState(savedMonth);
   }, [session?.user.email]);
   const setAdvertiserKey = (value: AdvertiserKey) => {
-    if (!allowedAdvertiserKeys.includes(value)) return;
+    if (!allowedAdvertiserKeys.includes(value) || value === advertiserKey) return;
     clearPublishedDailyState(); setAdvertiserKeyState(value);
     window.localStorage.setItem(`media-report-advertiser:${session?.user.email}`, value);
   };
   const setMonth = (value: string) => {
+    if (value === month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return;
     clearPublishedDailyState(); setMonthState(value);
     window.localStorage.setItem(`media-report-month:${session?.user.email}`, value);
   };

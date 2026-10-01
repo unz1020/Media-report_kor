@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
 import { publishedDatasetsFor, publishedInsightsFor, publishedSnapshotsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
 import { formatCount, formatKrw, formatRate, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
-import { normalizeInsightText } from "@/lib/media-normalization";
+import { DailyInsightHistory } from "@/components/daily-insight-history";
 
 export default function ReportsPage() {
   const { advertiser, month } = useWorkspace();
@@ -29,11 +29,16 @@ export default function ReportsPage() {
     <div className="page-head"><div><div className="eyebrow">Reports · SOURCE HISTORY</div><h1 className="page-title">{advertiser} 리포트</h1><p className="page-desc">Daily Fact 원본, 전일 Insight, Snapshot 이력을 기간별로 확인합니다.</p></div></div>
     <div className="report-toolbar"><div className="toolbar-group"><span className="toolbar-label">기간</span><input className="toolbar-control" type="date" value={from} onChange={(e)=>setFrom(e.target.value)}/><span>–</span><input className="toolbar-control" type="date" value={to} min={from} onChange={(e)=>setTo(e.target.value)}/></div></div>
 
-    {!datasets.length ? <section className="card card-pad empty-state"><h2>반영된 리포트 데이터가 없습니다.</h2><p>Daily Monitoring을 반영한 뒤 이 화면에서 Fact와 Insight 이력을 확인할 수 있습니다.</p></section> : <>
+    <section className="card section-space report-panel">
+      <div className="report-panel-head"><div><h2>데일리 인사이트</h2><p>기간을 선택하고 날짜를 눌러 상세 내용을 확인하세요.</p></div><span className="view-pill">{filteredInsights.length}건</span></div>
+      <DailyInsightHistory key={advertiser + month} insights={filteredInsights} />
+    </section>
+
+    {!datasets.length ? <section className="card card-pad empty-state"><h2>반영된 성과 데이터가 없습니다.</h2><p>성과 리포트를 반영하면 성과 요약과 원본 이력이 추가됩니다.</p></section> : <>
       <section className="metric-strip"><article className="metric-card"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong></article><article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong></article><article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong></article><article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong></article><article className="metric-card"><span className="metric-kicker">원본 파일</span><strong>{datasets.length}</strong></article></section>
 
-      <section className="grid two-col section-space">
-        <article className="card report-panel"><div className="report-panel-head"><div><h2>Daily Insight</h2><p>메일 본문의 운영 현황과 전일 성과 정리 · 매체명 표기 통합</p></div><span className="view-pill">{filteredInsights.length}건</span></div><div className="insight-timeline">{filteredInsights.length ? filteredInsights.map(item=><div key={item.key}><strong>{item.reportDate}</strong><div><b>{normalizeInsightText(item.mailSubject)}</b>{item.notes.map((note,index)=><p key={index}>{normalizeInsightText(note)}</p>)}</div></div>) : <div className="empty-inline">선택 기간 Insight 없음</div>}</div></article>
+      <section className="section-space">
+
         <article className="card report-panel"><div className="report-panel-head"><div><h2>Snapshot 이력</h2><p>더블체크 가능한 일자별 Fact 보관</p></div><span className="view-pill">{filteredSnapshots.length}건</span></div><div className="progress-list">{filteredSnapshots.length ? filteredSnapshots.map(item=><div className="notice" key={item.key}><span className="notice-dot good"/><div><strong>{item.bundle.reportDate} · {item.sourceFile}</strong><p>{item.bundle.parsedSheets.join(", ") || "파싱 시트 없음"}</p></div></div>) : <div className="empty-inline">선택 기간 Snapshot 없음</div>}</div></article>
       </section>
 

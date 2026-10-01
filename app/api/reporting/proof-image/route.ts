@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "ORIGIN_DENIED" }, { status: 403 });
   try {
     const incoming = await request.formData();
     const file = incoming.get("file");
@@ -63,8 +64,8 @@ export async function POST(request: NextRequest) {
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
       return NextResponse.json({ error: "PNG, JPG, WEBP 이미지만 업로드할 수 있습니다." }, { status: 415 });
     }
-    if (file.size > 8 * 1024 * 1024) {
-      return NextResponse.json({ error: "이미지는 8MB 이하로 업로드해주세요." }, { status: 413 });
+    if (file.size > 4 * 1024 * 1024) {
+      return NextResponse.json({ error: "이미지는 4MB 이하로 업로드해주세요." }, { status: 413 });
     }
 
     const { token, refreshed } = await authenticatedToken(request);
@@ -73,6 +74,8 @@ export async function POST(request: NextRequest) {
     form.set("advertiser", advertiser);
     form.set("reportDate", reportDate);
     form.set("sourceFile", sourceFile);
+    if (incoming.get("importId")) form.set("importId", String(incoming.get("importId")));
+    if (incoming.get("expectedUpdatedAt")) form.set("expectedUpdatedAt", String(incoming.get("expectedUpdatedAt")));
 
     const edgeResponse = await fetch(PROOF_IMAGE_EDGE_URL, {
       method: "POST",

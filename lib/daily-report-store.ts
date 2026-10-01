@@ -172,6 +172,7 @@ function stateFromRemote(payload: RemoteStatePayload) {
       const key = `remote-proof::${item.id}`;
       next.proofs[key] = {
         ...bundle.placementProof,
+        importId: item.id,
         key,
         publishedAt: item.updated_at || item.created_at || new Date().toISOString(),
       };
