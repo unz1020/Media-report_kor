@@ -107,17 +107,24 @@ export function creativePerformanceFromDatasets(datasets: PublishedDataset[], da
 }
 
 export function mediaPlansFromDatasets(datasets: PublishedDataset[]): MediaPlanFact[] {
+  const monthly = latestMediaMix(datasets);
+  if (monthly) return monthly.bundle.mediaPlan ?? [];
   const seen = new Set<string>();
   const result: MediaPlanFact[] = [];
   for (const dataset of datasets) {
     for (const item of dataset.bundle.mediaPlan ?? []) {
-      const id = `${item.platform}::${item.product}::${item.periodStart}::${item.periodEnd}`.toLowerCase();
+      const id = `${item.platform}::${item.product}::${item.placement}::${item.creativeName || ""}::${item.creativeType}::${item.periodStart}::${item.periodEnd}::${item.device}::${item.target}`.toLowerCase();
       if (seen.has(id)) continue;
       seen.add(id);
       result.push(item);
     }
   }
   return result;
+}
+
+export function latestMediaMix(datasets: PublishedDataset[]) {
+  return datasets.filter(item => (item.bundle as typeof item.bundle & { sourceKind?: string }).sourceKind === "media_mix")
+    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))[0];
 }
 
 function subtractNumber(end: number | null | undefined, start: number | null | undefined) {

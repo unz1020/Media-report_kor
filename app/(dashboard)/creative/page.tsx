@@ -11,6 +11,7 @@ import {
 } from "@/lib/daily-report-store";
 import type { PlacementProof, PlacementProofAttachment } from "@/lib/placement-proof";
 import { mediaPlansFromDatasets } from "@/lib/reporting-data";
+import { canonicalMedia } from "@/lib/media-normalization";
 import { PlacementSetupForm } from "@/components/placement-setup-form";
 import { landingWithUtm, safeHttpUrl } from "@/lib/placement-urls";
 import styles from "./creative.module.css";
@@ -49,7 +50,7 @@ export default function CreativePage() {
   const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
   const scope = useRef(advertiser + month);
   scope.current = advertiser + month;
-  const [editor, setEditor] = useState<{ proof?: ProofRecord; initialFile?: File; selectionId?: string; initial?: { media?: string; placement?: string; periodStart?: string; periodEnd?: string } } | null>(null);
+  const [editor, setEditor] = useState<{ proof?: ProofRecord; initialFile?: File; selectionId?: string; initial?: { media?: string; placement?: string; creativeName?: string; periodStart?: string; periodEnd?: string } } | null>(null);
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [proofs, setProofs] = useState<ProofRecord[]>([]);
   const [selectedMedia, setSelectedMedia] = useState("전체");
@@ -128,7 +129,7 @@ export default function CreativePage() {
   }, [visibleProofs]);
 
   const visiblePlans = useMemo(
-    () => plans.filter(plan => (selectedMedia === "전체" || plan.platform === selectedMedia) && !proofs.some(proof => proof.media === plan.platform && proof.placement === (plan.product || plan.placement))),
+    () => plans.filter(plan => (selectedMedia === "전체" || plan.platform === selectedMedia) && !proofs.some(proof => canonicalMedia(proof.media) === canonicalMedia(plan.platform) && proof.placement === (plan.placement || plan.product) && (!plan.creativeName || proof.creativeName === plan.creativeName))),
     [plans, proofs, selectedMedia],
   );
 
@@ -227,7 +228,7 @@ export default function CreativePage() {
     </div>
 
 
-    {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
+    {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
 <LayoutCanvas page="creative">
     {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
@@ -301,14 +302,14 @@ export default function CreativePage() {
 
     <LayoutPanel id="creative:운영안 기준 연결 대기 지면:6" title="운영안 기준 연결 대기 지면"><section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>운영안 기준 연결 대기 지면</h2><p>{selectedMedia === "전체" ? "운영안에서 확인됐지만 아직 별도 게재 보고 자료가 연결되지 않은 상품을 관리합니다. 이미지 등록에서 파일을 선택하고 미리보기 확인 후 저장하세요." : `${selectedMedia} 운영안에서 아직 게재 보고 자료가 연결되지 않은 상품입니다.`}</p></div><span className="view-pill">{visiblePlans.length}개</span></div>
-      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept="image/png,image/jpeg,image/webp" disabled={dataSyncState === "loading"} onChange={event => {
+      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재명</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeName || "미입력"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept="image/png,image/jpeg,image/webp" disabled={dataSyncState === "loading"} onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";
         if (!file) return;
         if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 4 * 1024 * 1024) { setUploadError("PNG, JPG, WEBP 이미지를 4MB 이하로 선택해주세요."); return; }
         setUploadError("");
-        setEditor({ initialFile: file, selectionId: crypto.randomUUID(), initial: { media: plan.platform, placement: plan.product || plan.placement, periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } });
-      }} style={{ display: "block", maxWidth: 200, marginTop: 6 }} /></label> : "미등록"}</td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.product || plan.placement, periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
+        setEditor({ initialFile: file, selectionId: crypto.randomUUID(), initial: { media: plan.platform, placement: plan.placement || plan.product, creativeName: plan.creativeName || "", periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } });
+      }} style={{ display: "block", maxWidth: 200, marginTop: 6 }} /></label> : "미등록"}</td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.placement || plan.product, creativeName: plan.creativeName || "", periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
     </section></LayoutPanel>
   </LayoutCanvas>
 </>;

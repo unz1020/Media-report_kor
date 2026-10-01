@@ -14,6 +14,8 @@ vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/i
 });
 const layoutValidation = { exports: {} };
 vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/layout-input.ts", "utf8")), { exports: layoutValidation.exports, Date, Error, Set, Object });
+const mediaValidation = { exports: {} };
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/media-plan-input.ts", "utf8")), { exports: mediaValidation.exports, Date, Error, Number });
 let access = "editor", verified = true, active = true, concurrent = false;
 let handler;
 let rpcError = "";
@@ -53,7 +55,7 @@ class Query {
 }
 const source = fs.readFileSync("supabase/functions/reporting-store/index.ts", "utf8");
 vm.runInNewContext(compile(source), {
-  exports: {}, require: name => name === "./placement-input.ts" ? validation.exports : name === "./insight-input.ts" ? insightValidation.exports : name === "./layout-input.ts" ? layoutValidation.exports : { createClient: () => ({ from: table => new Query(table), rpc: async (name, args) => { assert.ok(["edit_daily_insight", "save_dashboard_layout"].includes(name)); assert.equal(args.caller_email, "fixture@example.com"); assert.equal(args.advertiser_id_input, "fixture-advertiser"); return { data: { updatedAt: "2026-10-01T05:00:00Z" }, error: rpcError ? { message: rpcError } : null }; } }) },
+  exports: {}, require: name => name === "./media-plan-input.ts" ? mediaValidation.exports : name === "./placement-input.ts" ? validation.exports : name === "./insight-input.ts" ? insightValidation.exports : name === "./layout-input.ts" ? layoutValidation.exports : { createClient: () => ({ from: table => new Query(table), rpc: async (name, args) => { assert.ok(["edit_daily_insight", "save_dashboard_layout"].includes(name)); assert.equal(args.caller_email, "fixture@example.com"); assert.equal(args.advertiser_id_input, "fixture-advertiser"); return { data: { updatedAt: "2026-10-01T05:00:00Z" }, error: rpcError ? { message: rpcError } : null }; } }) },
   Deno: { env: { get: () => "fixture" }, serve: fn => { handler = fn; } }, crypto: { randomUUID },
   Response, Request, URL, Date, Error, Set, Map,
   fetch: async () => new Response(JSON.stringify({ email: "fixture@example.com", verified_email: verified }), { status: 200 }),
@@ -177,3 +179,25 @@ assert.equal(signedPaths.length, 1);
 verified = false;
 assert.equal((await signed("fixture-advertiser/2026-10-01/proof.png")).status, 401);
 console.log("Image access checks passed: viewer read, advertiser boundary, canonical paths, verified identity.");
+
+verified = true; active = true; access = "editor";
+const mediaRow = { platform: "네이버", product: "GFA", creativeName: "소재 A", periodStart: "2026-10-01", periodEnd: "2026-10-31", budget: 1000 };
+const mixInput = { advertiser: "자코모", month: "2026-10", rows: [mediaRow], expectedUpdatedAt: null };
+const saveMix = (input, token=true) => handler(new Request("https://example.com", { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer fixture" } : {}) }, body: JSON.stringify({ action: "save_media_mix", input }) }));
+assert.equal((await saveMix(mixInput, false)).status, 401);
+access = "viewer"; assert.equal((await saveMix(mixInput)).status, 403); access = "editor";
+for (const input of [{...mixInput,month:"2026-13"},{...mixInput,rows:[]},{...mixInput,rows:[{...mediaRow,budget:-1}]},{...mixInput,rows:[{...mediaRow,periodStart:"2026-02-30"}]},{...mixInput,rows:[{...mediaRow,periodStart:"2026-09-01",periodEnd:"2026-09-30"}]},{...mixInput,rows:[{...mediaRow,operationStatus:"unknown"}]}]) assert.equal((await saveMix(input)).status,400);
+const beforeMix = rows.report_imports.length;
+assert.equal((await saveMix(mixInput)).status,200);
+assert.equal(rows.report_imports.length,beforeMix+1);
+const mix = rows.report_imports.find(row=>row.source_sheet === "media-mix");
+assert.equal(mix.metadata.bundle.placements.length,0);
+assert.equal(mix.metadata.bundle.sourceKind,"media_mix");
+assert.equal((await saveMix(mixInput)).status,409);
+const nextMix = {...mixInput,expectedUpdatedAt:mix.updated_at,rows:[{...mediaRow,budget:2000}]};
+assert.equal((await saveMix(nextMix)).status,200);
+assert.equal(rows.report_imports.length,beforeMix+1);
+assert.equal(mix.metadata.bundle.mediaPlan[0].budget,2000);
+concurrent = true; assert.equal((await saveMix({...nextMix,expectedUpdatedAt:mix.updated_at})).status,409); concurrent = false;
+assert.equal(mix.metadata.bundle.mediaPlan[0].budget,2000);
+console.log("Media mix Edge checks passed: authentication, viewer denial, strict dates/month/budget/status, create/update and stale/concurrent conflict; performance data preserved.");

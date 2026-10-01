@@ -20,7 +20,8 @@ import {
   type DailyPerformanceRow,
   type ReportingRow,
 } from "@/lib/reporting-data";
-import { canonicalMedia, inferMediaMentions, normalizeInsightText } from "@/lib/media-normalization";
+import { canonicalMedia, inferMediaMentions } from "@/lib/media-normalization";
+import { InsightEntry } from "@/components/daily-insight-history";
 import styles from "./performance.module.css";
 
 function monthStart(month: string) { return `${month}-01`; }
@@ -146,8 +147,8 @@ export default function PerformancePage() {
 
   useEffect(() => {
     const load = () => {
-      const nextDatasets = publishedDatasetsFor(advertiser, month);
-      const nextSnapshots = publishedSnapshotsFor(advertiser, month);
+      const nextDatasets = publishedDatasetsFor(advertiser, month).filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
+      const nextSnapshots = publishedSnapshotsFor(advertiser, month).filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
       const nextInsights = publishedInsightsFor(advertiser, month);
       setDatasets(nextDatasets);
       setSnapshots(nextSnapshots);
@@ -210,10 +211,7 @@ export default function PerformancePage() {
   }, [creativeRows, selectedMedia]);
 
   function relevantInsights(media: string) {
-    return periodInsights.map((item) => {
-      const scopedNotes = item.notes.filter((note) => inferMediaMentions(note).includes(media));
-      return scopedNotes.length ? { ...item, notes: scopedNotes } : null;
-    }).filter((item): item is PublishedInsight => item !== null).slice(-2);
+    return periodInsights.filter(item => item.notes.some(note => inferMediaMentions(note).includes(media)));
   }
 
   function applyPreset(kind: "month" | "early" | "middle" | "late") {
@@ -350,7 +348,7 @@ export default function PerformancePage() {
 
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>메일 성과 요약</span></div>
-                <div className={styles.insightList}>{mediaInsights.map((item) => <div className={styles.insightItem} key={item.key}><strong>{item.reportDate}</strong><div>{item.notes.slice(0, 8).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>)}</div></div>)}</div>
+                <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>
               </div>}
 
               <div className={styles.detailBar}>
@@ -385,7 +383,7 @@ export default function PerformancePage() {
               </div>
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
-                <div className={styles.insightList}>{mediaInsights.map((item) => <div className={styles.insightItem} key={item.key}><strong>{item.reportDate}</strong><div>{item.notes.slice(0, 8).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>)}</div></div>)}</div>
+                <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>
               </div>}
             </article></LayoutPanel>;
           })}

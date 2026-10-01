@@ -1,69 +1,68 @@
 "use client";
-
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
+import { MediaMixEditor } from "@/components/media-mix-editor";
 import { useWorkspace } from "@/components/workspace-context";
 import { publishedDatasetsFor, type PublishedDataset } from "@/lib/daily-report-store";
 import { formatKrw, mediaPlansFromDatasets } from "@/lib/reporting-data";
-import { canonicalMedia, canonicalProduct } from "@/lib/media-normalization";
+import { canonicalMedia } from "@/lib/media-normalization";
+import { monthBounds, planOnDate, planOverlapsMonth, productKey, scheduleProduct } from "@/lib/schedule-data";
 import styles from "./schedule.module.css";
 
 export default function SchedulePage() {
-  const { advertiser, month } = useWorkspace();
-  const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    const load = () => setDatasets(publishedDatasetsFor(advertiser, month));
-    load(); window.addEventListener("media-report-daily-updated", load); window.addEventListener("storage", load);
-    return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
-  }, [advertiser, month]);
-
-  const plans = useMemo(() => mediaPlansFromDatasets(datasets)
-    .filter((item) => !item.periodStart || item.periodStart.startsWith(month))
-    .map((item) => ({
-      ...item,
-      media: canonicalMedia(item.platform),
-      canonicalProduct: canonicalProduct(item.platform, item.product || item.placement, item.sourceSheet),
-    })), [datasets, month]);
-
-  useEffect(() => setSelectedIndex(0), [advertiser, month, plans.length]);
-
-  const selected = plans[selectedIndex] ?? plans[0];
-  const monthNumber = Number(month.slice(5,7));
-  const daysInMonth = new Date(Number(month.slice(0,4)), monthNumber, 0).getDate();
-  const canonicalMediaCount = new Set(plans.map((item) => item.media)).size;
-
-  const timeline = useMemo(() => plans.map((plan, index) => {
-    const start = Number((plan.periodStart || `${month}-01`).slice(-2)) || 1;
-    const end = Number((plan.periodEnd || `${month}-${daysInMonth}`).slice(-2)) || daysInMonth;
-    return { plan, index, start: Math.max(1,start), end: Math.min(daysInMonth,end) };
-  }), [plans, month, daysInMonth]);
-
+  const {advertiser,month,session} = useWorkspace();
+  return <Schedule key={`${session?.user.email}:${advertiser}:${month}`} />;
+}
+function Schedule() {
+  const { advertiser, month, setMonth, session } = useWorkspace();
+  const [datasets,setDatasets] = useState<PublishedDataset[]>([]);
+  const [hidden,setHidden] = useState<string[]>([]), [filterReady,setFilterReady] = useState(false);
+  const [query,setQuery] = useState(""), [selectedId,setSelectedId] = useState(""), [selectedDate,setSelectedDate] = useState(month+"-01");
+  const preferenceKey = `media-report-calendar:${session?.user.email}:${advertiser}:${month}`;
+  useEffect(() => { const load=()=>setDatasets(publishedDatasetsFor(advertiser,month)); load(); window.addEventListener("media-report-daily-updated",load);
+    return ()=>window.removeEventListener("media-report-daily-updated",load); },[advertiser,month]);
+  useEffect(()=>{try { const parsed=JSON.parse(localStorage.getItem(preferenceKey)||"[]"); if(Array.isArray(parsed))setHidden(parsed.filter(item=>typeof item==="string")); }catch{} setFilterReady(true);},[preferenceKey]);
+  useEffect(()=>{if(filterReady)try{localStorage.setItem(preferenceKey,JSON.stringify(hidden));}catch{}},[hidden,filterReady,preferenceKey]);
+  const plans=useMemo(()=>mediaPlansFromDatasets(datasets).filter(plan=>planOverlapsMonth(plan,month)).map((plan,index)=>({...plan,id:String(index),media:canonicalMedia(plan.platform),adProduct:scheduleProduct(plan),productKey:productKey(plan)})),[datasets,month]);
+  const groups=useMemo(()=>{
+    const map=new Map<string,Map<string,typeof plans>>();
+    for(const plan of plans){ const products=map.get(plan.media)||new Map<string,typeof plans>(); const rows=products.get(plan.productKey)||[];rows.push(plan);products.set(plan.productKey,rows);map.set(plan.media,products); }
+    return [...map].map(([media,products])=>({media,products:[...products].map(([key,rows])=>({key,label:rows[0].adProduct,rows}))}));
+  },[plans]);
+  const visible=plans.filter(plan=>!hidden.includes(plan.productKey) && `${plan.media} ${plan.adProduct} ${plan.placement} ${plan.creativeName||""}`.toLowerCase().includes(query.toLowerCase()));
+  const selected=visible.find(plan=>plan.id===selectedId);
+  const dayPlans=visible.filter(plan=>planOnDate(plan,selectedDate));
+  const unscheduled=visible.filter(plan=>!plan.periodStart || !plan.periodEnd);
+  const bounds=monthBounds(month), cellCount=Math.ceil((bounds.offset+bounds.days)/7)*7;
+  const today=new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  function toggle(key:string){setHidden(current=>current.includes(key)?current.filter(item=>item!==key):[...current,key]);}
+  function shiftMonth(amount:number){const [year,m]=month.split("-").map(Number);setMonth(new Date(Date.UTC(year,m-1+amount,1)).toISOString().slice(0,7));}
+  function choose(id:string,date?:string){setSelectedId(id);if(date)setSelectedDate(date);}
+  const card=(plan:typeof plans[number])=><button type="button" key={plan.id} className={`${styles.planCard} ${selected?.id===plan.id?styles.planActive:""}`} onClick={()=>choose(plan.id)}><strong>{plan.media} › {plan.adProduct}</strong><span>{plan.creativeName||"소재명 미입력"}</span><small>{plan.periodStart && plan.periodEnd?`${plan.periodStart} ~ ${plan.periodEnd}`:"일정 미입력"} · {plan.operationStatus||"집행상태 미입력"}</small></button>;
   return <>
-    <div className="page-head refined-head"><div><div className="eyebrow">Schedule · MEDIA → PRODUCT</div><h1 className="page-title">{advertiser} 광고 온에어</h1><p className="page-desc">Media Mix를 매체 → 광고상품 기준으로 통합해 일정과 운영 조건을 보여줍니다. 동일 매체의 표기 차이는 자동 정규화합니다.</p></div><div className="page-meta"><span className="view-pill">{month}</span></div></div>
-<LayoutCanvas page="schedule">
-
-    {!plans.length ? <LayoutPanel id="schedule:운영안 일정 데이터가 없습니다.:1" title="운영안 일정 데이터가 없습니다."><section className="card card-pad empty-state"><h2>운영안 일정 데이터가 없습니다.</h2><p>Media Mix 또는 운영안 문서를 반영하면 매체별 온에어 기간이 자동 생성됩니다. 임의 일정은 표시하지 않습니다.</p></section></LayoutPanel> : <>
-      <LayoutPanel id="schedule:월 운영 요약:2" title="월 운영 요약"><section className={styles.monthSummary}>
-        <div className={styles.summaryLead}><span>{month}</span><strong>{monthNumber}월 운영 요약</strong><p>운영안 {plans.length}개 · 매체 {canonicalMediaCount}개</p></div>
-        <div className={styles.promoSummary}><div className={styles.promoCard}><span>프로모션</span><strong>원본 데이터 대기</strong><small>프로모션 일정 문서/메일이 연결되면 자동 반영</small></div></div>
-        <div className={styles.summaryStats}><div><span>운영안</span><strong>{plans.length}</strong></div><div><span>매체</span><strong>{canonicalMediaCount}</strong></div><div><span>Source</span><strong>{new Set(plans.map(item=>item.sourceSheet)).size}</strong></div></div>
-      </section></LayoutPanel>
-
-      <LayoutPanel id="schedule:매체별 온에어 타임라인:3" title="매체별 온에어 타임라인"><section className={styles.timelineSection}>
-        <div className={styles.sectionHead}><div><h2>매체별 온에어 타임라인</h2><p>매체 아래 광고상품 단위로 일정이 정리됩니다.</p></div><span>{month}</span></div>
-        <div className={styles.gantt}>
-          <div className={styles.ganttHeader}><span>매체 / 광고상품</span><div className={styles.ganttDays}>{[1,5,10,15,20,25,daysInMonth].filter((v,i,a)=>a.indexOf(v)===i).map(day=><i key={day}>{day}</i>)}</div></div>
-          {timeline.map(({plan,index,start,end}) => {
-            const left=((start-1)/daysInMonth)*100; const width=((end-start+1)/daysInMonth)*100;
-            return <button key={`${plan.media}-${plan.canonicalProduct}-${index}`} type="button" className={`${styles.ganttRow} ${selectedIndex===index?styles.ganttRowActive:""}`} onClick={()=>setSelectedIndex(index)}><div className={styles.ganttName}><span className={`${styles.categoryDot} ${styles.digital}`}/><div><strong>{plan.media}</strong><small>{plan.canonicalProduct}</small></div></div><div className={styles.ganttTrack}><span className={`${styles.ganttBar} ${styles.digital}`} style={{left:`${left}%`,width:`${width}%`}}>{start}–{end}</span></div><span className={styles.viewPlacement}>운영안 보기 →</span></button>;
-          })}
+    <div className="page-head refined-head"><div><div className="eyebrow">Schedule</div><h1 className="page-title">{advertiser} 운영 캘린더</h1><p className="page-desc">매체 → 광고상품 → 소재 순서로 일정을 확인합니다. 상품 표시를 ON/OFF해 필요한 일정만 보세요.</p></div><div className="page-meta"><span className="view-pill">{month}</span></div></div>
+    <LayoutCanvas page="schedule">
+      <LayoutPanel id="schedule:media-mix" title="월 미디어믹스"><MediaMixEditor /></LayoutPanel>
+      <LayoutPanel id="schedule:calendar" title="운영 캘린더"><section className={styles.section}>
+        <div className={styles.toolbar}><div><h2>{month.replace("-","년 ")}월</h2><p>{groups.length}개 매체 · {new Set(plans.map(plan=>plan.productKey)).size}개 상품 · {plans.length}개 운영안</p></div><div className={styles.nav}><button type="button" className="btn" onClick={()=>shiftMonth(-1)} aria-label="이전 월">←</button><button type="button" className="btn" onClick={()=>setMonth(today.slice(0,7))}>이번 달</button><button type="button" className="btn" onClick={()=>shiftMonth(1)} aria-label="다음 월">→</button></div></div>
+        <div className={styles.filters}><label>매체·상품·소재 검색<input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="네이버, GFA, 소재명" /></label><div className={styles.nav}><button type="button" className="btn" onClick={()=>setHidden([])}>전체 ON</button><button type="button" className="btn" onClick={()=>setHidden([...new Set(plans.map(plan=>plan.productKey))])}>전체 OFF</button></div></div>
+        <p className={styles.help}>ON/OFF는 캘린더 표시 설정입니다. 실제 집행상태는 미디어믹스에서 수정하세요. 표시 설정은 계정·광고주·월별로 유지됩니다.</p>
+        <div className={styles.workspace}>
+          <aside className={styles.tree} aria-label="매체 상품 소재 분류">{!groups.length && <p>미디어믹스를 저장하면 분류가 표시됩니다.</p>}{groups.map(group=><details key={group.media} open><summary>{group.media}</summary>{group.products.map(product=><div className={styles.product} key={product.key}><div className={styles.productHead}><strong>{product.label}</strong><button type="button" role="switch" aria-checked={!hidden.includes(product.key)} aria-label={`${group.media} ${product.label} 캘린더 표시`} className={hidden.includes(product.key)?styles.switchOff:styles.switchOn} onClick={()=>toggle(product.key)}>{hidden.includes(product.key)?"OFF":"ON"}</button></div><details><summary>소재 {product.rows.length}개</summary>{product.rows.map(plan=><button type="button" className={styles.leaf} key={plan.id} disabled={hidden.includes(product.key)} onClick={()=>choose(plan.id,plan.periodStart ? plan.periodStart<bounds.start?bounds.start:plan.periodStart : undefined)}>{plan.creativeName||"소재명 미입력"}<small>{plan.placement || plan.creativeType || "지면 미입력"}</small></button>)}</details></div>)}</details>)}</aside>
+          <div className={styles.calendarArea}><div className={styles.calendarScroll}><div className={styles.calendar} aria-label={`${month} 월간 캘린더`}>
+            <div className={styles.weekdays}>{["일","월","화","수","목","금","토"].map(day=><div key={day}>{day}</div>)}</div>
+            <div className={styles.grid}>{Array.from({length:cellCount},(_,index)=>{const day=index-bounds.offset+1;if(day<1||day>bounds.days)return <div key={index} className={styles.outside}/>;
+              const date=`${month}-${String(day).padStart(2,"0")}`, events=visible.filter(plan=>planOnDate(plan,date));
+              return <div key={date} className={`${styles.day} ${date===today?styles.today:""} ${date===selectedDate?styles.selectedDay:""}`}><button className={styles.dateButton} type="button" aria-label={`${date} 일정 보기`} aria-pressed={date===selectedDate} onClick={()=>{setSelectedDate(date);setSelectedId("");}}>{day}<span>{events.length?`${events.length}건`:""}</span></button><div className={styles.events}>{events.slice(0,3).map(plan=><button type="button" key={plan.id} className={`${styles.event} ${plan.operationStatus==="중단"||plan.operationStatus==="종료"?styles.inactive:""}`} title={`${plan.media} › ${plan.adProduct} › ${plan.creativeName||"소재명 미입력"}`} onClick={()=>choose(plan.id,date)}><strong>{plan.media} · {plan.adProduct}</strong><span>{plan.creativeName||"소재명 미입력"}</span></button>)}{events.length>3 && <button type="button" className={styles.more} onClick={()=>{setSelectedDate(date);setSelectedId("");}}>+{events.length-3}개 모두 보기</button>}</div></div>;
+            })}</div>
+          </div></div>{!plans.length && <p className={styles.empty}>선택한 월의 운영안이 없습니다. 위에서 미디어믹스를 업데이트해주세요.</p>}{plans.length>0 && !visible.length && <p className={styles.empty}>표시 중인 상품이 없습니다. ON 설정과 검색어를 확인해주세요.</p>}
+          </div>
         </div>
       </section></LayoutPanel>
-
-      {selected && <LayoutPanel id="schedule:selected-product" title="선택 상품 상세"><section className="card section-space report-panel"><div className="report-panel-head"><div><h2>{selected.media} · {selected.canonicalProduct}</h2><p>운영 조건 · 원본 {selected.sourceSheet}</p></div><span className="view-pill">Source plan</span></div><div className="table-wrap report-table-wrap"><table className="report-table"><tbody><tr><th>집행기간</th><td>{selected.periodStart || "-"} – {selected.periodEnd || "-"}</td><th>예산</th><td>{formatKrw(selected.budget)}</td></tr><tr><th>기기</th><td>{selected.device || "-"}</td><th>소재</th><td>{selected.creativeType || "-"}</td></tr><tr><th>타겟팅</th><td colSpan={3}>{selected.target || "-"}</td></tr></tbody></table></div><div className="card-pad empty-inline">게재지면 이미지/랜딩 URL은 Creative & Placement 원본이 연결되면 이 광고상품과 자동 매칭합니다.</div></section></LayoutPanel>}
-    </>}
-  </LayoutCanvas>
-</>;
+      <LayoutPanel id="schedule:day-details" title="일자별 상세"><section className={styles.section}><div className={styles.toolbar}><div><h2>{selectedDate} 운영 일정</h2><p>날짜를 누르면 해당 일자의 모든 소재와 상품을 확인할 수 있습니다.</p></div><span>{dayPlans.length}건</span></div><div className={styles.cardList}>{dayPlans.map(card)}</div>{!dayPlans.length && <p className={styles.empty}>표시할 일정이 없습니다.</p>}</section></LayoutPanel>
+      {selected && <LayoutPanel id="schedule:selected-product" title="선택 소재 상세"><section className={styles.section}><div className={styles.toolbar}><div><h2>{selected.media} › {selected.adProduct} › {selected.creativeName||"소재명 미입력"}</h2><p>운영안 원본: {selected.sourceSheet}</p></div><span className="view-pill">{selected.operationStatus||"집행상태 미입력"}</span></div><dl className={styles.detail}>{[["집행기간",`${selected.periodStart||"미입력"} ~ ${selected.periodEnd||"미입력"}`],["계획 예산",formatKrw(selected.budget)],["게재지면",selected.placement||"미입력"],["소재 유형",selected.creativeType||"미입력"],["기기",selected.device||"미입력"],["타겟팅",selected.target||"미입력"],["예상 노출",selected.expectedImpressions?.toLocaleString("ko-KR")??"미입력"],["예상 클릭",selected.expectedClicks?.toLocaleString("ko-KR")??"미입력"]].map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><Link className="btn" href="/creative">소재·게재지면 열기</Link></section></LayoutPanel>}
+      {!!unscheduled.length && <LayoutPanel id="schedule:unscheduled" title="일정 미입력"><section className={styles.section}><h2>일정 미입력 · {unscheduled.length}건</h2><p className={styles.help}>기간을 입력하면 캘린더에 표시됩니다.</p><div className={styles.cardList}>{unscheduled.map(card)}</div></section></LayoutPanel>}
+    </LayoutCanvas>
+  </>;
 }

@@ -44,6 +44,8 @@ export type CreativeDailyFact = {
 };
 
 export type MediaPlanFact = {
+  creativeName?: string;
+  operationStatus?: "예정" | "집행 중" | "중단" | "종료";
   platform: string;
   product: string;
   placement: string;

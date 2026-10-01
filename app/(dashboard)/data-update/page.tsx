@@ -1,6 +1,7 @@
 "use client";
 
 import { DailyReportIntakeV2 } from "./daily-report-intake-v2";
+import { MediaMixEditor } from "@/components/media-mix-editor";
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
 import { LookerReportIntake } from "./looker-report-intake";
 import { PlacementReportIntake } from "./placement-report-intake";
@@ -18,6 +19,7 @@ export default function DataUpdatePage() {
         <div className="page-meta"><span className="view-pill">원본 자료 전용</span></div>
       </div>
 <LayoutCanvas page="data-update">
+      <LayoutPanel id="data-update:media-mix" title="월 미디어믹스"><MediaMixEditor /></LayoutPanel>
 
       <LayoutPanel id="data-update:데일리 리포트 수집:1" title="데일리 리포트 수집"><DailyReportIntakeV2 /></LayoutPanel>
       <LayoutPanel id="data-update:성과 리포트 업로드:2" title="성과 리포트 업로드"><LookerReportIntake /></LayoutPanel>

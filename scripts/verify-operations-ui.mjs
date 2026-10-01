@@ -90,7 +90,7 @@ try {
   await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
   await visible(page.getByText("이전일 전체 상세", { exact: true }));
   await visible(page.getByText("추가 매체 인사이트", { exact: true }));
-  const entry = page.locator("details").filter({ has: page.getByText("첫째 날 운영", { exact: true }) });
+  const entry = page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "첫째 날 운영" }) });
   await entry.getByRole("button", { name: "문구 수정", exact: true }).click();
   await entry.getByLabel("인사이트 문구", { exact: true }).fill("취소할 문구");
   await entry.getByRole("button", { name: "취소", exact: true }).click();
