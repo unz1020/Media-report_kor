@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import {
@@ -22,6 +22,9 @@ import {
 } from "@/lib/reporting-data";
 import { canonicalMedia, inferMediaMentions } from "@/lib/media-normalization";
 import { InsightEntry } from "@/components/daily-insight-history";
+import { PerformanceCharts } from "@/components/performance-charts";
+import { PlacementPerformanceMatrix, MetricsMatrix } from "@/components/placement-performance-matrix";
+import { comparisonMetrics, placementMetricKey } from "@/lib/performance-visuals";
 import styles from "./performance.module.css";
 
 function monthStart(month: string) { return `${month}-01`; }
@@ -121,13 +124,6 @@ function renderTotal(media: string, rows: UiRow[], presence: MetricPresence) {
   return { media, summary, guaranteed, achievement, cpm, cpc, cpv, vtr };
 }
 
-function creativeTotal(rows: UiCreativeRow[]) {
-  const impressions = rows.reduce((sum, row) => sum + row.impressions, 0);
-  const clickValues = rows.map((row) => row.clicks).filter((value): value is number => value !== null && value !== undefined);
-  const clicks = clickValues.length ? clickValues.reduce((sum, value) => sum + value, 0) : null;
-  return { impressions, clicks, ctr: impressions > 0 && clicks !== null ? clicks / impressions * 100 : null };
-}
-
 export default function PerformancePage() {
   const { advertiser, month } = useWorkspace();
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
@@ -137,8 +133,10 @@ export default function PerformancePage() {
   const [endDate, setEndDate] = useState(monthEnd(month));
   const [selectedMedia, setSelectedMedia] = useState("전체 매체");
   const [viewMode, setViewMode] = useState<ViewMode>("placement");
+  const datesInitialized = useRef(false);
 
   useEffect(() => {
+    datesInitialized.current = false;
     setStartDate(monthStart(month));
     setEndDate(monthEnd(month));
     setSelectedMedia("전체 매체");
@@ -155,7 +153,7 @@ export default function PerformancePage() {
       setInsights(nextInsights);
       const latestDate = nextSnapshots.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1)
         || nextDatasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1);
-      if (latestDate) setEndDate(latestDate);
+      if (latestDate && !datesInitialized.current) { setEndDate(latestDate); datesInitialized.current = true; }
     };
     load();
     window.addEventListener("media-report-daily-updated", load);
@@ -209,6 +207,11 @@ export default function PerformancePage() {
     }
     return [...map.entries()].map(([media, rows]) => ({ media, rows }));
   }, [creativeRows, selectedMedia]);
+
+  const scopedDaily = useMemo(() => dailyRows.filter(row => selectedMedia === "전체 매체" || canonicalMedia(row.platform) === selectedMedia), [dailyRows, selectedMedia]);
+  const comparisons = useMemo(() => viewMode === "placement"
+    ? comparisonMetrics(placementGroups.flatMap(group => group.rows), placementMetricKey, row => `${row.placement} (${row.media})`)
+    : comparisonMetrics(creativeGroups.flatMap(group => group.rows), row => `${placementMetricKey(row)}::${row.creative}`, row => `${row.creative} · ${row.placement} (${row.media})`), [viewMode, placementGroups, creativeGroups]);
 
   function relevantInsights(media: string) {
     return periodInsights.filter(item => item.notes.some(note => inferMediaMentions(note).includes(media)));
@@ -279,6 +282,10 @@ export default function PerformancePage() {
           {mediaNames.map((media) => <button key={media} className={selectedMedia === media ? styles.mediaFilterActive : styles.mediaFilter} onClick={() => setSelectedMedia(media)}>{media}</button>)}
         </div></LayoutPanel>
 
+        <LayoutPanel id="performance:성과 그래프:9" title="성과 그래프">
+          <PerformanceCharts comparison={comparisons} dailyRows={scopedDaily} startDate={startDate} endDate={endDate} mode={viewMode} />
+        </LayoutPanel>
+
         {viewMode === "placement" ? <LayoutGroup>
           {placementGroups.map((group) => {
             const presence = metricPresence(group.media, group.rows);
@@ -293,6 +300,9 @@ export default function PerformancePage() {
                 <div className={styles.summaryMeta}><span>성과 기간 {startDate} ~ {endDate}</span><span>{group.rows.length}개 광고 지면</span></div>
               </header>
 
+              <PlacementPerformanceMatrix media={group.media} rows={group.rows} dailyRows={mediaDaily} />
+              <details className={styles.detailBlock}>
+                <summary>집행액·보장 노출·상세 지표 보기</summary>
               <div className={styles.summaryTableWrap}>
                 <table className={styles.summaryTable}>
                   <thead><tr>
@@ -346,6 +356,8 @@ export default function PerformancePage() {
                 </table>
               </div>
 
+              </details>
+
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>
@@ -361,26 +373,14 @@ export default function PerformancePage() {
           })}
         </LayoutGroup> : creativeGroups.length ? <LayoutGroup>
           {creativeGroups.map((group) => {
-            const total = creativeTotal(group.rows);
+            const columns = comparisonMetrics(group.rows, row => `${placementMetricKey(row)}::${row.creative}`, row => `${row.creative} · ${row.placement}`);
             const mediaInsights = relevantInsights(group.media);
             return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
               <header className={styles.summaryHeader}>
                 <div><span>매체</span><h2>{group.media}</h2></div>
-                <div className={styles.summaryMeta}><span>전일 1일 성과 · {endDate}</span><span>{group.rows.length}개 소재</span></div>
+                <div className={styles.summaryMeta}><span>기준일 1일 성과 · {endDate}</span><span>{group.rows.length}개 소재</span></div>
               </header>
-              <div className={styles.summaryTableWrap}>
-                <table className={styles.summaryTable}>
-                  <thead><tr><th>매체</th><th>광고 지면</th><th>소재</th><th>노출</th><th>클릭</th><th>CTR(%)</th></tr></thead>
-                  <tbody>
-                    {group.rows.map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${row.creative}-${index}`}>
-                      {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}>{group.media}</td>}
-                      <td className={styles.placementCell}>{row.placement}</td><td className={styles.placementCell}>{row.creative}</td>
-                      <td className={styles.numCell}>{formatBareCount(row.impressions)}</td><td className={styles.numCell}>{formatBareCount(row.clicks)}</td><td className={styles.numCell}>{formatRate(row.ctr)}</td>
-                    </tr>)}
-                    <tr className={styles.totalRow}><td colSpan={3}>합계 · {endDate}</td><td className={styles.numCell}>{formatBareCount(total.impressions)}</td><td className={styles.numCell}>{formatBareCount(total.clicks)}</td><td className={styles.numCell}>{formatRate(total.ctr)}</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              <MetricsMatrix columns={columns} caption={`${group.media} 소재별 성과`} summaryLabel={`${endDate} 성과`} emptyNote="선택한 기준일의 소재별 하루 성과입니다." />
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>

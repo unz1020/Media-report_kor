@@ -5,6 +5,7 @@ import { hydratePublishedDailyState, publishedDatasetsFor, type PublishedDataset
 import { latestMediaMix, mediaPlansFromDatasets, formatKrw } from "@/lib/reporting-data";
 import type { MediaPlanFact } from "@/lib/daily-report-parser";
 import { normalizeMediaMix } from "@/supabase/functions/reporting-store/media-plan-input";
+import { parseMediaMixFile } from "@/lib/media-mix-upload";
 import styles from "./media-mix-editor.module.css";
 
 function emptyRow(): MediaPlanFact {
@@ -23,9 +24,10 @@ function Editor() {
   const [sourceFile,setSourceFile] = useState("직접 입력");
   const [busy,setBusy] = useState(false), [error,setError] = useState(""), [notice,setNotice] = useState("");
   const mounted = useRef(false);
+  const parsing = useRef<AbortController | null>(null);
   useEffect(() => { mounted.current = true; const load = () => setDatasets(publishedDatasetsFor(advertiser,month)); load();
     window.addEventListener("media-report-daily-updated",load);
-    return () => { mounted.current = false; window.removeEventListener("media-report-daily-updated",load); };
+    return () => { mounted.current = false; parsing.current?.abort(); window.removeEventListener("media-report-daily-updated",load); };
   },[advertiser,month]);
   const saved = latestMediaMix(datasets), plans = mediaPlansFromDatasets(datasets);
   function begin() { setDraft(plans.length ? plans.map(row => ({...row})) : [emptyRow()]); setVersion(saved?.publishedAt || null); setSourceFile((saved?.bundle as { originalSourceFile?: string })?.originalSourceFile || "직접 입력"); setError(""); setNotice(""); }
@@ -34,16 +36,15 @@ function Editor() {
     setDraft(current => current?.map((row,i) => i === index ? { ...row, [field]: numeric ? value === "" ? null : Number(value) : value } : row) ?? null);
   }
   async function importFile(file: File) {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("미디어믹스 파일을 분석하고 있습니다…");
+    parsing.current?.abort();
+    const controller = new AbortController(); parsing.current = controller;
     try {
-      if (file.size > 8 * 1024 * 1024) throw new Error("미디어믹스 파일은 8MB 이하로 올려주세요.");
-      if (!/\.(xlsx|xls|xlsb|csv)$/i.test(file.name)) throw new Error("Excel 또는 CSV 파일을 선택해주세요.");
-      const parser = await import("@/lib/media-mix-workbook");
-      const rows = parser.parseMediaMixWorkbook(await file.arrayBuffer(),month);
+      const rows = await parseMediaMixFile(file,month,controller.signal);
       if (rows.length > 500) throw new Error("미디어믹스는 최대 500행까지 지원합니다.");
       if (!mounted.current) return;
       setDraft(rows); setSourceFile(file.name); setNotice(`${rows.length}행을 불러왔습니다. 광고주·월·기간·예산을 검수한 뒤 저장해주세요.`);
-    } catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : "파일 분석 실패"); }
+    } catch (error) { if (mounted.current) { setNotice(""); setError(error instanceof Error ? error.message : "파일 분석 실패"); } }
     finally { if (mounted.current) setBusy(false); }
   }
   async function save() {
@@ -68,7 +69,7 @@ function Editor() {
     <div className={styles.head}><div><h2>{month} 미디어믹스</h2><p>{advertiser} · {plans.length}개 운영안 · 계획 예산 {formatKrw(plans.some(row=>row.budget != null) ? plans.reduce((sum,row)=>sum+(row.budget || 0),0) : null)}</p></div>
       {!draft && canEdit && <button type="button" className="btn primary" disabled={dataSyncState !== "ready"} onClick={begin}>미디어믹스 업데이트</button>}
     </div>
-    <p>월별 Excel을 불러오거나 직접 입력하세요. 저장한 최신 운영안을 공유하며 이전 변경 이력은 보존합니다.</p>
+    <p>월별 Excel·CSV 파일을 최대 30MB까지 불러오거나 직접 입력하세요. 저장한 최신 운영안을 공유하며 이전 변경 이력은 보존합니다.</p>
     {saved && <small>마지막 반영: {new Date(saved.publishedAt).toLocaleString("ko-KR",{timeZone:"Asia/Seoul"})}</small>}
     {draft && canEdit && <>
       <div className={styles.actions}><label className="btn">Excel 불러오기<input aria-label="미디어믹스 Excel" type="file" accept=".xlsx,.xls,.xlsb,.csv" disabled={busy} onChange={event=>{const file=event.target.files?.[0]; if(file) void importFile(file); event.target.value="";}} /></label>
