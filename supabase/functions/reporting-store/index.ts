@@ -298,7 +298,7 @@ Deno.serve(async (req: Request) => {
       catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_MEDIA_MIX" }, 400); }
       const monthEnd = new Date(Date.UTC(Number(plan.month.slice(0, 4)), Number(plan.month.slice(5)), 0)).toISOString().slice(0, 10);
       const bundle = { advertiser: advertiser.name, reportDate: plan.month + "-01", campaignStart: plan.month + "-01", campaignEnd: monthEnd,
-        sourceFile: `[media-mix] ${plan.month}`, originalSourceFile: plan.sourceFile, mediaMixChangeMemo: plan.changeMemo, sourceId: "monthly-media-mix", sourceKind: "media_mix",
+        sourceFile: `[media-mix] ${plan.month}`, originalSourceFile: plan.sourceFile, mediaMixChangeMemo: plan.changeMemo, mediaMixSourceReview: plan.sourceReview, sourceId: "monthly-media-mix", sourceKind: "media_mix",
         placements: [], dailyPerformance: [], creativeDailyPerformance: [], operationNotes: [], mediaPlan: plan.rows,
         parsedSheets: [], ignoredSheets: [], mailChecks: [], qa: {} };
       const importId = await getOrCreateImport({ advertiserId: advertiser.id, reportDate: bundle.reportDate,

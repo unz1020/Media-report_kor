@@ -11,6 +11,7 @@ import {
   type PublishedInsight,
 } from "@/lib/daily-report-store";
 import {
+  mediaPlansFromDatasets,
   creativePerformanceFromDatasets,
   dailyPerformanceFromDatasets,
   periodRowsFromSnapshots,
@@ -22,6 +23,8 @@ import {
 } from "@/lib/reporting-data";
 import { canonicalMedia, inferMediaMentions } from "@/lib/media-normalization";
 import { InsightEntry } from "@/components/daily-insight-history";
+import type { MediaPlanFact } from "@/lib/daily-report-parser";
+import { MediaPlanPerformance } from "@/components/media-plan-performance";
 import { PerformanceCharts } from "@/components/performance-charts";
 import { PlacementPerformanceMatrix, MetricsMatrix } from "@/components/placement-performance-matrix";
 import { comparisonMetrics, placementMetricKey } from "@/lib/performance-visuals";
@@ -127,6 +130,7 @@ function renderTotal(media: string, rows: UiRow[], presence: MetricPresence) {
 export default function PerformancePage() {
   const { advertiser, month } = useWorkspace();
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
+  const [mediaPlans, setMediaPlans] = useState<MediaPlanFact[]>([]);
   const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
   const [insights, setInsights] = useState<PublishedInsight[]>([]);
   const [startDate, setStartDate] = useState(monthStart(month));
@@ -145,7 +149,9 @@ export default function PerformancePage() {
 
   useEffect(() => {
     const load = () => {
-      const nextDatasets = publishedDatasetsFor(advertiser, month).filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
+      const allDatasets = publishedDatasetsFor(advertiser, month);
+      setMediaPlans(mediaPlansFromDatasets(allDatasets));
+      const nextDatasets = allDatasets.filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
       const nextSnapshots = publishedSnapshotsFor(advertiser, month).filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
       const nextInsights = publishedInsightsFor(advertiser, month);
       setDatasets(nextDatasets);
@@ -179,8 +185,8 @@ export default function PerformancePage() {
 
   const mediaNames = useMemo(() => {
     const rows = viewMode === "placement" ? placementRows : creativeRows;
-    return Array.from(new Set(rows.map((row) => row.media))).filter(Boolean).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [viewMode, placementRows, creativeRows]);
+    return Array.from(new Set([...rows.map((row) => row.media), ...mediaPlans.map(row => canonicalMedia(row.platform))])).filter(Boolean).sort((a, b) => a.localeCompare(b, "ko"));
+  }, [viewMode, placementRows, creativeRows, mediaPlans]);
 
   useEffect(() => {
     if (selectedMedia !== "전체 매체" && !mediaNames.includes(selectedMedia)) setSelectedMedia("전체 매체");
@@ -248,6 +254,7 @@ export default function PerformancePage() {
         <div className="page-meta"><span className="view-pill">{month}</span></div>
       </div>
 <LayoutCanvas page="performance">
+      {!!mediaPlans.length && <LayoutPanel id="performance:media-plan-comparison" title="미디어믹스 예상 실제 비교"><MediaPlanPerformance plans={mediaPlans} actual={placementRows} selectedMedia={selectedMedia} period={`${startDate} ~ ${endDate}`} /></LayoutPanel>}
 
       <LayoutPanel id="performance:조회 기간 · 필터:1" title="조회 기간 · 필터"><div className="report-toolbar performance-toolbar">
         <div className="toolbar-group">

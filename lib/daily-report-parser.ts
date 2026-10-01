@@ -45,6 +45,16 @@ export type CreativeDailyFact = {
 
 export type MediaPlanFact = {
   rowId?: string;
+  category?: string;
+  proposalStatus?: string;
+  scenario?: string;
+  sourceCell?: string;
+  sourceGroup?: string;
+  sourceKey?: string;
+  sourceNotes?: string;
+  expectedViews?: number | null;
+  expectedGrp?: number | null;
+  expectedCprp?: number | null;
   creativeName?: string;
   operationStatus?: "예정" | "집행 중" | "중단" | "종료";
   platform: string;
