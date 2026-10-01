@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
-const rootUrl = "http://127.0.0.1:3000";
+const rootUrl = "http://localhost:3000";
 let response = await fetch(rootUrl + "/api/reporting/store", { method: "POST", headers: { origin: rootUrl, "content-type": "application/json" }, body: JSON.stringify({ action: "save_manual_proof" }) });
 assert.equal(response.status, 401);
 response = await fetch(rootUrl + "/api/reporting/store", { method: "POST", headers: { origin: "https://foreign.example", "content-type": "application/json" }, body: "{}" });
@@ -67,17 +67,17 @@ async function chooseOctober() {
   await visible(page.getByText("DB 동기화 완료"));
 }
 try {
-  await page.goto("http://127.0.0.1:3000/overview");
+  await page.goto("http://localhost:3000/overview");
   await chooseOctober();
   await visible(page.getByRole("heading", { name: "2026-10-02 인사이트" }));
   await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
   await visible(page.getByText("이전일 전체 상세", { exact: true }));
   await visible(page.getByText("추가 매체 인사이트", { exact: true }));
-  await page.goto("http://127.0.0.1:3000/reports");
+  await page.goto("http://localhost:3000/reports");
   await chooseOctober();
   await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
   await visible(page.getByText("이전일 전체 상세", { exact: true }));
-  await page.goto("http://127.0.0.1:3000/creative");
+  await page.goto("http://localhost:3000/creative");
   await chooseOctober();
   await page.getByRole("button", { name: "지면 수동 등록", exact: true }).click();
   await page.getByLabel("매체", { exact: true }).fill("네이버 GFA");
