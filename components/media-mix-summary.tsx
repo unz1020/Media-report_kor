@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { MediaPlanFact } from '@/lib/daily-report-parser';
 import { mediaMixChanges, mediaMixGroups, type PlanChange } from '@/lib/media-mix-operations';
+import { canonicalMedia } from '@/lib/media-normalization';
 import { formatKrw } from '@/lib/reporting-data';
 import styles from './media-mix-editor.module.css';
 function valueText(value: unknown, label: string) {
@@ -18,8 +19,10 @@ export function PlanChanges({ changes }: { changes: PlanChange[] }) {
 }
 export function MediaMixSummary({ rows }: { rows: MediaPlanFact[] }) {
   const groups = mediaMixGroups(rows);
-  return groups.length > 0 ? <div className={styles.summaryWrap}><table className={styles.summary} aria-label="매체별 운영안 정리"><thead><tr><th>매체</th><th>광고상품</th><th>운영안</th><th>계획 예산</th><th>일정 미입력</th></tr></thead><tbody>
-    {groups.map(group => <tr key={group.media}><th scope="row">{group.media}</th><td>{[...group.products].join(' · ')}</td><td>{group.count}건</td><td>{formatKrw(group.budget)}</td><td>{group.undated ? `${group.undated}건` : '—'}</td></tr>)}
+  const budgetTotal = groups.reduce((s, g) => s + (g.budget || 0), 0);
+  const metrics = (media: string, field: 'expectedImpressions' | 'expectedClicks' | 'expectedViews' | 'expectedGrp') => { const values = rows.filter(r => canonicalMedia(r.platform) === media).map(r => r[field]).filter((v): v is number => typeof v === 'number'); return values.length ? Math.round(values.reduce((a, b) => a + b, 0)).toLocaleString('ko-KR') : '—'; };
+  return groups.length > 0 ? <div className={styles.summaryWrap}><table className={styles.summary} aria-label="매체별 운영안 정리"><thead><tr><th>매체</th><th>광고상품</th><th>운영안</th><th>계획 예산</th><th>예상 노출</th><th>예상 클릭</th><th>예상 조회</th><th>예상 GRP</th><th>일정 미입력</th></tr></thead><tbody>
+    {groups.map(group => <tr key={group.media}><th scope="row">{group.media}</th><td>{[...group.products].join(' · ')}</td><td>{group.count}건</td><td>{formatKrw(group.budget)}<span aria-hidden="true" className={styles.budgetBar} style={{ width: `${budgetTotal ? (group.budget || 0) / budgetTotal * 100 : 0}%` }} /></td>{(['expectedImpressions', 'expectedClicks', 'expectedViews', 'expectedGrp'] as const).map(field => <td key={field}>{metrics(group.media, field)}</td>)}<td>{group.undated ? `${group.undated}건` : '—'}</td></tr>)}
   </tbody></table></div> : null;
 }
 type HistoryVersion = { id: string; capturedAt: string; actor: string; rows: MediaPlanFact[]; sourceFile: string; changeMemo: string };

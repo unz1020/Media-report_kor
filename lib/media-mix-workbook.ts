@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import type { MediaPlanFact } from './daily-report-parser';
 import { PLAN_LABELS, type MediaMixAnalysis, type PlanField } from './media-mix-operations';
 import { canonicalMedia } from './media-normalization';
+import { analyzeProposalWorkbook } from './media-mix-source-analysis';
 const key = (value: unknown) => String(value ?? '').toLowerCase().replace(/[\s_()（）·%\-.:/]/g, '');
 const text = (value: unknown) => String(value ?? '').trim();
 const patterns: Partial<Record<PlanField, RegExp>> = {
@@ -86,13 +87,15 @@ function headerAt(matrix: unknown[][], index: number, sheetMedia: string): Heade
 }
 export function analyzeMediaMixWorkbook(bytes: ArrayBuffer, month: string): MediaMixAnalysis {
   const book = XLSX.read(bytes, { type: 'array', cellDates: true });
+  const proposal = analyzeProposalWorkbook(book, month);
+  if (proposal) return proposal;
   const result: MediaMixAnalysis = { rows: [], providedFields: [], warnings: [], sheets: [], ignoredSheets: [], excludedRows: 0, duplicateRows: 0 };
   const seen = new Set<string>();
   const monthStart = `${month}-01`, monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).toISOString().slice(0, 10);
   const knownMedia = new Set(['네이버', '카카오', '당근', '애드부스트스크린', '틱톡', '키즈노트', '호갱노노', '직방', '넷플릭스', 'DV360', '어드레서블TV']);
   for (const name of book.SheetNames) {
     const namedMonth = name.match(/(?:^|[^\d])(\d{1,2})월/);
-    if (book.Workbook?.Sheets?.[book.SheetNames.indexOf(name)]?.Hidden || namedMonth && Number(namedMonth[1]) !== Number(month.slice(5))) { result.ignoredSheets.push(name); continue; }
+    if (book.Workbook?.Sheets?.[book.SheetNames.indexOf(name)]?.Hidden || namedMonth && Number(namedMonth[1]) !== Number(month.slice(5)) || /타겟팅|raw|시청률|노선|차량|정류장|집행리스트|판매안|제안 비교/i.test(name)) { result.ignoredSheets.push(name); continue; }
     const sheet = book.Sheets[name];
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: true });
     const sheetMedia = knownMedia.has(canonicalMedia(name)) ? canonicalMedia(name) : '';

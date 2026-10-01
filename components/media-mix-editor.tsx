@@ -7,6 +7,7 @@ import type { MediaPlanFact } from '@/lib/daily-report-parser';
 import { normalizeMediaMix } from '@/supabase/functions/reporting-store/media-plan-input';
 import { parseMediaMixFile } from '@/lib/media-mix-upload';
 import { mediaMixChanges, mergeMediaMix, type MediaMixAnalysis } from '@/lib/media-mix-operations';
+import { MediaMixSourceReview } from './media-mix-source-review';
 import { MediaMixHistory, MediaMixSummary, PlanChanges } from './media-mix-summary';
 import styles from './media-mix-editor.module.css';
 function emptyRow(month: string): MediaPlanFact {
@@ -28,6 +29,8 @@ function Editor() {
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [appliedMode, setAppliedMode] = useState<'merge' | 'replace'>('merge');
   const [analysis, setAnalysis] = useState<MediaMixAnalysis | null>(null), [mergeWarnings, setMergeWarnings] = useState<string[]>([]);
+  const [pending, setPending] = useState<{ analysis: MediaMixAnalysis; initial: MediaPlanFact[]; expectedVersion: string | null; file: string; mode: 'merge' | 'replace' } | null>(null);
+  const [sourceReview, setSourceReview] = useState<MediaMixAnalysis['review']>(undefined);
   const [changeMemo, setChangeMemo] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const mounted = useRef(false), parsing = useRef<AbortController | null>(null), rowsRegion = useRef<HTMLDivElement>(null);
@@ -43,6 +46,7 @@ function Editor() {
     const rows = withIds(plans);
     setBaseline(rows); setVersion(saved?.publishedAt || null);
     setSourceFile((saved?.bundle as { originalSourceFile?: string })?.originalSourceFile || '직접 입력');
+    setSourceReview((saved?.bundle as { mediaMixSourceReview?: MediaMixAnalysis['review'] })?.mediaMixSourceReview); setPending(null);
     setError(''); setNotice(''); setAnalysis(null); setMergeWarnings([]); setChangeMemo('');
     return rows;
   }
@@ -55,7 +59,7 @@ function Editor() {
   }
   function addRow() { setDraft(current => [...(current || []), emptyRow(month)]); focusNewRow(); }
   function patch(index: number, field: keyof MediaPlanFact, value: string) {
-    const numeric = ['budget', 'expectedImpressions', 'expectedClicks'].includes(field);
+    const numeric = ['budget', 'expectedImpressions', 'expectedClicks', 'expectedViews', 'expectedGrp', 'expectedCprp'].includes(field);
     setDraft(current => current?.map((row, i) => i === index ? { ...row, [field]: numeric ? value === '' ? null : Number(value) : value } : row) ?? null);
   }
   async function importFile(file: File) {
@@ -65,6 +69,11 @@ function Editor() {
     const expectedVersion = draft ? version : saved?.publishedAt || null;
     try {
       const result = await parseMediaMixFile(file, month, controller.signal);
+      if (result.review) {
+        if (!mounted.current) return;
+        setPending({ analysis: result, initial, expectedVersion, file: file.name, mode: importMode });
+        setNotice('Summary와 상세 운영안을 분석했습니다. 반영할 제안과 수치 차이를 확인해주세요.'); return;
+      }
       const merged = mergeMediaMix(initial.filter(meaningful), result, importMode);
       if (!mounted.current) return;
       if (!draft) { setBaseline(initial); setVersion(expectedVersion); setChangeMemo(''); }
@@ -73,11 +82,20 @@ function Editor() {
     } catch (error) { if (mounted.current) { setNotice(''); setError(error instanceof Error ? error.message : '파일 분석 실패'); } }
     finally { if (mounted.current) setBusy(false); }
   }
+  function applyReview(result: MediaMixAnalysis) {
+    if (!pending) return;
+    try {
+      const merged = mergeMediaMix(pending.initial.filter(meaningful), result, pending.mode);
+      if (!draft) { setBaseline(pending.initial); setVersion(pending.expectedVersion); setChangeMemo(''); }
+      setDraft(merged.rows); setSourceFile(pending.file); setAppliedMode(pending.mode); setAnalysis(result); setMergeWarnings(merged.warnings); setSourceReview(result.review); setPending(null); setError('');
+      setNotice(`${result.rows.length}개 운영안을 정리했습니다. 변경 요약을 확인하고 저장해주세요.`);
+    } catch (error) { setError(error instanceof Error ? error.message : '운영안 반영 실패'); }
+  }
   async function save() {
     if (!draft || !canEdit || busy) return;
     setError(''); setNotice('');
     let input;
-    try { input = normalizeMediaMix({ month, rows: draft, expectedUpdatedAt: version, sourceFile, changeMemo }); }
+    try { input = normalizeMediaMix({ month, rows: draft, expectedUpdatedAt: version, sourceFile, changeMemo, sourceReview: sourceReview || (saved?.bundle as { mediaMixSourceReview?: MediaMixAnalysis['review'] })?.mediaMixSourceReview }); }
     catch (error) { setError(error instanceof Error ? error.message : '입력값을 확인해주세요.'); return; }
     setBusy(true);
     try {
@@ -93,35 +111,39 @@ function Editor() {
   }
   return <section className={`card card-pad ${styles.editor}`} aria-label="월 미디어믹스 업데이트">
     <div className={styles.head}><div><h2>{month} 미디어믹스</h2><p>{advertiser} · {plans.length}개 운영안 · 계획 예산 {formatKrw(plans.some(row => row.budget != null) ? plans.reduce((sum, row) => sum + (row.budget || 0), 0) : null)}</p></div>
-      {!draft && canEdit && <div className={styles.actions}><button type="button" className="btn" disabled={dataSyncState !== 'ready' || busy} onClick={() => begin()}>미디어믹스 업데이트</button><button type="button" className="btn primary" disabled={dataSyncState !== 'ready' || busy || plans.length >= 500} onClick={() => begin(true)}>운영안 추가</button></div>}
+      {!draft && !pending && canEdit && <div className={styles.actions}><button type="button" className="btn" disabled={dataSyncState !== 'ready' || busy} onClick={() => begin()}>미디어믹스 업데이트</button><button type="button" className="btn primary" disabled={dataSyncState !== 'ready' || busy || plans.length >= 500} onClick={() => begin(true)}>운영안 추가</button></div>}
     </div>
     <p>Excel·CSV를 최대 30MB까지 분석해 {Number(month.slice(5))}월 매체·상품·소재·기간·예산을 자동 정리합니다. 운영안 추가 또는 기존 행 편집으로 변경 내용을 이어서 관리하세요.</p>
     {saved && <small>마지막 반영: {new Date(saved.publishedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</small>}
-    {canEdit && <div className={styles.importBox}>
+    {canEdit && !pending && <div className={styles.importBox}>
       <div className={styles.actions}><label className="btn primary">Excel 자동 정리<input aria-label="미디어믹스 Excel" type="file" accept=".xlsx,.xls,.xlsb,.csv" disabled={busy || dataSyncState !== 'ready'} onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); event.target.value = ''; }} /></label>
         <button type="button" className="btn" disabled={busy} onClick={async () => { try { (await import('@/lib/media-mix-workbook')).downloadMediaMixTemplate(); } catch { setError('양식을 불러오지 못했습니다.'); } }}>입력 양식 다운로드</button></div>
       <fieldset className={styles.importModes} disabled={busy}><legend>Excel 불러오기 시 반영 방식</legend><label><input type="radio" name="mix-mode" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} />기존 운영안에 추가·변경 병합</label><label><input type="radio" name="mix-mode" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} />월 운영안 전체 교체</label></fieldset>
       <p>병합은 같은 매체·상품·지면·소재·기기를 기준으로 일치하는 운영안의 제공된 값을 갱신합니다. 파일에 없는 기존 운영안과 값은 유지됩니다.</p>
     </div>}
+    {pending && <MediaMixSourceReview key={pending.file} analysis={pending.analysis} onApply={applyReview} onCancel={() => { setPending(null); setNotice(''); }} />}
     {analysis && <div className={styles.analysis} aria-label="Excel 자동 분석 결과"><h3>Excel 자동 분석 결과</h3>
       <p>{analysis.sheets.length}개 시트 · {analysis.rows.length}개 운영안 · 제외 {analysis.excludedRows}행 · 중복 {analysis.duplicateRows}행 · 적용 방식: {appliedMode === 'merge' ? '추가·변경 병합' : '전체 교체'}</p>
       <details><summary>인식한 시트·열 확인</summary>{analysis.sheets.map(sheet => <p key={sheet.name}><strong>{sheet.name} · {sheet.rowCount}행</strong><br />{sheet.mappings.join(' · ')}</p>)}{analysis.ignoredSheets.length > 0 && <p>제외 시트: {analysis.ignoredSheets.join(' · ')}</p>}</details>
       {[...analysis.warnings, ...mergeWarnings].length > 0 && <details open className={styles.warnings}><summary>확인이 필요한 항목 {[...analysis.warnings, ...mergeWarnings].length}건</summary><ul>{[...analysis.warnings, ...mergeWarnings].map((warning, index) => <li key={index}>{warning}</li>)}</ul></details>}
     </div>}
+    {!pending && canEdit && (sourceReview || (saved?.bundle as { mediaMixSourceReview?: MediaMixAnalysis['review'] })?.mediaMixSourceReview) && <button className="btn" type="button" disabled={busy} onClick={() => { const review = sourceReview || (saved?.bundle as { mediaMixSourceReview?: MediaMixAnalysis['review'] })?.mediaMixSourceReview; if (!review) return; const initial = draft || withIds(plans); setPending({ analysis: { rows: [], providedFields: [], warnings: [], sheets: [], ignoredSheets: [], excludedRows: 0, duplicateRows: 0, review }, initial, expectedVersion: draft ? version : saved?.publishedAt || null, file: sourceFile === '직접 입력' ? (saved?.bundle as { originalSourceFile?: string })?.originalSourceFile || sourceFile : sourceFile, mode: 'merge' }); }}>저장된 제안 다시 선택</button>}
     <MediaMixSummary rows={draft || plans} />
-    {draft && canEdit && <>
+    {draft && !pending && canEdit && <>
       <p className={styles.context}>저장 대상: <strong>{advertiser} / {month}</strong> · {sourceFile} · {draft.length}행. 아래 운영안과 변경 요약을 저장합니다.</p>
       <div className={styles.rows} ref={rowsRegion}>{draft.map((row, index) => <article key={row.rowId || index} className={styles.row}>
-        <div className={styles.rowHead}><strong>운영안 {index + 1}</strong><button type="button" className="btn" disabled={busy} onClick={() => setDraft(current => current?.filter((_, i) => i !== index) ?? null)}>행 삭제</button></div>
+        <div className={styles.rowHead}><strong>운영안 {index + 1}{row.scenario ? ` · ${row.scenario}` : ''}</strong><button type="button" className="btn" disabled={busy} onClick={() => setDraft(current => current?.filter((_, i) => i !== index) ?? null)}>행 삭제</button></div>
+        {row.sourceCell && <p className={styles.sourceLabel}>원본: {row.sourceSheet} {row.sourceCell} · {row.category || '유형 미지정'} · 예상 성과</p>}
         <div className={styles.fields}>{([
           ['platform', '매체 (대분류)', 'text'], ['product', '광고상품 (중분류)', 'text'], ['creativeName', '소재명 (소분류)', 'text'], ['placement', '게재지면', 'text'],
           ['periodStart', '시작일', 'date'], ['periodEnd', '종료일', 'date'], ['budget', '계획 예산 (원)', 'number'],
         ] as const).map(([field, label, type]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type={type} min={type === 'number' ? 0 : undefined} value={row[field] ?? ''} disabled={busy} onChange={event => patch(index, field, event.target.value)} /></label>)}
+          <label>진행 상태<select aria-label={`${index + 1}행 진행 상태`} value={row.proposalStatus || '제안'} disabled={busy} onChange={event => patch(index, 'proposalStatus', event.target.value)}>{['제안', '협의', 'TBD', '확정', '부킹 완료'].map(status => <option key={status}>{status}</option>)}</select></label>
           <label>집행상태<select aria-label={`${index + 1}행 집행상태`} value={row.operationStatus || '예정'} disabled={busy} onChange={event => patch(index, 'operationStatus', event.target.value)}>{['예정', '집행 중', '중단', '종료'].map(status => <option key={status}>{status}</option>)}</select></label>
         </div>
         <details><summary>기기·소재 유형·타겟팅·계획 KPI</summary><div className={styles.fields}>{([
-          ['device', '기기', 'text'], ['creativeType', '소재 유형', 'text'], ['target', '타겟팅', 'text'], ['expectedImpressions', '예상 노출수', 'number'], ['expectedClicks', '예상 클릭수', 'number'],
-        ] as const).map(([field, label, type]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type={type} min={type === 'number' ? 0 : undefined} value={row[field] ?? ''} disabled={busy} onChange={event => patch(index, field, event.target.value)} /></label>)}</div></details>
+          ['device', '기기', 'text'], ['creativeType', '소재 유형', 'text'], ['target', '타겟팅', 'text'], ['expectedImpressions', '예상 노출수', 'number'], ['expectedClicks', '예상 클릭수', 'number'], ['expectedViews', '예상 조회수', 'number'], ['expectedGrp', '예상 GRP', 'number'], ['expectedCprp', '예상 CPRP', 'number'],
+        ] as const).map(([field, label, type]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type={type} min={type === 'number' ? 0 : undefined} value={row[field] ?? ''} disabled={busy} onChange={event => patch(index, field, event.target.value)} /></label>)}</div>{row.sourceNotes && <p className={styles.sourceNotes}>{row.sourceNotes}</p>}</details>
       </article>)}</div>
       <label className={styles.memoInput}>변경 메모<textarea aria-label="운영안 변경 메모" maxLength={2000} rows={3} value={changeMemo} disabled={busy} onChange={event => setChangeMemo(event.target.value)} placeholder="예: GFA 예산 증액, 신규 소재 추가, 집행기간 변경" /></label>
       <PlanChanges changes={changes} />
