@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
       const path = String(body.path || "");
       if (!advertiserName || !path) return json({ error: "INVALID_SIGNED_URL_REQUEST" }, 400);
       const { advertiser } = await resolveAdvertiser(user.email, advertiserName);
-      if (!path.startsWith(`${advertiser.id}/`)) return json({ error: "IMAGE_ACCESS_DENIED" }, 403);
+      if (!path.startsWith(`${advertiser.id}/`) || !/^[a-z0-9_./-]+$/i.test(path) || path.split("/").some(segment => !segment || segment === "." || segment === "..")) return json({ error: "IMAGE_ACCESS_DENIED" }, 403);
       const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 300);
       if (error) throw error;
       return json({ signedUrl: data.signedUrl });

@@ -87,3 +87,30 @@ concurrent = true;
 assert.equal((await call({ ...edit, expectedUpdatedAt: payload.proof.publishedAt })).status, 409);
 assert.equal(rows.report_imports[0].metadata.bundle.placementProof.creativeName, "수정 소재");
 console.log("Edge handler checks passed: authentication, active user, viewer denial, allowlisted input, create/edit, image preservation, scope and concurrency.");
+
+let imageHandler;
+const signedPaths = [];
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/placement-proof-image/index.ts", "utf8")), {
+  exports: {}, require: () => ({ createClient: () => ({ from: table => new Query(table), storage: { from: () => ({
+    createSignedUrl: async path => { signedPaths.push(path); return { data: { signedUrl: "https://example.com/image" }, error: null }; },
+  }) } }) }),
+  Deno: { env: { get: () => "fixture" }, serve: fn => { imageHandler = fn; } }, crypto: { randomUUID },
+  Response, Request, URL, Date, Error, Set, Map, File, FormData,
+  fetch: async () => new Response(JSON.stringify({ email: "fixture@example.com", verified_email: verified }), { status: 200 }),
+});
+async function signed(path) {
+  return imageHandler(new Request("https://example.com", { method: "POST",
+    headers: { authorization: "Bearer fixture", "content-type": "application/json" },
+    body: JSON.stringify({ action: "signed_url", advertiser: "자코모", path }) }));
+}
+access = "viewer";
+assert.equal((await signed("fixture-advertiser/2026-10-01/proof.png")).status, 200);
+for (const path of ["other-advertiser/proof.png", "fixture-advertiser/../other-advertiser/proof.png",
+  "fixture-advertiser/%2e%2e/other-advertiser/proof.png", "fixture-advertiser/./proof.png",
+  "fixture-advertiser//proof.png", "fixture-advertiser/..\\other-advertiser/proof.png"]) {
+  assert.equal((await signed(path)).status, 403);
+}
+assert.equal(signedPaths.length, 1);
+verified = false;
+assert.equal((await signed("fixture-advertiser/2026-10-01/proof.png")).status, 401);
+console.log("Image access checks passed: viewer read, advertiser boundary, canonical paths, verified identity.");
