@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
 import { publishedDatasetsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
 import { formatCount, formatKrw, formatRate, mediaPlansFromDatasets, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
-import { canonicalMedia, canonicalProduct, normalizeInsightText } from "@/lib/media-normalization";
+import { DailyInsightHistory } from "@/components/daily-insight-history";
+import { canonicalMedia, canonicalProduct } from "@/lib/media-normalization";
 
 export default function OverviewPage() {
   const { advertiser, month } = useWorkspace();
@@ -56,7 +57,6 @@ export default function OverviewPage() {
     })).sort((a, b) => a.media.localeCompare(b.media, "ko"));
   }, [rows]);
 
-  const latestInsight = insights.at(-1);
   const latestDate = datasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1) || "";
 
   return (
@@ -65,6 +65,11 @@ export default function OverviewPage() {
         <div><div className="eyebrow">광고 운영 개요</div><h1 className="page-title">{advertiser} {Number(month.slice(5,7))}월 광고 운영 현황</h1><p className="page-desc">데일리 리포트와 미디어 운영안을 매체 → 광고상품 기준으로 통합해 보여줍니다.</p></div>
         <div className="page-meta"><span className="real-data-note">실데이터 기준</span></div>
       </div>
+
+      <section className="card section-space report-panel">
+        <div className="report-panel-head"><div><h2>데일리 인사이트</h2><p>날짜를 누르면 해당 일자의 전체 내용을 볼 수 있습니다.</p></div><span className="view-pill">{new Set(insights.map(item => item.reportDate)).size}일</span></div>
+        <DailyInsightHistory key={advertiser + month} insights={insights} />
+      </section>
 
       {!datasets.length ? <section className="card card-pad empty-state"><h2>아직 {advertiser} 실데이터가 없습니다.</h2><p>데이터 업데이트에서 해당 광고주의 데일리 리포트를 반영하면 개요가 자동으로 채워집니다.</p></section> : <>
         <section className="metric-strip">
@@ -75,16 +80,13 @@ export default function OverviewPage() {
           <article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong><div><span>기준일 {latestDate || "미확인"}</span></div></article>
         </section>
 
-        <section className="grid two-col section-space">
+        <section className="section-space">
           <article className="card report-panel">
             <div className="report-panel-head"><div><h2>매체별 운영 현황</h2><p>동일 매체의 표기 차이는 통합하고 광고상품 수를 함께 표시합니다.</p></div><span className="view-pill">{mediaRows.length}개 매체</span></div>
             <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.media}><td><strong>{item.media}</strong></td><td>{item.products.length ? `${item.products.slice(0,3).join(" · ")}${item.products.length > 3 ? ` 외 ${item.products.length - 3}` : ""}` : "-"}</td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td></tr>)}</tbody></table></div>
           </article>
 
-          <aside className="card report-panel">
-            <div className="report-panel-head"><div><h2>최근 데일리 인사이트</h2><p>메일 내용을 운영 현황과 성과 핵심만 읽기 쉽게 정리합니다.</p></div></div>
-            <div className="notice-list">{latestInsight ? <><div className="notice"><span className="notice-dot good"/><div><strong>{latestInsight.reportDate}</strong><p>{normalizeInsightText(latestInsight.mailSubject)}</p></div></div>{latestInsight.notes.slice(0,6).map((note, index) => <div className="notice" key={index}><span className="notice-dot"/><div><p>{normalizeInsightText(note)}</p></div></div>)}</> : <div className="empty-inline">반영된 데일리 인사이트가 없습니다.</div>}</div>
-          </aside>
+
         </section>
 
         <section className="card section-space report-panel">

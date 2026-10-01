@@ -22,7 +22,13 @@ export type PlacementProof = {
   dailyFrequency: number | null;
   durationSec: number | null;
   budgetReference: number | null;
-  status: "게재 확인" | "확인 필요";
+  status: "게재 확인" | "확인 필요" | "사전 세팅";
+  creativeName?: string;
+  importId?: string;
+  setupOrigin?: "manual";
+  previewUrl?: string;
+  landingUrl?: string;
+  utm?: Record<string, string>;
   messageId: string;
   mailSubject: string;
   mailDate: string;

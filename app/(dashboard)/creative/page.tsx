@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
 import {
   hydratePublishedDailyState,
@@ -10,7 +10,16 @@ import {
 } from "@/lib/daily-report-store";
 import type { PlacementProof, PlacementProofAttachment } from "@/lib/placement-proof";
 import { mediaPlansFromDatasets } from "@/lib/reporting-data";
+import { PlacementSetupForm } from "@/components/placement-setup-form";
+import { landingWithUtm, safeHttpUrl } from "@/lib/placement-urls";
 import styles from "./creative.module.css";
+
+function displayUrl(value = "") {
+  try { return safeHttpUrl(value); } catch { return ""; }
+}
+function finalLanding(proof: PlacementProof) {
+  try { return landingWithUtm(proof.landingUrl || "", proof.utm || {}); } catch { return ""; }
+}
 
 type ProofRecord = PlacementProof & { proofId?: string; creativeName?: string };
 
@@ -36,7 +45,10 @@ function formatWon(value: number | null) {
 }
 
 export default function CreativePage() {
-  const { advertiser, month } = useWorkspace();
+  const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
+  const scope = useRef(advertiser + month);
+  scope.current = advertiser + month;
+  const [editor, setEditor] = useState<{ proof?: ProofRecord; initial?: { media?: string; placement?: string; periodStart?: string; periodEnd?: string } } | null>(null);
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [proofs, setProofs] = useState<ProofRecord[]>([]);
   const [selectedMedia, setSelectedMedia] = useState("전체");
@@ -59,6 +71,7 @@ export default function CreativePage() {
 
   useEffect(() => {
     setSelectedMedia("전체");
+    setEditor(null); setUploadError("");
   }, [advertiser, month]);
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
@@ -114,12 +127,13 @@ export default function CreativePage() {
   }, [visibleProofs]);
 
   const visiblePlans = useMemo(
-    () => selectedMedia === "전체" ? plans : plans.filter((plan) => plan.platform === selectedMedia),
-    [plans, selectedMedia],
+    () => plans.filter(plan => (selectedMedia === "전체" || plan.platform === selectedMedia) && !proofs.some(proof => proof.media === plan.platform && proof.placement === (plan.product || plan.placement))),
+    [plans, proofs, selectedMedia],
   );
 
   async function replaceProofImage(proof: ProofRecord, file?: File) {
-    if (!file) return;
+    if (!file || !canEdit) return;
+    const uploadScope = advertiser + month;
     const key = proof.key || proof.proofId || `${proof.messageId}-${proof.placement}-${proof.creativeName || "default"}`;
     setUploadingKey(key);
     setUploadError("");
@@ -129,14 +143,16 @@ export default function CreativePage() {
       form.set("advertiser", proof.advertiser);
       form.set("reportDate", proof.reportDate);
       form.set("sourceFile", proof.sourceFile);
+      if (proof.importId) form.set("importId", proof.importId);
+      if (proof.publishedAt) form.set("expectedUpdatedAt", proof.publishedAt);
       const response = await fetch("/api/reporting/proof-image", { method: "POST", body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || "이미지 교체에 실패했습니다.");
-      await hydratePublishedDailyState(advertiser, month);
+      if (scope.current === uploadScope) await hydratePublishedDailyState(advertiser, month);
     } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "이미지 교체에 실패했습니다.");
+      if (scope.current === uploadScope) setUploadError(error instanceof Error ? error.message : "이미지 교체에 실패했습니다.");
     } finally {
-      setUploadingKey("");
+      if (scope.current === uploadScope) setUploadingKey("");
     }
   }
 
@@ -146,29 +162,31 @@ export default function CreativePage() {
     const reports = proof.attachments.filter((item) => item.kind === "report");
     const visualUrl = manualImageUrl(proof) || (image ? attachmentUrl(proof, image) : "");
     const uploading = uploadingKey === proofKey;
+    const landing = finalLanding(proof);
+    const preview = displayUrl(proof.previewUrl);
 
     return <article className={styles.proofCard} key={proofKey}>
       <div className={styles.visual}>
         {visualUrl
           ? <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
-          : <div className={styles.visualFallback}>게재 사진을 등록해주세요.</div>}
+          : <div className={styles.visualFallback}>미리보기 또는 게재 이미지를 등록해주세요.</div>}
         <span className={styles.visualBadge}>{proof.status}</span>
-        <label className={styles.replaceImageButton}>
+        {canEdit && <label className={styles.replaceImageButton}>
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
-            disabled={uploading}
+            disabled={uploading || dataSyncState === "loading"}
             onChange={(event) => {
               const file = event.target.files?.[0];
               void replaceProofImage(proof, file);
               event.currentTarget.value = "";
             }}
           />
-          {uploading ? "업로드 중…" : proof.manualImagePath ? "게재 사진 다시 교체" : "게재 사진 교체"}
-        </label>
+          {uploading ? "업로드 중…" : proof.manualImagePath ? "이미지 다시 교체" : "이미지 등록"}
+        </label>}
       </div>
       <div className={styles.proofBody}>
-        <span className={styles.proofEyebrow}>{proof.verificationDate} 확인 · {proof.serviceType}</span>
+        <span className={styles.proofEyebrow}>{proof.status === "게재 확인" ? `${proof.verificationDate || proof.reportDate} 확인` : proof.status} · {proof.serviceType}</span>
         <div className={styles.proofTitle}>
           <h3>{proof.creativeName || proof.placement}</h3>
           {proof.creativeName
@@ -185,6 +203,11 @@ export default function CreativePage() {
           <div><span>캠페인 내용</span><strong>{proof.campaignName || "-"}</strong></div>
         </div>
         {proof.budgetReference !== null && <div className={styles.reference}><strong>연계 집행 기준 {formatWon(proof.budgetReference)}</strong> · 서비스 노출 지면 자체의 별도 집행액으로 계산하지 않습니다.</div>}
+        {(landing || preview) && <div className={styles.landingLinks}>
+          {preview && <a href={preview} target="_blank" rel="noopener noreferrer">매체 미리보기 열기 ↗</a>}
+          {landing && <><strong>랜딩 URL · UTM</strong><a href={landing} target="_blank" rel="noopener noreferrer">{landing}</a></>}
+        </div>}
+        {canEdit && <div className={styles.editActions}><button type="button" className="btn" disabled={uploading || dataSyncState === "loading"} onClick={() => setEditor({ proof })}>지면 · 랜딩 · UTM 수정</button></div>}
         <div className={styles.fileLinks}>
           {reports.map((file) => <a key={file.attachmentId} href={attachmentUrl(proof, file, true)}>{file.filename.replace(/^JBR_자코모_/, "")} ↓</a>)}
         </div>
@@ -196,22 +219,26 @@ export default function CreativePage() {
     <div className="page-head refined-head">
       <div>
         <div className="eyebrow">소재 · 게재지면</div>
-        <h1 className="page-title">{advertiser} 게재 확인</h1>
-        <p className="page-desc">매체를 선택한 뒤 해당 매체의 게재 지면과 지면별 운영 소재를 순서대로 확인합니다.</p>
+        <h1 className="page-title">{advertiser} 소재 · 게재지면</h1>
+        <p className="page-desc">디지털 지면은 미리보기로 사전 세팅하고, 집행 후 게재 확인 자료와 함께 관리합니다.</p>
       </div>
-      <div className="page-meta"><span className="view-pill">{month}</span></div>
+      <div className="page-meta"><span className="view-pill">{month}</span>{canEdit && <button type="button" className="btn primary" disabled={dataSyncState === "loading"} onClick={() => setEditor({})}>지면 수동 등록</button>}</div>
     </div>
+
+    {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "")} {...editor} onClose={() => setEditor(null)} />}
+    {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
+    {!proofs.length && <section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section>}
 
     {proofs.length > 0 && <section className={styles.proofSection}>
       <div className={styles.sectionHead}>
-        <div><h2>게재 확인 완료</h2><p>매체 → 게재 지면 → 소재 순서로 확인할 수 있습니다. 같은 지면의 여러 소재는 한 지면 아래에서 묶어 보여줍니다.</p></div>
+        <div><h2>등록 지면 · 소재</h2><p>매체 → 게재 지면 → 소재 순서로 확인할 수 있습니다. 같은 지면의 여러 소재는 한 지면 아래에서 묶어 보여줍니다.</p></div>
         <span className={styles.countBadge}>{placementCount}개 지면{creativeCount ? ` · ${creativeCount}개 소재 구분` : ""}</span>
       </div>
 
       <div className={styles.mediaFilterPanel}>
         <div className={styles.mediaFilterCopy}>
           <strong>매체별 보기</strong>
-          <span>매체를 누르면 해당 매체에서 게재 중인 지면과 소재만 표시됩니다.</span>
+          <span>매체를 누르면 해당 매체에 등록된 지면과 소재만 표시됩니다.</span>
         </div>
         <div className={styles.mediaTabs}>
           <button type="button" className={selectedMedia === "전체" ? styles.mediaTabActive : styles.mediaTab} onClick={() => setSelectedMedia("전체")}>
@@ -229,7 +256,6 @@ export default function CreativePage() {
         </div>
       </div>
 
-      {uploadError && <div className={styles.uploadError}>{uploadError}</div>}
 
       <div className={styles.mediaGroups}>
         {groupedProofs.map((group) => {
@@ -250,7 +276,7 @@ export default function CreativePage() {
                   <div className={styles.placementGroupHead}>
                     <div><span>게재 지면</span><h4>{placementGroup.placement}</h4></div>
                     <div className={styles.placementGroupStats}>
-                      <span>{placementGroup.proofs.length}건 확인</span>
+                      <span>{placementGroup.proofs.length}건 등록</span>
                       {namedCreatives.length > 0 && <strong>{namedCreatives.length}개 소재 운영</strong>}
                     </div>
                   </div>
@@ -272,7 +298,7 @@ export default function CreativePage() {
 
     <section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>운영안 기준 연결 대기 지면</h2><p>{selectedMedia === "전체" ? "운영안에서 확인됐지만 아직 별도 게재 보고 자료가 연결되지 않은 상품을 관리합니다." : `${selectedMedia} 운영안에서 아직 게재 보고 자료가 연결되지 않은 상품입니다.`}</p></div><span className="view-pill">{visiblePlans.length}개</span></div>
-      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재 유형</th><th>게재 확인</th><th>랜딩 URL</th><th>UTM</th></tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td>데이터 없음</td><td>데이터 없음</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
+      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재 유형</th><th>게재 확인</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.product || plan.placement, periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
     </section>
   </>;
 }

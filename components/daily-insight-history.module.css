@@ -1,0 +1,10 @@
+.history { padding: 0 20px 20px; }
+.dates { display: flex; flex-wrap: wrap; gap: 7px; max-height: 190px; overflow: auto; padding: 4px 0 12px; }
+.date, .active { border: 1px solid #d0d5dd; border-radius: 9px; padding: 9px 11px; background: #fff; color: #475467; font: inherit; font-size: 12px; cursor: pointer; }
+.active { border-color: #7f56d9; background: #f4f3ff; color: #5925dc; font-weight: 700; }
+.date:focus-visible, .active:focus-visible, .entry summary:focus-visible { outline: 3px solid #bdb4fe; outline-offset: 2px; }
+.detail h3 { font-size: 15px; color: #344054; margin: 8px 0 12px; }
+.entry { padding: 12px 14px; border: 1px solid #eaecf0; border-radius: 10px; margin-bottom: 10px; }
+.entry summary { cursor: pointer; font-weight: 700; color: #344054; font-size: 13px; line-height: 1.6; }
+.entry p { white-space: pre-wrap; overflow-wrap: anywhere; color: #475467; font-size: 12px; line-height: 1.8; margin: 10px 0 0; }
+.entry .meta { color: #667085; font-size: 11px; }

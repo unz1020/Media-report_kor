@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "ORIGIN_DENIED" }, { status: 403 });
   try {
     const incoming = await request.formData();
     const file = incoming.get("file");
@@ -73,6 +74,8 @@ export async function POST(request: NextRequest) {
     form.set("advertiser", advertiser);
     form.set("reportDate", reportDate);
     form.set("sourceFile", sourceFile);
+    if (incoming.get("importId")) form.set("importId", String(incoming.get("importId")));
+    if (incoming.get("expectedUpdatedAt")) form.set("expectedUpdatedAt", String(incoming.get("expectedUpdatedAt")));
 
     const edgeResponse = await fetch(PROOF_IMAGE_EDGE_URL, {
       method: "POST",

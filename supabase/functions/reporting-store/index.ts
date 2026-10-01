@@ -1,3 +1,4 @@
+import { normalizePlacementInput } from "./placement-input.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.3";
 
 const supabase = createClient(
@@ -238,7 +239,66 @@ Deno.serve(async (req: Request) => {
       return json({ user, advertiser, accessLevel, imports: imports || [], insights: insights || [] });
     }
 
-    if (action === "publish_bundle") {
+    if (action === "save_manual_proof") {
+      const input = body.input || {};
+      const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(input.advertiser || ""));
+      if (!["owner", "editor"].includes(accessLevel)) return json({ error: "WRITE_ACCESS_DENIED" }, 403);
+      let setup;
+      try { setup = normalizePlacementInput(input); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_PLACEMENT" }, 400); }
+      const importId = String(input.importId || "");
+      const clientId = String(input.clientId || "");
+      if (!importId && !/^[0-9a-f-]{36}$/i.test(clientId)) return json({ error: "INVALID_PLACEMENT_ID" }, 400);
+      let query = supabase.from("report_imports").select("*").eq("advertiser_id", advertiser.id);
+      if (importId) query = query.eq("id", importId);
+      else query = query.eq("source_file", `[manual-placement] ${clientId}`).eq("report_date", `${setup.month}-01`).eq("source_type", "other");
+      const { data: existing, error: findError } = await query.maybeSingle();
+      if (findError) throw findError;
+      if (importId && !existing) return json({ error: "PLACEMENT_NOT_FOUND" }, 404);
+      const previous = existing?.metadata?.bundle?.placementProof;
+      if (existing && (!previous || previous.month !== setup.month)) return json({ error: "PLACEMENT_SCOPE_DENIED" }, 403);
+      if (importId && (!input.expectedUpdatedAt || input.expectedUpdatedAt !== existing.updated_at)) return json({ error: "PLACEMENT_CHANGED" }, 409);
+      const reportDate = existing?.report_date || `${setup.month}-01`;
+      const sourceFile = existing?.source_file || `[manual-placement] ${clientId}`;
+      const proof = {
+        ...(previous || {}), ...setup, advertiser: advertiser.name, reportDate, sourceFile,
+        serviceType: previous?.serviceType || "디지털 사전 세팅", setupOrigin: previous?.setupOrigin || (existing ? undefined : "manual"),
+        messageId: previous?.messageId || "", mailSubject: previous?.mailSubject || "",
+        mailDate: previous?.mailDate || "", attachments: previous?.attachments || [],
+        sourceSummary: previous?.sourceSummary || "수동 등록", location: previous?.location || "",
+        airingTime: previous?.airingTime || "", dailyFrequency: previous?.dailyFrequency ?? null,
+        durationSec: previous?.durationSec ?? null, budgetReference: previous?.budgetReference ?? null,
+      };
+      const bundle = { ...(existing?.metadata?.bundle || {
+        advertiser: advertiser.name, reportDate, campaignStart: `${setup.month}-01`, campaignEnd: reportDate,
+        sourceFile, parsedSheets: [], ignoredSheets: [], placements: [], dailyPerformance: [],
+        creativeDailyPerformance: [], mediaPlan: [], planSourceSheets: [], mailChecks: [], operationNotes: [],
+        qa: { matchedMailMetrics: 0, mismatchedMailMetrics: 0, unmatchedMailMetrics: 0, ignoredSheetCount: 0 },
+      }), placementProof: proof };
+      const updatedAt = new Date().toISOString();
+      let savedId: string;
+      if (existing) {
+        const { data: updated, error } = await supabase.from("report_imports").update({
+          metadata: { ...existing.metadata, bundle }, updated_at: updatedAt, updated_by: user.email,
+        }).eq("id", existing.id).eq("updated_at", existing.updated_at).select("id").maybeSingle();
+        if (error) throw error;
+        if (!updated) return json({ error: "PLACEMENT_CHANGED" }, 409);
+        savedId = existing.id;
+      } else {
+        savedId = await getOrCreateImport({ advertiserId: advertiser.id, reportDate, sourceFile,
+          sourceSheet: "", sourceType: "other", metadata: { manualSetup: true, bundle }, actorEmail: user.email });
+      }
+      const { data: savedImport, error: savedError } = await supabase.from("report_imports").select("updated_at").eq("id", savedId).single();
+      if (savedError) throw savedError;
+      const audit = await supabase.from("workspace_activity").insert({
+        actor_email: user.email, advertiser_id: advertiser.id, action: "placement_saved",
+        detail: { importId: savedId, media: setup.media, placement: setup.placement, month: setup.month, status: setup.status },
+      });
+      if (audit.error) throw audit.error;
+      return json({ ok: true, proof: { ...proof, importId: savedId, publishedAt: savedImport.updated_at } });
+    }
+
+
       const bundle = body.bundle || {};
       if (!bundle.advertiser || !bundle.reportDate || !bundle.sourceFile) return json({ error: "INVALID_BUNDLE" }, 400);
       const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(bundle.advertiser));

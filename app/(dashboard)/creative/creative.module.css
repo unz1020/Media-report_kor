@@ -221,3 +221,8 @@
   .placementGroups { padding: 10px; }
   .proofGrid { padding: 9px; }
 }
+
+.landingLinks { display: grid; gap: 7px; padding: 12px; margin-top: 12px; background: #f9fafb; border-radius: 9px; font-size: 11px; }
+.landingLinks a { overflow-wrap: anywhere; color: #6941c6; line-height: 1.7; }
+.editActions { margin-top: 14px; }
+.visual img { object-fit: contain; }
