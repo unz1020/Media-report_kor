@@ -146,7 +146,7 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
     const spendValues = items.map((item) => item.spend).filter((value): value is number => typeof value === "number");
     const clickValues = items.map((item) => item.clicks).filter((value): value is number => typeof value === "number");
     const viewValues = items.map((item) => item.views).filter((value): value is number => typeof value === "number");
-    const spend = spendValues.length ? spendValues.reduce((sum, value) => sum + value, 0) : null;
+    let spend = spendValues.length ? spendValues.reduce((sum, value) => sum + value, 0) : null;
     const impressions = items.reduce((sum, item) => sum + item.impressions, 0);
     const clicks = clickValues.length ? clickValues.reduce((sum, value) => sum + value, 0) : null;
     const views = viewValues.length ? viewValues.reduce((sum, value) => sum + value, 0) : null;
@@ -157,6 +157,8 @@ function rowsFromDailyPerformance(dataset: PublishedDataset, startDate: string, 
       return current === wanted || current.includes(wanted) || wanted.includes(current);
     });
     const guaranteed = cumulativeFromCampaignStart ? (summaryFact?.guaranteed ?? "") : "";
+    if (cumulativeFromCampaignStart && endDate >= dataset.bundle.reportDate &&
+      summaryFact?.impressions === impressions && summaryFact.spend != null) spend = summaryFact.spend;
     const guaranteedNumeric = /^\d+(?:\.\d+)?$/.test(guaranteed.replace(/,/g, "")) ? Number(guaranteed.replace(/,/g, "")) : null;
     const achievement = cumulativeFromCampaignStart
       ? (guaranteedNumeric && guaranteedNumeric > 0 ? impressions / guaranteedNumeric * 100 : summaryFact?.achievement ?? null)
@@ -204,6 +206,11 @@ export function periodRowsFromSnapshots(snapshots: PublishedDataset[], startDate
   let baselineComplete = true;
   for (const list of grouped.values()) {
     const sorted = [...list].sort((a, b) => a.bundle.reportDate.localeCompare(b.bundle.reportDate));
+    const latest = sorted.at(-1)!;
+    if (startDate === latest.bundle.campaignStart && endDate >= latest.bundle.reportDate) {
+      rows.push(...rowsFromDatasets([latest]));
+      continue;
+    }
 
     // 최신 리포트 안에 과거 일별 Fact가 포함되어 있으면, 조회 종료일보다 늦게 수신된 스냅샷이라도
     // 해당 기간의 실제 일별 데이터만 골라 합산한다. 예: 9/15 리포트로 9/1~9/10 조회.
@@ -260,13 +267,14 @@ export function summarizeRows(rows: ReportingRow[]) {
   const clickValues = rows.map((row) => row.clicks).filter((value): value is number => typeof value === "number");
   const impressions = rows.reduce((sum, row) => sum + (row.impressions || 0), 0);
   const clicks = clickValues.length ? clickValues.reduce((sum, value) => sum + value, 0) : null;
+  const clickableImpressions = rows.filter(row => row.clicks !== null && row.clicks !== undefined).reduce((sum, row) => sum + row.impressions, 0);
   const views = rows.reduce((sum, row) => sum + (row.views || 0), 0);
   const conversions = rows.reduce((sum, row) => sum + (row.conversions || 0), 0);
   return {
     spend: spendValues.length ? spendValues.reduce((sum, value) => sum + value, 0) : null,
     impressions,
     clicks,
-    ctr: impressions && clicks !== null ? clicks / impressions * 100 : null,
+    ctr: clickableImpressions && clicks !== null ? clicks / clickableImpressions * 100 : null,
     views: rows.some((row) => row.views !== null && row.views !== undefined) ? views : null,
     conversions: rows.some((row) => row.conversions !== null && row.conversions !== undefined) ? conversions : null,
     platformCount: new Set(rows.map((row) => row.platform).filter(Boolean)).size,

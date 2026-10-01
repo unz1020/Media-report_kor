@@ -5,6 +5,7 @@ import { parseDailyWorkbook, type DailyBundlePreview } from "@/lib/daily-report-
 import { publishDailyBundles, publishMailOnlyInsight } from "@/lib/daily-report-store";
 import styles from "./daily-report-intake-v2.module.css";
 import { useWorkspace } from "@/components/workspace-context";
+import { enrichTvDaily, isAddressableTv, performanceMailQuery, tvSupportingFiles } from "@/lib/report-source";
 
 type GmailAttachment = { filename: string; attachmentId: string; mimeType?: string };
 type GmailMessage = {
@@ -23,6 +24,7 @@ type BatchItem = {
   attachment?: GmailAttachment;
   bundle?: DailyBundlePreview;
   error?: string;
+  supporting?: boolean;
 };
 
 type MessageGroup = { message: GmailMessage; items: BatchItem[] };
@@ -91,7 +93,7 @@ function mailMeta(message: GmailMessage, fallbackDate: string, selectedAdvertise
 
 export function DailyReportIntakeV2() {
   const { advertiser } = useWorkspace();
-  const dailyQuery = `${advertiser} {subject:"데일리 리포트" subject:"Daily Report"}`;
+  const dailyQuery = performanceMailQuery(advertiser);
   const [mode, setMode] = useState<"gmail" | "manual">("gmail");
   const [file, setFile] = useState<File | null>(null);
   const [mailBody, setMailBody] = useState("");
@@ -119,7 +121,7 @@ export function DailyReportIntakeV2() {
   }, []);
 
   const readyBatch = useMemo(
-    () => batchItems.filter((item) => item.bundle && item.bundle.placements.length > 0),
+    () => batchItems.filter((item) => !item.supporting && !item.error && item.bundle && item.bundle.placements.length > 0),
     [batchItems],
   );
   const mailOnlyItems = useMemo(() => batchItems.filter((item) => !item.attachment), [batchItems]);
@@ -144,7 +146,8 @@ export function DailyReportIntakeV2() {
     return sum + qa.mismatchedMailMetrics + qa.unmatchedMailMetrics;
   }, 0) + structureIssues.length + failedItems.length, [readyBatch, structureIssues, failedItems]);
 
-  const factAttachmentCount = batchItems.filter((item) => item.attachment).length;
+  const factAttachmentCount = batchItems.filter((item) => item.attachment && !item.supporting).length;
+  const supportingCount = batchItems.filter(item => item.supporting).length;
   const canPublish = mode === "manual"
     ? Boolean(manualResult?.placements.length)
     : readyBatch.length + mailOnlyItems.length > 0;
@@ -201,16 +204,28 @@ export function DailyReportIntakeV2() {
           setBatchItems([...next]);
           continue;
         }
+        const supporting = tvSupportingFiles(message.attachments);
+        const messageItems: BatchItem[] = [];
         for (const attachment of message.attachments) {
-          const item: BatchItem = { id: `${message.id}:${attachment.attachmentId}`, message, attachment };
+          const item: BatchItem = { id: `${message.id}:${attachment.attachmentId}`, message, attachment, supporting: supporting.includes(attachment) };
           try {
             item.bundle = await parseGmailAttachment(message, attachment);
           } catch (itemError) {
             item.error = itemError instanceof Error ? itemError.message : "분석 실패";
           }
-          next.push(item);
-          setBatchItems([...next]);
+          messageItems.push(item);
         }
+        if (supporting.length) {
+          const primary = messageItems.find(item => !item.supporting && item.bundle && isAddressableTv(item.attachment?.filename || ""));
+          if (primary?.bundle) {
+            try {
+              if (messageItems.some(item => item.supporting && item.error)) throw new Error("TV 원본 일별 자료 분석에 실패했습니다. 누적 보고서와 함께 다시 확인해주세요.");
+              primary.bundle = enrichTvDaily(primary.bundle, messageItems.filter(item => item.supporting && item.bundle).map(item => item.bundle!));
+            } catch (e) { primary.error = e instanceof Error ? e.message : "TV 누적·일별 자료 검증 실패"; }
+          }
+        }
+        next.push(...messageItems);
+        setBatchItems([...next]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Gmail 데일리 리포트 처리 중 오류가 발생했습니다.");
@@ -292,7 +307,7 @@ export function DailyReportIntakeV2() {
                   style={{ height: 36, border: "1px solid #d8deea", borderRadius: 8, padding: "0 10px", color: "#344054", background: "#fff", fontWeight: 700 }}
                 />
               </div>
-              <div className={styles.filterRule}><span>수집 기준</span><strong>선택일 + {advertiser} + 제목에 데일리 리포트 / Daily Report</strong></div>
+              <div className={styles.filterRule}><span>수집 기준</span><strong>선택일 + {advertiser} + 제목에 데일리 리포트 / Daily Report / Addr.TV</strong></div>
               {gmailConnected ? (
                 <div className={styles.gmailActionRow}>
                   <button className={styles.connectButton} onClick={loadSelectedDateFromGmail} disabled={loading || !selectedMailDate}>{loading ? `${selectedMailDate} 메일 분석 중…` : `${selectedMailDate} 데일리 불러오기`}</button>
@@ -318,7 +333,7 @@ export function DailyReportIntakeV2() {
           <h2>데일리 업데이트 기준</h2>
           <div className={styles.ruleStack}>
             <div><span>01</span><strong>메일 수신일</strong><p>오늘뿐 아니라 원하는 날짜를 선택해 그날 수신한 리포트를 다시 불러올 수 있습니다.</p></div>
-            <div><span>02</span><strong>성과 파일</strong><p>한 메일의 XLSX/XLSB 여러 개는 내부 성과 파일로 각각 분석합니다.</p></div>
+            <div><span>02</span><strong>성과 파일</strong><p>월 누적 성과를 반영합니다. Addr.TV 원본은 일별 보조자료로 연결해 중복 집계하지 않습니다.</p></div>
             <div><span>03</span><strong>성과 기준일</strong><p>메일을 받은 날짜와 성과 기준일은 분리하고, Excel·메일 본문 기준일을 우선합니다.</p></div>
             <div><span>04</span><strong>메일 본문</strong><p>메일 본문은 해당 기준일의 운영 인사이트로 한 번만 저장합니다.</p></div>
           </div>
@@ -331,7 +346,7 @@ export function DailyReportIntakeV2() {
             <div>
               <div className="eyebrow">불러오기 결과</div>
               <h2>{batchDateLabel || selectedMailDate} · 데일리 메일 {messageCount}건</h2>
-              <p>성과 파일 {factAttachmentCount}개 · 반영 준비 {readyBatch.length}개 · 메일만 {mailOnlyItems.length}건</p>
+              <p>성과 파일 {factAttachmentCount}개 · 일별 보조자료 {supportingCount}개 · 반영 준비 {readyBatch.length}개 · 메일만 {mailOnlyItems.length}건</p>
             </div>
             <div className={issueCount ? styles.bundleReview : styles.bundleStatus}>{issueCount ? `확인 필요 ${issueCount}` : "검수 완료"}</div>
           </div>
@@ -339,7 +354,7 @@ export function DailyReportIntakeV2() {
           <div className={styles.batchList}>
             {groupedMessages.map((group) => {
               const attachmentItems = group.items.filter((item) => item.attachment);
-              const validItems = attachmentItems.filter((item) => item.bundle && item.bundle.placements.length > 0);
+              const validItems = attachmentItems.filter((item) => !item.supporting && !item.error && item.bundle && item.bundle.placements.length > 0);
               const failed = attachmentItems.some((item) => item.error);
               const structureIssue = attachmentItems.some((item) => item.bundle && item.bundle.placements.length === 0);
               const mailOnly = attachmentItems.length === 0;
@@ -355,6 +370,7 @@ export function DailyReportIntakeV2() {
                       {attachmentItems.length ? attachmentItems.map((item) => (
                         <span key={item.id} className={item.error || (item.bundle && !item.bundle.placements.length) ? styles.fileChipIssue : styles.fileChip}>
                           {item.attachment?.filename}
+                          {item.supporting && <span> · 일별 보조자료 (중복 집계 제외)</span>}
                         </span>
                       )) : <span className={styles.fileChipMuted}>Excel 첨부 없음</span>}
                     </div>
@@ -369,7 +385,7 @@ export function DailyReportIntakeV2() {
                   {mailOnly ? <b className={styles.batchMailOnly}>메일만</b>
                     : failed ? <b className={styles.batchError}>실패</b>
                     : structureIssue ? <b className={styles.batchWarn}>구조 확인</b>
-                    : <b className={styles.batchReady}>준비 {validItems.length}/{attachmentItems.length}</b>}
+                    : <b className={styles.batchReady}>준비 {validItems.length}/{attachmentItems.filter(item => !item.supporting).length}</b>}
                 </article>
               );
             })}
@@ -383,7 +399,7 @@ export function DailyReportIntakeV2() {
           <div className={styles.previewGrid}>
             <article className={styles.previewCard}>
               <div className={styles.previewCardHead}><strong>Excel 성과</strong><span>{singleResult.placements.length}개 지면 · 일별 {singleResult.dailyPerformance?.length ?? 0}건</span></div>
-              <div className={styles.factTableWrap}><table className={styles.factTable}><thead><tr><th>매체</th><th>지면</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{singleResult.placements.slice(0, 12).map((item) => <tr key={`${item.sourceSheet}-${item.placement}`}><td>{item.platform}</td><td>{item.placement}</td><td>{item.impressions.toLocaleString()}</td><td>{item.clicks.toLocaleString()}</td><td>{item.ctr === null ? "-" : `${item.ctr.toFixed(2)}%`}</td></tr>)}</tbody></table></div>
+              <div className={styles.factTableWrap}><table className={styles.factTable}><thead><tr><th>매체</th><th>지면</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{singleResult.placements.slice(0, 12).map((item) => <tr key={`${item.sourceSheet}-${item.placement}`}><td>{item.platform}</td><td>{item.placement}</td><td>{item.impressions.toLocaleString()}</td><td>{item.clicks === null ? "-" : item.clicks.toLocaleString()}</td><td>{item.ctr === null ? "-" : `${item.ctr.toFixed(2)}%`}</td></tr>)}</tbody></table></div>
             </article>
             <article className={styles.previewCard}>
               <div className={styles.previewCardHead}><strong>메일 인사이트</strong><span>{singleResult.operationNotes.length}개 메모</span></div>

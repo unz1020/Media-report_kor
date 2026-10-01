@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { parseAddressableTvWorkbook } from "@/lib/addressable-tv-parser";
 import type {
   CreativeDailyFact,
   DailyBundlePreview,
@@ -428,6 +429,8 @@ function parseMediaPlans(book: XLSX.WorkBook, matrices: Record<string, Matrix>, 
 
 export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailBody: string): DailyBundlePreview {
   const book = XLSX.read(buffer, { type: "buffer", cellDates: true, cellFormula: false });
+  const tv = parseAddressableTvWorkbook(book, filename, mailBody);
+  if (tv) return tv;
   const matrices: Record<string, Matrix> = {};
   for (const sheetName of book.SheetNames) matrices[sheetName] = rowsFor(book, sheetName);
   const meta = workbookMeta(book, matrices);

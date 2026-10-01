@@ -25,8 +25,9 @@ export function ImportedDailyPerformance({ advertiser = "자코모", month = "20
   const summary = useMemo(() => {
     const rows = datasets.flatMap((dataset) => dataset.bundle.placements.map((placement) => ({ ...placement, sourceFile: dataset.sourceFile })));
     const impressions = rows.reduce((sum, row) => sum + row.impressions, 0);
-    const clicks = rows.reduce((sum, row) => sum + row.clicks, 0);
-    const ctr = impressions ? clicks / impressions * 100 : 0;
+    const clicks = rows.reduce((sum, row) => sum + (row.clicks ?? 0), 0);
+    const clickableImpressions = rows.filter(row => row.clicks !== null).reduce((sum, row) => sum + row.impressions, 0);
+    const ctr = clickableImpressions ? clicks / clickableImpressions * 100 : 0;
     const platforms = new Set(rows.map((row) => row.platform));
     const latest = datasets.map((item) => item.publishedAt).sort().at(-1) || "";
     return { rows, impressions, clicks, ctr, platformCount: platforms.size, latest };
@@ -50,7 +51,7 @@ export function ImportedDailyPerformance({ advertiser = "자코모", month = "20
       <div className={styles.sources}>{datasets.map((dataset) => <span key={dataset.key}>{dataset.sourceFile}</span>)}</div>
       <div className={styles.tableWrap}>
         <table><thead><tr><th>매체</th><th>지면</th><th>IMP</th><th>Click</th><th>CTR</th><th>Source</th></tr></thead><tbody>
-          {summary.rows.slice(0, 30).map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}><td>{row.platform}</td><td>{row.placement}</td><td>{row.impressions.toLocaleString()}</td><td>{row.clicks.toLocaleString()}</td><td>{row.ctr === null ? "-" : `${row.ctr.toFixed(2)}%`}</td><td>{row.sourceFile}</td></tr>)}
+          {summary.rows.slice(0, 30).map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}><td>{row.platform}</td><td>{row.placement}</td><td>{row.impressions.toLocaleString()}</td><td>{row.clicks === null ? "-" : row.clicks.toLocaleString()}</td><td>{row.ctr === null ? "-" : `${row.ctr.toFixed(2)}%`}</td><td>{row.sourceFile}</td></tr>)}
         </tbody></table>
       </div>
       <div className={styles.foot}>마지막 반영 {summary.latest ? new Date(summary.latest).toLocaleString("ko-KR") : "-"}</div>

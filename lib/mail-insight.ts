@@ -14,6 +14,8 @@ function splitCollapsedMail(value: string) {
   return value
     .replace(/\[Report Summary\]/gi, "\n[Report Summary]\n")
     .replace(/\[운영 현황\]/g, "\n[운영 현황]\n")
+    .replace(/(?=<\d+월 (?:\d+주차|전체) 집행 현황>)/g, "\n")
+    .replace(/(?=→\s*SKB\/LG U\+)/g, "\n")
     .replace(/(?=▶\s*)/g, "\n")
     .replace(/(?=\d+\)\s*[^\d])/g, "\n")
     .replace(/(?=\*\s*(?:기간|매체)\s*:)/g, "\n")
@@ -35,6 +37,7 @@ function isUsefulOperationLine(line: string) {
 
 function compactLine(line: string) {
   return line
+    .replace(/기타 상세 내용.*$/, "")
     .replace(/\s*확인 부탁.*$/i, "")
     .replace(/\s*감사합니다.*$/i, "")
     .replace(/\s*임홍모.*$/i, "")
@@ -52,7 +55,8 @@ export function extractStructuredOperationNotes(mailBody: string) {
   const lines = expanded.split(/\r?\n/).map(cleanLine).filter(Boolean);
   const operationIndex = lines.findIndex((line) => /^\[운영 현황\]$/i.test(line));
   const reportSummaryIndex = lines.findIndex((line) => /^\[Report Summary\]$/i.test(line));
-  const start = operationIndex >= 0 ? operationIndex + 1 : reportSummaryIndex >= 0 ? reportSummaryIndex + 1 : 0;
+  const tvIndex = lines.findIndex(line => /^<\d+월 (?:\d+주차|전체) 집행 현황>/.test(line));
+  const start = operationIndex >= 0 ? operationIndex + 1 : reportSummaryIndex >= 0 ? reportSummaryIndex + 1 : tvIndex >= 0 ? tvIndex : 0;
   const result: string[] = [];
 
   for (let i = start; i < lines.length; i++) {
