@@ -7,6 +7,7 @@ on:
       - 'components/**'
       - 'lib/**'
       - 'supabase/functions/**'
+      - 'supabase/migrations/**'
       - 'scripts/**'
       - '.github/workflows/operations-check.yml'
   push:
@@ -16,6 +17,7 @@ on:
       - 'components/**'
       - 'lib/**'
       - 'supabase/functions/**'
+      - 'supabase/migrations/**'
       - 'scripts/**'
       - '.github/workflows/operations-check.yml'
 

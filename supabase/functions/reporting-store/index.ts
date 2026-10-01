@@ -1,3 +1,4 @@
+import { normalizeInsightInput, retainInsightOverride } from "./insight-input.ts";
 import { normalizePlacementInput } from "./placement-input.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.3";
 
@@ -91,7 +92,7 @@ async function getOrCreateImport(input: {
   const sourceSheet = input.sourceSheet || "";
   const { data: existing, error: findError } = await supabase
     .from("report_imports")
-    .select("id")
+    .select("id, metadata, updated_at")
     .eq("advertiser_id", input.advertiserId)
     .eq("report_date", input.reportDate)
     .eq("source_file", input.sourceFile)
@@ -99,6 +100,7 @@ async function getOrCreateImport(input: {
     .maybeSingle();
   if (findError) throw findError;
 
+  retainInsightOverride(input.metadata, existing?.metadata);
   const payload = {
     advertiser_id: input.advertiserId,
     report_date: input.reportDate,
@@ -117,8 +119,9 @@ async function getOrCreateImport(input: {
   };
 
   if (existing?.id) {
-    const { error } = await supabase.from("report_imports").update(payload).eq("id", existing.id);
+    const { data, error } = await supabase.from("report_imports").update(payload).eq("id", existing.id).eq("updated_at", existing.updated_at).select("id").maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error("INSIGHT_CHANGED");
     return existing.id as string;
   }
 
@@ -237,6 +240,21 @@ Deno.serve(async (req: Request) => {
       if (importError) throw importError;
       if (insightError) throw insightError;
       return json({ user, advertiser, accessLevel, imports: imports || [], insights: insights || [] });
+    }
+
+    if (action === "save_insight") {
+      const input = body.input || {};
+      const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(input.advertiser || ""));
+      if (!["owner", "editor"].includes(accessLevel)) return json({ error: "WRITE_ACCESS_DENIED" }, 403);
+      let edit;
+      try { edit = normalizeInsightInput(input); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_INSIGHT_NOTES" }, 400); }
+      const { data, error } = await supabase.rpc("edit_daily_insight", {
+        caller_email: user.email, advertiser_id_input: advertiser.id,
+        insight_id_input: edit.insightId, expected_updated_at_input: edit.expectedUpdatedAt, notes_input: edit.notes,
+      });
+      if (error) throw new Error(error.message);
+      return json({ ok: true, insight: data });
     }
 
     if (action === "save_manual_proof") {
@@ -365,7 +383,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
+    const status = message === "INSIGHT_CHANGED" ? 409 : message === "INSIGHT_NOT_FOUND" ? 404 : message.startsWith("INVALID_INSIGHT") ? 400 : message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
     return json({ error: message }, status);
   }
 });

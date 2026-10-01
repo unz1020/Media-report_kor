@@ -8,8 +8,9 @@ import { landingWithUtm, safeHttpUrl, UTM_KEYS } from "@/lib/placement-urls";
 import styles from "./placement-setup-form.module.css";
 
 type SavedProof = PlacementProof & { importId: string };
-export function PlacementSetupForm({ proof, initial, onClose }: {
+export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
   proof?: PlacementProof;
+  initialFile?: File;
   initial?: { media?: string; placement?: string; periodStart?: string; periodEnd?: string };
   onClose: () => void;
 }) {
@@ -28,7 +29,7 @@ export function PlacementSetupForm({ proof, initial, onClose }: {
   const [previewUrl, setPreviewUrl] = useState(proof?.previewUrl || "");
   const [landingUrl, setLandingUrl] = useState(proof?.landingUrl || "");
   const [utm, setUtm] = useState<Record<string, string>>(proof?.utm || {});
-  const [file, setFile] = useState<File>();
+  const [file, setFile] = useState<File | undefined>(initialFile);
   const [filePreview, setFilePreview] = useState("");
   const [saved, setSaved] = useState<PlacementProof | undefined>(proof);
   const [saving, setSaving] = useState(false);
