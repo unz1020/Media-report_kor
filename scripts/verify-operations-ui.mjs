@@ -15,6 +15,11 @@ let savedProof;
 let saveCount = 0;
 let imageCount = 0;
 let failImage = false;
+let failInsight = false;
+let insightNotes = ["이전일 전체 상세", "일곱 번째도 모두 표시"];
+let insightVersion = "2026-10-01T01:00:00Z";
+const insightId = "11111111-1111-4111-8111-111111111111";
+const planBundle = { advertiser: "자코모", sourceFile: "2026-10 운영안.xlsx", reportDate: "2026-10-01", campaignStart: "2026-10-01", campaignEnd: "2026-10-31", placements: [], parsedSheets: [], ignoredSheets: [], operationNotes: [], mailChecks: [], qa: {}, mediaPlan: [{ platform: "카카오", product: "카카오 피드", periodStart: "2026-10-01", periodEnd: "2026-10-31", creativeType: "이미지" }] };
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
@@ -31,11 +36,22 @@ await page.route("**/api/reporting/store", async route => {
       id: savedProof.importId, report_date: savedProof.reportDate, updated_at: savedProof.publishedAt,
       metadata: { bundle: { placementProof: savedProof } },
     }] : [];
+    if (body.month === "2026-10") imports.push(
+      { id: "mail-a", report_date: "2026-10-01", updated_at: insightVersion, mail_date: "2026-10-01T01:00:00Z", metadata: { mailOnly: true } },
+      { id: "plan", report_date: "2026-10-01", updated_at: "2026-10-01T01:00:00Z", metadata: { bundle: planBundle } }
+    );
     return json(route, { imports, insights: body.month === "2026-10" ? [
-      { id: "a", report_date: "2026-10-01", subject: "첫째 날 운영", notes: ["이전일 전체 상세", "일곱 번째도 모두 표시"], created_at: "2026-10-01T01:00:00Z" },
+      { id: insightId, import_id: "mail-a", report_date: "2026-10-01", subject: "첫째 날 운영", notes: insightNotes, created_at: "2026-10-01T01:00:00Z" },
       { id: "b", report_date: "2026-10-02", subject: "둘째 날 운영", notes: ["최근일 운영 상세"], created_at: "2026-10-02T01:00:00Z" },
       { id: "c", report_date: "2026-10-01", subject: "같은 날 추가 메일", notes: ["추가 매체 인사이트"], created_at: "2026-10-01T02:00:00Z" },
     ] : [] });
+  }
+  if (body.action === "save_insight") {
+    assert.equal(access, "editor"); assert.equal(body.input.insightId, insightId);
+    assert.equal(body.input.expectedUpdatedAt, insightVersion);
+    if (failInsight) return json(route, { error: "INSIGHT_CHANGED" }, 409);
+    insightNotes = body.input.notes; insightVersion = new Date().toISOString();
+    return json(route, { ok: true });
   }
   assert.equal(body.action, "save_manual_proof");
   assert.equal(access, "editor");
@@ -73,12 +89,41 @@ try {
   await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
   await visible(page.getByText("이전일 전체 상세", { exact: true }));
   await visible(page.getByText("추가 매체 인사이트", { exact: true }));
+  const entry = page.locator("details").filter({ has: page.getByText("첫째 날 운영", { exact: true }) });
+  await entry.getByRole("button", { name: "문구 수정", exact: true }).click();
+  await entry.getByLabel("인사이트 문구", { exact: true }).fill("취소할 문구");
+  await entry.getByRole("button", { name: "취소", exact: true }).click();
+  assert.deepEqual(insightNotes, ["이전일 전체 상세", "일곱 번째도 모두 표시"]);
+  await entry.getByRole("button", { name: "문구 수정", exact: true }).click();
+  await entry.getByLabel("인사이트 문구", { exact: true }).fill("직접 수정한 상세\n\n두 번째 항목");
+  failInsight = true;
+  await entry.getByRole("button", { name: "인사이트 저장", exact: true }).click();
+  await visible(entry.getByRole("alert"));
+  assert.equal(await entry.getByLabel("인사이트 문구", { exact: true }).inputValue(), "직접 수정한 상세\n\n두 번째 항목");
+  failInsight = false;
+  await entry.getByRole("button", { name: "인사이트 저장", exact: true }).click();
+  await visible(entry.getByText("직접 수정한 상세", { exact: true }));
+  assert.deepEqual(insightNotes, ["직접 수정한 상세", "두 번째 항목"]);
+  await page.reload(); await chooseOctober();
+  await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
+  await visible(page.getByText("직접 수정한 상세", { exact: true }));
   await page.goto("http://localhost:3000/reports");
   await chooseOctober();
   await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
-  await visible(page.getByText("이전일 전체 상세", { exact: true }));
+  await visible(page.getByText("직접 수정한 상세", { exact: true }));
   await page.goto("http://localhost:3000/creative");
   await chooseOctober();
+  await page.getByLabel("카카오 카카오 피드 이미지 등록", { exact: true }).setInputFiles({ name: "pending.png", mimeType: "image/png", buffer: pixel });
+  await visible(page.getByAltText("등록할 지면 이미지 미리보기"));
+  assert.equal(await page.getByLabel("매체", { exact: true }).inputValue(), "카카오");
+  assert.equal(await page.getByLabel("상품 / 게재지면", { exact: true }).inputValue(), "카카오 피드");
+  await page.getByRole("button", { name: "지면 저장", exact: true }).click();
+  await page.getByRole("region", { name: "지면 수동 세팅" }).waitFor({ state: "hidden" });
+  assert.equal(imageCount, 1); assert.equal(savedProof.status, "사전 세팅");
+  assert.equal(await page.getByLabel("카카오 카카오 피드 이미지 등록", { exact: true }).count(), 0);
+  await visible(page.getByAltText("카카오 피드 게재 확인 이미지"));
+  savedProof = undefined; saveCount = 0; imageCount = 0;
+  await page.reload(); await chooseOctober();
   await page.getByRole("button", { name: "지면 수동 등록", exact: true }).click();
   await page.getByLabel("매체", { exact: true }).fill("네이버 GFA");
   await page.getByLabel("상품 / 게재지면", { exact: true }).fill("모바일 피드");
@@ -124,8 +169,12 @@ try {
   assert.equal(await page.getByRole("button", { name: "지면 수동 등록", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "지면 · 랜딩 · UTM 수정", exact: true }).count(), 0);
   await visible(page.getByRole("heading", { name: "수정한 소재", exact: true }));
+  await page.goto("http://localhost:3000/overview"); await chooseOctober();
+  await page.getByRole("button", { name: "2026-10-01", exact: true }).click();
+  await visible(page.getByText("직접 수정한 상세", { exact: true }));
+  assert.equal(await page.getByRole("button", { name: "문구 수정", exact: true }).count(), 0);
   assert.deepEqual(errors, []);
-  console.log("Browser checks passed: history, mail-only insights, pre-setup, UTM, image failure/retry, edit, month isolation, viewer.");
+  console.log("Browser checks passed: insight edit/cancel/conflict/persistence, pending placement image, history, mail-only insights, pre-setup, UTM, image failure/retry, edit, month isolation, viewer.");
 } catch (error) {
   console.error("Browser state:", await page.locator("body").innerText());
   console.error("Browser errors:", errors);

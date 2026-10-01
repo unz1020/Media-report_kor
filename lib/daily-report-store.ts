@@ -20,6 +20,8 @@ export type PublishedDataset = {
 
 export type PublishedInsight = {
   key: string;
+  insightId?: string;
+  importUpdatedAt?: string;
   advertiser: string;
   reportDate: string;
   datasetKey: string;
@@ -162,8 +164,11 @@ function stateFromRemote(payload: RemoteStatePayload) {
   const next = emptyState();
   const importDatasetKey = new Map<string, string>();
   const importMailDate = new Map<string, string>();
+  const importUpdatedAt = new Map<string, string>();
 
   for (const item of payload.imports ?? []) {
+    importMailDate.set(item.id, item.mail_date || "");
+    importUpdatedAt.set(item.id, item.updated_at || item.created_at || "");
     const bundle = item.metadata?.bundle;
     if (!bundle) continue;
     if (bundle.placementProof) {
@@ -201,6 +206,8 @@ function stateFromRemote(payload: RemoteStatePayload) {
     const notes = Array.isArray(item.notes) ? item.notes.map((value) => String(value)) : [];
     next.insights[`remote::${item.id}`] = {
       key: `remote::${item.id}`,
+      insightId: item.id,
+      importUpdatedAt: item.import_id ? importUpdatedAt.get(item.import_id) : undefined,
       advertiser: "",
       reportDate: item.report_date,
       datasetKey,
