@@ -86,7 +86,7 @@ export function PlacementSetupForm({ proof, initial, onClose }: {
         setSaved({ ...next, manualImagePath: imagePayload.path, publishedAt: imagePayload.updatedAt });
         setFile(undefined);
       }
-      if (mounted.current) { await hydratePublishedDailyState(advertiser, month); onClose(); }
+      if (mounted.current) { await hydratePublishedDailyState(advertiser, month); if (mounted.current) onClose(); }
     } catch (error) {
       setError(error instanceof Error ? error.message : "저장에 실패했습니다.");
       if (metadataSaved && mounted.current) {
