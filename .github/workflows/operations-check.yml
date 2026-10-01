@@ -37,6 +37,7 @@ jobs:
           node scripts/verify-placement-edge.mjs
           node scripts/verify-report-sources.cjs
           node scripts/verify-media-mix.cjs
+          node scripts/verify-media-mix-auto.cjs
           node scripts/verify-performance-visuals.cjs
       - run: npm run build
       - name: Install browser verification tools
@@ -51,4 +52,5 @@ jobs:
           node scripts/verify-report-sources-ui.mjs
           node scripts/verify-layout-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-ui.mjs
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-auto-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-performance-visuals-ui.mjs

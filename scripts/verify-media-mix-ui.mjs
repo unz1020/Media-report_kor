@@ -52,6 +52,7 @@ try{
  await page.getByRole('searchbox').fill('소재 B');assert.equal(await page.locator('[data-layout-panel="schedule:day-details"] button').count(),1);await page.getByRole('searchbox').fill('');
  await page.getByRole('button',{name:'전체 OFF',exact:true}).click();await wait(page.getByText('표시 중인 상품이 없습니다. ON 설정과 검색어를 확인해주세요.'));await page.getByRole('button',{name:'전체 ON',exact:true}).click();
  await page.getByRole('button',{name:'미디어믹스 업데이트',exact:true}).click();
+ await page.getByLabel('월 운영안 전체 교체').check();
  const workbook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([['매체','광고상품','소재명','시작일','종료일','예산','집행상태'],['네이버','GFA','10월 신규 소재','2026-10-01','2026-10-31',4500,'예정']]),'믹스');
  await page.getByLabel('미디어믹스 Excel').setInputFiles({name:'10월_미디어믹스.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:XLSX.write(workbook,{type:'buffer',bookType:'xlsx'})});
  await wait(page.getByText('1행을 불러왔습니다. 광고주·월·기간·예산을 검수한 뒤 저장해주세요.'));

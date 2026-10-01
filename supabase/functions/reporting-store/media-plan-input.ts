@@ -1,4 +1,5 @@
 export type MediaMixRow = {
+  rowId?: string;
   platform: string; product: string; placement: string; creativeName: string;
   creativeType: string; device: string; periodStart: string; periodEnd: string;
   budget: number | null; expectedImpressions: number | null; expectedClicks: number | null;
@@ -37,7 +38,9 @@ export function normalizeMediaMix(input: Record<string, unknown>) {
       if (periodStart && (periodStart > periodEnd || periodStart > monthEnd || periodEnd < monthStart)) throw new Error("선택한 월에 포함되는 집행기간을 입력해주세요.");
       const operationStatus = raw.operationStatus || "예정";
       if (!["예정", "집행 중", "중단", "종료"].includes(String(operationStatus))) throw new Error("INVALID_MEDIA_MIX_STATUS");
-      return { platform, product, placement: text(raw.placement, 150) || product,
+      const rowId = raw.rowId == null ? undefined : text(raw.rowId, 36);
+      if (rowId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rowId)) throw new Error("INVALID_MEDIA_MIX_ROW_ID");
+      return { ...(rowId ? { rowId } : {}), platform, product, placement: text(raw.placement, 150) || product,
         creativeName: text(raw.creativeName, 200), creativeType: text(raw.creativeType, 200), device: text(raw.device, 100),
         periodStart, periodEnd, budget: number(raw.budget), expectedImpressions: number(raw.expectedImpressions), expectedClicks: number(raw.expectedClicks),
         target: text(raw.target, 2000), sourceSheet: text(raw.sourceSheet, 200) || "수동 입력", operationStatus: operationStatus as MediaMixRow["operationStatus"] };
@@ -45,5 +48,5 @@ export function normalizeMediaMix(input: Record<string, unknown>) {
   });
   const expectedUpdatedAt = input.expectedUpdatedAt == null ? null : text(input.expectedUpdatedAt, 50);
   if (expectedUpdatedAt && !Number.isFinite(Date.parse(expectedUpdatedAt))) throw new Error("INVALID_MEDIA_MIX_VERSION");
-  return { month, rows, expectedUpdatedAt, sourceFile: text(input.sourceFile, 300) || "직접 입력" };
+  return { month, rows, expectedUpdatedAt, sourceFile: text(input.sourceFile, 300) || "직접 입력", changeMemo: text(input.changeMemo, 2000) };
 }
