@@ -11,7 +11,7 @@ type SavedProof = PlacementProof & { importId: string };
 export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
   proof?: PlacementProof;
   initialFile?: File;
-  initial?: { media?: string; placement?: string; periodStart?: string; periodEnd?: string };
+  initial?: { media?: string; placement?: string; creativeName?: string; periodStart?: string; periodEnd?: string };
   onClose: () => void;
 }) {
   const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
@@ -20,7 +20,7 @@ export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
   const [clientId] = useState(() => crypto.randomUUID());
   const [media, setMedia] = useState(proof?.media || initial?.media || "");
   const [placement, setPlacement] = useState(proof?.placement || initial?.placement || "");
-  const [creativeName, setCreativeName] = useState(proof?.creativeName || "");
+  const [creativeName, setCreativeName] = useState(proof?.creativeName || initial?.creativeName || "");
   const [campaignName, setCampaignName] = useState(proof?.campaignName || "");
   const [periodStart, setPeriodStart] = useState(proof?.periodStart || initial?.periodStart || "");
   const [periodEnd, setPeriodEnd] = useState(proof?.periodEnd || initial?.periodEnd || "");

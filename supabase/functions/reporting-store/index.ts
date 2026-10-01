@@ -1,3 +1,4 @@
+import { normalizeMediaMix } from "./media-plan-input.ts";
 import { layoutPage, normalizeLayout } from "./layout-input.ts";
 import { normalizeInsightInput, retainInsightOverride } from "./insight-input.ts";
 import { normalizePlacementInput } from "./placement-input.ts";
@@ -89,6 +90,7 @@ async function getOrCreateImport(input: {
   mailDate?: string | null;
   metadata: Record<string, unknown>;
   actorEmail: string;
+  expectedUpdatedAt?: string | null;
 }) {
   const sourceSheet = input.sourceSheet || "";
   const { data: existing, error: findError } = await supabase
@@ -100,6 +102,7 @@ async function getOrCreateImport(input: {
     .eq("source_sheet", sourceSheet)
     .maybeSingle();
   if (findError) throw findError;
+  if ("expectedUpdatedAt" in input && (existing?.updated_at || null) !== input.expectedUpdatedAt) throw new Error("MEDIA_MIX_CHANGED");
 
   retainInsightOverride(input.metadata, existing?.metadata);
   const payload = {
@@ -122,11 +125,12 @@ async function getOrCreateImport(input: {
   if (existing?.id) {
     const { data, error } = await supabase.from("report_imports").update(payload).eq("id", existing.id).eq("updated_at", existing.updated_at).select("id").maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error("INSIGHT_CHANGED");
+    if (!data) throw new Error("expectedUpdatedAt" in input ? "MEDIA_MIX_CHANGED" : "INSIGHT_CHANGED");
     return existing.id as string;
   }
 
   const { data, error } = await supabase.from("report_imports").insert(payload).select("id").single();
+  if (error?.code === "23505" && "expectedUpdatedAt" in input) throw new Error("MEDIA_MIX_CHANGED");
   if (error) throw error;
   return data.id as string;
 }
@@ -266,6 +270,27 @@ Deno.serve(async (req: Request) => {
       if (importError) throw importError;
       if (insightError) throw insightError;
       return json({ user, advertiser, accessLevel, imports: imports || [], insights: insights || [] });
+    }
+
+    if (action === "save_media_mix") {
+      const input = body.input || {};
+      const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(input.advertiser || ""));
+      if (!["owner", "editor"].includes(accessLevel)) return json({ error: "WRITE_ACCESS_DENIED" }, 403);
+      let plan;
+      try { plan = normalizeMediaMix(input); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_MEDIA_MIX" }, 400); }
+      const monthEnd = new Date(Date.UTC(Number(plan.month.slice(0, 4)), Number(plan.month.slice(5)), 0)).toISOString().slice(0, 10);
+      const bundle = { advertiser: advertiser.name, reportDate: plan.month + "-01", campaignStart: plan.month + "-01", campaignEnd: monthEnd,
+        sourceFile: `[media-mix] ${plan.month}`, originalSourceFile: plan.sourceFile, sourceId: "monthly-media-mix", sourceKind: "media_mix",
+        placements: [], dailyPerformance: [], creativeDailyPerformance: [], operationNotes: [], mediaPlan: plan.rows,
+        parsedSheets: [], ignoredSheets: [], mailChecks: [], qa: {} };
+      const importId = await getOrCreateImport({ advertiserId: advertiser.id, reportDate: bundle.reportDate,
+        sourceFile: bundle.sourceFile, sourceSheet: "media-mix", sourceType: "manual_excel", metadata: { bundle },
+        actorEmail: user.email, expectedUpdatedAt: plan.expectedUpdatedAt });
+      const { error } = await supabase.from("workspace_activity").insert({ actor_email: user.email, advertiser_id: advertiser.id,
+        action: "media_mix_updated", detail: { importId, month: plan.month, rowCount: plan.rows.length, sourceFile: plan.sourceFile } });
+      if (error) throw error;
+      return json({ ok: true, importId });
     }
 
     if (action === "save_insight") {
@@ -409,7 +434,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = (message === "INSIGHT_CHANGED" || message === "LAYOUT_CHANGED") ? 409 : message === "INSIGHT_NOT_FOUND" ? 404 : (message.startsWith("INVALID_INSIGHT") || message.startsWith("INVALID_LAYOUT")) ? 400 : message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
+    const status = (message === "INSIGHT_CHANGED" || message === "LAYOUT_CHANGED" || message === "MEDIA_MIX_CHANGED") ? 409 : message === "INSIGHT_NOT_FOUND" ? 404 : (message.startsWith("INVALID_INSIGHT") || message.startsWith("INVALID_LAYOUT")) ? 400 : message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
     return json({ error: message }, status);
   }
 });

@@ -6,7 +6,7 @@ import { hydratePublishedDailyState, type PublishedInsight } from "@/lib/daily-r
 import { normalizeInsightText } from "@/lib/media-normalization";
 import styles from "./daily-insight-history.module.css";
 
-function InsightEntry({ item }: { item: PublishedInsight }) {
+export function InsightEntry({ item, displayNotes }: { item: PublishedInsight; displayNotes?: string[] }) {
   const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -43,14 +43,14 @@ function InsightEntry({ item }: { item: PublishedInsight }) {
     } finally { if (mounted.current) setSaving(false); }
   }
   return <details className={styles.entry} open>
-    <summary>{normalizeInsightText(item.mailSubject) || "데일리 운영 인사이트"}</summary>
+    <summary>{item.reportDate} · {normalizeInsightText(item.mailSubject) || "데일리 운영 인사이트"}</summary>
     {item.mailDate && <p className={styles.meta}>메일 수신: {new Date(item.mailDate).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</p>}
     {draft && canEdit ? <form onSubmit={save} className={styles.editor}>
       <label>인사이트 문구<textarea aria-label="인사이트 문구" required maxLength={80000} rows={8} value={draft.text} disabled={saving} onChange={event => setDraft({ ...draft, text: event.target.value })} /></label>
-      <small>빈 줄로 항목을 구분합니다. 수정 내용은 동료 계정에도 반영됩니다.</small>
+      <small>빈 줄로 항목을 구분합니다. 메일의 전체 인사이트를 편집하며 개요·성과·동료 계정에 함께 반영됩니다.</small>
       <div className={styles.actions}><button type="button" className="btn" disabled={saving} onClick={() => { setDraft(null); setError(""); }}>취소</button><button type="submit" className="btn primary" disabled={saving || dataSyncState === "loading"}>{saving ? "저장 중…" : "인사이트 저장"}</button></div>
     </form> : <>
-      {item.notes.length ? item.notes.map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>) : <p>등록된 상세 내용이 없습니다.</p>}
+      {(displayNotes ?? item.notes).length ? (displayNotes ?? item.notes).map((note, index) => <p key={index}>{normalizeInsightText(note)}</p>) : <p>등록된 상세 내용이 없습니다.</p>}
       {canEdit && item.insightId && item.importUpdatedAt && <div className={styles.actions}><button type="button" className="btn" disabled={dataSyncState === "loading" || saving} onClick={() => { setDraft({ text: item.notes.join("\n\n"), updatedAt: item.importUpdatedAt! }); setError(""); setNotice(""); }}>문구 수정</button></div>}
     </>}
     {error && <p className={styles.error} role="alert">{error}</p>}
