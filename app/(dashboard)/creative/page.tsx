@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import {
   hydratePublishedDailyState,
@@ -225,11 +226,13 @@ export default function CreativePage() {
       <div className="page-meta"><span className="view-pill">{month}</span>{canEdit && <button type="button" className="btn primary" disabled={dataSyncState === "loading"} onClick={() => setEditor({})}>지면 수동 등록</button>}</div>
     </div>
 
+
     {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
-    {!proofs.length && <section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section>}
+<LayoutCanvas page="creative">
+    {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
 
-    {proofs.length > 0 && <section className={styles.proofSection}>
+    {proofs.length > 0 && <LayoutPanel id="creative:등록 지면 · 소재:4" title="등록 지면 · 소재"><section className={styles.proofSection}>
       <div className={styles.sectionHead}>
         <div><h2>등록 지면 · 소재</h2><p>매체 → 게재 지면 → 소재 순서로 확인할 수 있습니다. 같은 지면의 여러 소재는 한 지면 아래에서 묶어 보여줍니다.</p></div>
         <span className={styles.countBadge}>{placementCount}개 지면{creativeCount ? ` · ${creativeCount}개 소재 구분` : ""}</span>
@@ -290,13 +293,13 @@ export default function CreativePage() {
           </section>;
         })}
       </div>
-    </section>}
+    </section></LayoutPanel>}
 
-    <section className={`card card-pad ${styles.infoCard}`}>
+    <LayoutPanel id="creative:자료 연결 방식:5" title="자료 연결 방식"><section className={`card card-pad ${styles.infoCard}`}>
       <div className="report-panel-head"><div><h2>자료 연결 방식</h2><p>한 보고서에 지면이 여러 개면 지면을 추가하고, 같은 디지털 지면에 여러 소재가 운영되면 소재별 항목을 추가합니다. 소재 · 게재지면 화면에서는 매체를 먼저 선택한 뒤 지면별 소재를 묶어서 확인합니다.</p></div></div>
-    </section>
+    </section></LayoutPanel>
 
-    <section className="card section-space report-panel">
+    <LayoutPanel id="creative:운영안 기준 연결 대기 지면:6" title="운영안 기준 연결 대기 지면"><section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>운영안 기준 연결 대기 지면</h2><p>{selectedMedia === "전체" ? "운영안에서 확인됐지만 아직 별도 게재 보고 자료가 연결되지 않은 상품을 관리합니다. 이미지 등록에서 파일을 선택하고 미리보기 확인 후 저장하세요." : `${selectedMedia} 운영안에서 아직 게재 보고 자료가 연결되지 않은 상품입니다.`}</p></div><span className="view-pill">{visiblePlans.length}개</span></div>
       {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept="image/png,image/jpeg,image/webp" disabled={dataSyncState === "loading"} onChange={event => {
         const file = event.currentTarget.files?.[0];
@@ -306,6 +309,7 @@ export default function CreativePage() {
         setUploadError("");
         setEditor({ initialFile: file, selectionId: crypto.randomUUID(), initial: { media: plan.platform, placement: plan.product || plan.placement, periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } });
       }} style={{ display: "block", maxWidth: 200, marginTop: 6 }} /></label> : "미등록"}</td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.product || plan.placement, periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
-    </section>
-  </>;
+    </section></LayoutPanel>
+  </LayoutCanvas>
+</>;
 }

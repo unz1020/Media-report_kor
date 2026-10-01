@@ -31,6 +31,7 @@ await page.route("**/api/workspace", route => json(route, {
 }));
 await page.route("**/api/reporting/store", async route => {
   const body = route.request().postDataJSON();
+  if (body.action === "load_layout") return json(route, { layout: null, updatedAt: null });
   if (body.action === "load_state") {
     const imports = savedProof && savedProof.month === body.month ? [{
       id: savedProof.importId, report_date: savedProof.reportDate, updated_at: savedProof.publishedAt,
