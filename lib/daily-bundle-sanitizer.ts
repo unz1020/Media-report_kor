@@ -1,4 +1,5 @@
 import type { DailyBundlePreview } from "@/lib/daily-report-parser";
+import { canonicalMedia } from "@/lib/media-normalization";
 
 type ContextInput = {
   filename?: string;
@@ -23,11 +24,6 @@ function inferContextDate(input: ContextInput): ContextDate {
   const all = [input.filename, input.mailSubject, input.mailBody].filter(Boolean).join("\n");
 
   // 파일명/메일 제목의 260916, 26년 9월은 해당 리포트 자체의 강한 날짜 문맥이다.
-  const primaryCompact = primary.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
-  if (primaryCompact) {
-    return { year: 2000 + Number(primaryCompact[1]), month: Number(primaryCompact[2]), strong: true, forceYear: true };
-  }
-
   const primaryKorean = primary.match(/(?:^|\D)(\d{2})\s*년\s*(0?[1-9]|1[0-2])\s*월/);
   if (primaryKorean) {
     return { year: 2000 + Number(primaryKorean[1]), month: Number(primaryKorean[2]), strong: true, forceYear: true };
@@ -36,6 +32,12 @@ function inferContextDate(input: ContextInput): ContextDate {
   const primaryFull = primary.match(/\b(20\d{2})[-/.\s년]+(0?[1-9]|1[0-2])(?:[-/.\s월]|\b)/);
   if (primaryFull) {
     return { year: Number(primaryFull[1]), month: Number(primaryFull[2]), strong: true, forceYear: true };
+  }
+
+  const primaryCompact = primary.match(/(?:^|\D)(\d{2})(0[1-9]|1[0-2])([0-3]\d)(?:\D|$)/);
+  if (primaryCompact) {
+    const namedMonth = primary.match(/(?:^|\D)(0?[1-9]|1[0-2])\s*월/);
+    return { year: 2000 + Number(primaryCompact[1]), month: namedMonth ? Number(namedMonth[1]) : Number(primaryCompact[2]), strong: true, forceYear: true };
   }
 
   const explicit = all.match(/\b(20\d{2})\b/);
@@ -78,6 +80,15 @@ function normalizeIsoDate(value: string | undefined, context: ContextDate) {
 function inferredCampaignPeriod(bundle: DailyBundlePreview, context: ContextDate) {
   let campaignStart = normalizeIsoDate(bundle.campaignStart, context);
   let campaignEnd = normalizeIsoDate(bundle.campaignEnd, context);
+  const reportDate = normalizeIsoDate(bundle.reportDate, context);
+  // A next-month delivery suffix must not move already reported facts into the
+  // next campaign month (e.g. September results delivered on October 1).
+  if (bundle.placements?.length && /^\d{4}-\d{2}-\d{2}$/.test(reportDate) && campaignStart > reportDate) {
+    const month = reportDate.slice(0, 7);
+    campaignStart = `${month}-01`;
+    const lastDay = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+    campaignEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+  }
   if ((!campaignStart || !campaignEnd) && context.forceYear && context.month) {
     const month = String(context.month).padStart(2, "0");
     const lastDay = new Date(Date.UTC(context.year, context.month, 0)).getUTCDate();
@@ -128,12 +139,21 @@ export function sanitizeDailyBundle(bundle: DailyBundlePreview, input: ContextIn
   }
 
   const removedSheets = new Set<string>();
-  const cleanPlacements = placements.filter((row) => {
+  // Overall is the billed media total. Detail sheets are alternate breakdowns,
+  // not additional campaigns (their clicks/costs may use different definitions).
+  const overallMedia = new Set(placements.filter(row => /^overall$/i.test(row.sourceSheet)).map(row => canonicalMedia(row.platform)));
+  const searchOverall = /카카오\s*검색광고/i.test(bundle.sourceFile)
+    ? placements.find(row => /카카오\s*검색.*summary/i.test(row.sourceSheet) && row.placement === "전체")
+    : undefined;
+  const searchOverallIndex = searchOverall ? placements.indexOf(searchOverall) : -1;
+  const cleanPlacements = placements.filter((row, index) => {
     const sheet = row.sourceSheet || "";
-    const remove = isRawSheet(sheet) || isSummaryLabel(row.placement) || (hasSummarySheet && helperSheets.has(sheet) && !/^summary$/i.test(sheet));
+    const remove = (searchOverall && /카카오\s*검색.*summary/i.test(sheet) && index !== searchOverallIndex) ||
+      (overallMedia.has(canonicalMedia(row.platform)) && !/^overall$/i.test(sheet)) ||
+      isRawSheet(sheet) || isSummaryLabel(row.placement) || (hasSummarySheet && helperSheets.has(sheet) && !/^summary$/i.test(sheet));
     if (remove && sheet) removedSheets.add(sheet);
     return !remove;
-  }).map(normalizeAchievement);
+  }).map(row => normalizeAchievement(row === searchOverall ? { ...row, platform: "카카오 검색광고", placement: "전체 검색광고" } : row));
 
   const cleanDaily = (bundle.dailyPerformance || []).filter((row) => !isRawSheet(row.sourceSheet)).map((row) => ({
     ...row,

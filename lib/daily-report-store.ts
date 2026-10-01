@@ -1,5 +1,7 @@
 import type { DailyBundlePreview } from "@/lib/daily-report-parser";
 import type { PlacementProof } from "@/lib/placement-proof";
+import { reportSourceStem } from "@/lib/report-source";
+import { sanitizeDailyBundle } from "@/lib/daily-bundle-sanitizer";
 
 const LEGACY_STORAGE_KEY = "media-report-daily-v1";
 
@@ -102,12 +104,7 @@ export function dailyDatasetKey(bundle: DailyBundlePreview) {
   const month = (bundle.campaignStart || bundle.reportDate || "unknown").slice(0, 7);
   const extended = bundle as DailyBundlePreview & { sourceId?: string };
   if (extended.sourceId) return `${bundle.advertiser}::${month}::${extended.sourceId.toLowerCase()}`;
-  const stem = bundle.sourceFile
-    .replace(/\.(xlsx|xls|xlsb|csv|pdf)$/i, "")
-    .replace(/[_\- ]?(?:20)?\d{6,8}$/i, "")
-    .replace(/[_\- ]?\d{4}$/i, "")
-    .trim()
-    .toLowerCase();
+  const stem = reportSourceStem(bundle.sourceFile);
   return `${bundle.advertiser}::${month}::${stem || "daily"}`;
 }
 
@@ -115,6 +112,7 @@ function datasetFromBundle(
   bundle: DailyBundlePreview,
   meta: { mailSubject?: string; mailDate?: string; publishedAt?: string } = {},
 ): PublishedDataset {
+  bundle = sanitizeDailyBundle(bundle);
   const key = dailyDatasetKey(bundle);
   const month = (bundle.campaignStart || bundle.reportDate || "unknown").slice(0, 7);
   return {
@@ -187,12 +185,15 @@ function stateFromRemote(payload: RemoteStatePayload) {
     importMailDate.set(item.id, item.mail_date || "");
 
     const current = next.datasets[dataset.key];
-    if (!current || (current.bundle.reportDate || "") <= (dataset.bundle.reportDate || "")) {
+    if (!current || current.bundle.reportDate < dataset.bundle.reportDate ||
+      (current.bundle.reportDate === dataset.bundle.reportDate && current.publishedAt < dataset.publishedAt)) {
       next.datasets[dataset.key] = dataset;
     }
 
     const snapshotKey = `${dataset.key}::${bundle.reportDate || item.report_date}`;
-    next.snapshots[snapshotKey] = { ...dataset, key: snapshotKey };
+    if (!next.snapshots[snapshotKey] || next.snapshots[snapshotKey].publishedAt < dataset.publishedAt) {
+      next.snapshots[snapshotKey] = { ...dataset, key: snapshotKey };
+    }
   }
 
   for (const item of payload.insights ?? []) {

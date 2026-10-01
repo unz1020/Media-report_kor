@@ -13,6 +13,7 @@ const MEDIA_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
   { canonical: "직방", aliases: ["직방", "zigbang"] },
   { canonical: "넷플릭스", aliases: ["넷플릭스", "netflix"] },
   { canonical: "DV360", aliases: ["displayvideo360", "display&video360", "dv360", "display & video 360"] },
+  { canonical: "어드레서블TV", aliases: ["어드레서블TV", "Addr.TV", "Addressable TV"] },
 ];
 
 const NON_PLACEMENT_LABELS = new Set([

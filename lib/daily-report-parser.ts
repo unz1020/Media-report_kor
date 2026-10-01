@@ -5,7 +5,7 @@ export type PlacementFact = {
   guaranteed: string;
   spend?: number | null;
   impressions: number;
-  clicks: number;
+  clicks: number | null;
   ctr: number | null;
   views?: number | null;
   vtr?: number | null;
