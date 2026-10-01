@@ -6,6 +6,7 @@ const X = require('xlsx');
 const {reportSourceStem,performanceMailQuery,tvSupportingFiles,enrichTvDaily} = require('../lib/report-source.ts');
 const {parseDailyWorkbookBuffer:parse} = require('../lib/server-daily-parser.ts');
 const {sanitizeDailyBundle:clean} = require('../lib/daily-bundle-sanitizer.ts');
+const {parseSupplementalDailyPerformance:supplement} = require('../lib/supplemental-daily-parser.ts');
 const {hydratePublishedDailyState:hydrate,publishedDatasetsFor:datasets,publishedSnapshotsFor:snapshots} = require('../lib/daily-report-store.ts');
 const {rowsFromDatasets,periodRowsFromSnapshots,summarizeRows} = require('../lib/reporting-data.ts');
 const fact={platform:'네이버 GFA',placement:'메인',sourceSheet:'Summary',impressions:100,clicks:5,ctr:5,spend:50,guaranteed:'',achievement:null};
@@ -22,6 +23,26 @@ const cleaned=clean(bundle('테스트_SA_카카오 검색광고_Final.xlsb','202
 assert.equal(cleaned.placements.length,1);assert.deepEqual(clean(cleaned).placements,cleaned.placements);
 assert.equal(clean({...cleaned,campaignStart:'2026-10-01',campaignEnd:'2026-10-31'}).campaignStart,'2026-09-01');
 function workbook(sheet,rows){const b=X.utils.book_new();X.utils.book_append_sheet(b,X.utils.aoa_to_sheet(rows),sheet);return X.write(b,{type:'buffer',bookType:'xlsx'});}
+const searchBook=X.utils.book_new();
+X.utils.book_append_sheet(searchBook,X.utils.aoa_to_sheet([
+ ['계획예산(VAT별도)','광고비(VAT별도)','소진률','노출수','클릭수','CTR','CPC','전환수'],
+ [300,250,0.833,1000,10,0.01,25,0],
+ ['지면','광고비(VAT별도)','노출수','클릭수','CTR','CPC'],
+ ['콘텐츠매체',250,1000,10,0.01,25],['전체',250,1000,10,0.01,25],
+ ]),'카카오 검색_Summary');
+X.utils.book_append_sheet(searchBook,X.utils.aoa_to_sheet([
+ ['일자','광고비(VAT별도)','노출','클릭','CTR','CPC'],
+ ['2026-08-31',900,9000,90,0.01,10],
+ ['2026-09-01',150,600,6,0.01,25],['2026-09-30',100,400,4,0.01,25],
+ ['2026-10-01',900,9000,90,0.01,10],
+ ]),'카카오 검색_일자별');
+const searchBytes=X.write(searchBook,{type:'buffer',bookType:'xlsb'});
+const searchFinal=clean(parse(searchBytes,'테스트_26년 9월_카카오 검색광고_Final.xlsb','*9/30(수)자'),{mailSubject:'26년 9월 마감'});
+assert.equal(searchFinal.placements.length,1);
+assert.equal(searchFinal.placements[0].spend,250);
+assert.equal(searchFinal.placements[0].impressions,1000);
+const searchDays=supplement(searchBytes,'2026-09-30','2026-09-01');
+assert.equal(searchDays.length,2);assert.equal(searchDays.reduce((s,r)=>s+r.spend,0),250);
 const row=(media,target,period,guarantee,imp,spend)=>['',media,target,'30초',period,guarantee,imp,'','','',spend];
 const tv=parse(workbook('Summary',[row('LG U+','','9/27~9/30',10,99,20),['','<누적 Data>'],row('매체','타겟'),row('LG U+','맞춤','9/1~9/30',100,200,50),row('Total','','',100,200,50),row('매체','타겟'),row('SKB','맞춤','9/1~9/30',100,300,70),row('Total','','',100,300,70)]),attachments[0].filename,'');
 assert.equal(tv.reportDate,'2026-09-30');assert.equal(tv.placements.length,2);assert.equal(tv.placements.reduce((n,p)=>n+p.impressions,0),500);assert.equal(tv.placements[0].clicks,null);

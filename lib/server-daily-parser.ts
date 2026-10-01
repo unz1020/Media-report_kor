@@ -266,6 +266,24 @@ function parseOverall(sheetName: string, rows: Matrix): PlacementFact[] {
   return result;
 }
 
+function parseSearchCampaignTotal(sheetName: string, rows: Matrix): PlacementFact[] {
+  if (!/카카오\s*검색.*summary/i.test(sheetName)) return [];
+  const headerRow = rows.findIndex((row) =>
+    findIndex(row, ["계획예산(VAT별도)"]) >= 0 &&
+    findIndex(row, ["광고비(VAT별도)"]) >= 0 &&
+    findIndex(row, ["노출수"]) >= 0 && findIndex(row, ["클릭수"]) >= 0);
+  if (headerRow < 0) return [];
+  const header = rows[headerRow], row = rows[headerRow + 1];
+  if (!row || optionalNum(row[findIndex(header, ["노출수"])]) === null) return [];
+  return [placementFromColumns({
+    row, platform: "카카오 검색광고", placement: "전체", sheetName,
+    spendCol: findIndex(header, ["광고비(VAT별도)"]),
+    impCol: findIndex(header, ["노출수"]), clickCol: findIndex(header, ["클릭수"]),
+    ctrCol: findIndex(header, ["CTR"]), cpcCol: findIndex(header, ["CPC"]),
+    convCol: findIndex(header, ["전환수"]),
+  })];
+}
+
 function parseGenericMetricTable(sheetName: string, rows: Matrix): PlacementFact[] {
   const headerRow = rows.findIndex((row) => {
     const hasName = findIndex(row, ["지면", "광고 상품", "AD Type", "소재명"]) >= 0;
@@ -460,7 +478,7 @@ export function parseDailyWorkbookBuffer(buffer: Buffer, filename: string, mailB
     }
 
     if (/소재별|타게팅별/i.test(sheetName)) continue;
-    const parsers = [parseSummaryMediaReport, parseAgencyTotal, parseOverall, parseGenericMetricTable];
+    const parsers = [parseSearchCampaignTotal, parseSummaryMediaReport, parseAgencyTotal, parseOverall, parseGenericMetricTable];
     for (const parser of parsers) {
       const result = parser(sheetName, rows);
       if (result.length) { placements.push(...result); parsedSheets.add(sheetName); break; }

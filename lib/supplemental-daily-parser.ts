@@ -176,7 +176,7 @@ function flatDailyRows(sheetName: string, rows: Matrix, reportDate: string, camp
   if (headerRow < 0) return [];
   const header = rows[headerRow];
   const dateCol = findIndex(header, ["Date", "DATE", "날짜", "일자"]);
-  const spendCol = findIndex(header, ["소진 금액", "소진금액", "Spent", "광고비", "비용"]);
+  const spendCol = findIndex(header, ["소진 금액", "소진금액", "Spent", "광고비", "광고비(VAT별도)", "비용"]);
   const impCol = findIndex(header, ["Impression", "Impressions", "노출", "노출수"]);
   const clickCol = findIndex(header, ["Click", "Clicks", "클릭", "클릭수"]);
   const ctrCol = findIndex(header, ["CTR", "CTR(%)", "클릭률"]);
