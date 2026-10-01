@@ -154,7 +154,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, path, updatedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message.includes("DENIED") ? 403 : message.includes("AUTH") ? 401 : 500;
+    const status = message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
     return json({ error: message }, status);
   }
 });

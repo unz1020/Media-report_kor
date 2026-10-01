@@ -57,7 +57,7 @@ const base = { advertiser: "자코모", month: "2026-10", clientId: randomUUID()
   creativeName: "사전 소재", status: "사전 세팅", landingUrl: "https://example.com", utm: { utm_source: "naver" },
   manualImagePath: "unauthorized/should-not-save" };
 assert.equal((await call(base, false)).status, 401);
-verified = false; assert.equal((await call(base)).status, 500); verified = true;
+verified = false; assert.equal((await call(base)).status, 401); verified = true;
 active = false; assert.equal((await call(base)).status, 403); active = true;
 access = "viewer"; assert.equal((await call(base)).status, 403); access = "editor";
 assert.equal(rows.report_imports.length, 0);

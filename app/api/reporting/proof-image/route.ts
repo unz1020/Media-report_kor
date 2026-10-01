@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
       return NextResponse.json({ error: "PNG, JPG, WEBP 이미지만 업로드할 수 있습니다." }, { status: 415 });
     }
-    if (file.size > 8 * 1024 * 1024) {
-      return NextResponse.json({ error: "이미지는 8MB 이하로 업로드해주세요." }, { status: 413 });
+    if (file.size > 4 * 1024 * 1024) {
+      return NextResponse.json({ error: "이미지는 4MB 이하로 업로드해주세요." }, { status: 413 });
     }
 
     const { token, refreshed } = await authenticatedToken(request);

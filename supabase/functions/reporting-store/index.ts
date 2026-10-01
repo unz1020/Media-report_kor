@@ -298,7 +298,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, proof: { ...proof, importId: savedId, publishedAt: savedImport.updated_at } });
     }
 
-
+    if (action === "publish_bundle") {
       const bundle = body.bundle || {};
       if (!bundle.advertiser || !bundle.reportDate || !bundle.sourceFile) return json({ error: "INVALID_BUNDLE" }, 400);
       const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(bundle.advertiser));
@@ -365,7 +365,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const status = message.includes("DENIED") ? 403 : message.includes("AUTH") ? 401 : 500;
+    const status = message.includes("DENIED") ? 403 : (message.includes("AUTH") || message.includes("GOOGLE_EMAIL")) ? 401 : 500;
     return json({ error: message }, status);
   }
 });
