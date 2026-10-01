@@ -26,7 +26,7 @@ const rows = { workspace_users: [{ email: "fixture@example.com", role: "ae", is_
 class Query {
   constructor(table) { this.table = table; this.filters = []; this.mode = "select"; }
   select() { return this; }
-  eq(key, value) { this.filters.push(row => row[key] === value); return this; }
+  eq(key, value) { this.filters.push(row => key.split(/->>?/).reduce((item, part) => item?.[part], row) === value); return this; }
   or() { return this; }
   order() { return this; }
   limit() { return this; }
@@ -201,3 +201,16 @@ assert.equal(mix.metadata.bundle.mediaPlan[0].budget,2000);
 concurrent = true; assert.equal((await saveMix({...nextMix,expectedUpdatedAt:mix.updated_at})).status,409); concurrent = false;
 assert.equal(mix.metadata.bundle.mediaPlan[0].budget,2000);
 console.log("Media mix Edge checks passed: authentication, viewer denial, strict dates/month/budget/status, create/update and stale/concurrent conflict; performance data preserved.");
+
+const historySnapshot = { metadata: { bundle: { sourceKind: 'media_mix', mediaPlan: [mediaRow], originalSourceFile: '10월 믹스.xlsx', mediaMixChangeMemo: '예산 조정' } } };
+rows.report_import_versions = [
+ { id: 'valid', advertiser_id: 'fixture-advertiser', report_date: '2026-10-01', captured_at: '2026-10-01T10:00:00Z', actor_email: 'fixture@example.com', snapshot: historySnapshot },
+ { id: 'other-advertiser', advertiser_id: 'other-advertiser', report_date: '2026-10-01', snapshot: historySnapshot },
+ { id: 'other-month', advertiser_id: 'fixture-advertiser', report_date: '2026-09-01', snapshot: historySnapshot },
+ { id: 'performance', advertiser_id: 'fixture-advertiser', report_date: '2026-10-01', snapshot: { metadata: { bundle: { sourceKind: 'daily' } } } },
+];
+const loadMixHistory = (month='2026-10',token=true) => handler(new Request('https://example.com',{method:'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer fixture'}:{})},body:JSON.stringify({action:'load_media_mix_history',advertiser:'자코모',month})}));
+assert.equal((await loadMixHistory('2026-10',false)).status,401);assert.equal((await loadMixHistory('2026-13')).status,400);
+access='viewer';const historyResponse=await loadMixHistory();assert.equal(historyResponse.status,200);const historyPayload=await historyResponse.json();assert.equal(historyPayload.history.length,1);assert.equal(historyPayload.history[0].id,'valid');assert.equal(historyPayload.history[0].changeMemo,'예산 조정');assert.equal(historyPayload.history[0].rows.length,1);
+access='editor';assert.equal((await saveMix({...nextMix,expectedUpdatedAt:mix.updated_at,changeMemo:'기간 변경',rows:[{...mediaRow,rowId:'11111111-1111-4111-8111-111111111111'}]})).status,200);assert.equal(mix.metadata.bundle.mediaMixChangeMemo,'기간 변경');assert.equal(mix.metadata.bundle.mediaPlan[0].rowId,'11111111-1111-4111-8111-111111111111');
+console.log('Media mix history checks passed: authentication, viewer read, advertiser/month/source isolation, normalized memo and stable row IDs.');

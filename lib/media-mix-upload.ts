@@ -1,6 +1,6 @@
-import type { MediaPlanFact } from "./daily-report-parser";
+import type { MediaMixAnalysis } from "./media-mix-operations";
 import { validateMediaMixFile } from "./media-mix-upload-validation";
-export async function parseMediaMixFile(file: File, month: string, signal: AbortSignal): Promise<MediaPlanFact[]> {
+export async function parseMediaMixFile(file: File, month: string, signal: AbortSignal): Promise<MediaMixAnalysis> {
   validateMediaMixFile(file);
   const bytes = await file.arrayBuffer();
   if (signal.aborted) throw new Error("파일 분석을 취소했습니다.");
@@ -10,8 +10,8 @@ export async function parseMediaMixFile(file: File, month: string, signal: Abort
     const cancel = () => { finish(); reject(new Error("파일 분석을 취소했습니다.")); };
     const timer = setTimeout(() => { finish(); reject(new Error("파일 분석 시간이 초과됐습니다. 미디어믹스 시트만 별도 저장해 다시 올려주세요.")); }, 90000);
     signal.addEventListener("abort", cancel, { once: true });
-    worker.onmessage = (event: MessageEvent<{ rows?: MediaPlanFact[]; error?: string }>) => {
-      finish(); if (event.data.error || !event.data.rows) reject(new Error(event.data.error || "파일 분석에 실패했습니다.")); else resolve(event.data.rows);
+    worker.onmessage = (event: MessageEvent<{ analysis?: MediaMixAnalysis; error?: string }>) => {
+      finish(); if (event.data.error || !event.data.analysis) reject(new Error(event.data.error || "파일 분석에 실패했습니다.")); else resolve(event.data.analysis);
     };
     worker.onerror = () => { finish(); reject(new Error("파일 분석에 실패했습니다. 파일을 확인하고 다시 올려주세요.")); };
     worker.postMessage({ bytes, month }, [bytes]);

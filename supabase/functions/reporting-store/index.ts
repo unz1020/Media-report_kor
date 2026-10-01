@@ -272,6 +272,23 @@ Deno.serve(async (req: Request) => {
       return json({ user, advertiser, accessLevel, imports: imports || [], insights: insights || [] });
     }
 
+    if (action === "load_media_mix_history") {
+      const month = String(body.month || "");
+      if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return json({ error: "INVALID_MONTH" }, 400);
+      const { advertiser } = await resolveAdvertiser(user.email, String(body.advertiser || ""));
+      const { data, error } = await supabase.from("report_import_versions")
+        .select("id,captured_at,actor_email,snapshot")
+        .eq("advertiser_id", advertiser.id).eq("report_date", month + "-01")
+        .eq("snapshot->metadata->bundle->>sourceKind", "media_mix")
+        .order("captured_at", { ascending: false }).order("id", { ascending: false }).limit(31);
+      if (error) throw error;
+      const history = (data || []).map(item => ({ id: item.id, capturedAt: item.captured_at, actor: item.actor_email,
+        rows: item.snapshot?.metadata?.bundle?.mediaPlan || [],
+        sourceFile: item.snapshot?.metadata?.bundle?.originalSourceFile || "직접 입력",
+        changeMemo: item.snapshot?.metadata?.bundle?.mediaMixChangeMemo || "" }));
+      return json({ history });
+    }
+
     if (action === "save_media_mix") {
       const input = body.input || {};
       const { advertiser, accessLevel } = await resolveAdvertiser(user.email, String(input.advertiser || ""));
@@ -281,7 +298,7 @@ Deno.serve(async (req: Request) => {
       catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_MEDIA_MIX" }, 400); }
       const monthEnd = new Date(Date.UTC(Number(plan.month.slice(0, 4)), Number(plan.month.slice(5)), 0)).toISOString().slice(0, 10);
       const bundle = { advertiser: advertiser.name, reportDate: plan.month + "-01", campaignStart: plan.month + "-01", campaignEnd: monthEnd,
-        sourceFile: `[media-mix] ${plan.month}`, originalSourceFile: plan.sourceFile, sourceId: "monthly-media-mix", sourceKind: "media_mix",
+        sourceFile: `[media-mix] ${plan.month}`, originalSourceFile: plan.sourceFile, mediaMixChangeMemo: plan.changeMemo, sourceId: "monthly-media-mix", sourceKind: "media_mix",
         placements: [], dailyPerformance: [], creativeDailyPerformance: [], operationNotes: [], mediaPlan: plan.rows,
         parsedSheets: [], ignoredSheets: [], mailChecks: [], qa: {} };
       const importId = await getOrCreateImport({ advertiserId: advertiser.id, reportDate: bundle.reportDate,
