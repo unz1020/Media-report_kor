@@ -32,6 +32,7 @@ X.utils.book_append_sheet(searchBook,X.utils.aoa_to_sheet([
  ]),'카카오 검색_Summary');
 X.utils.book_append_sheet(searchBook,X.utils.aoa_to_sheet([
  ['일자','광고비(VAT별도)','노출','클릭','CTR','CPC'],
+ ['2025-09-01',800,8000,80,0.01,10],
  ['2026-08-31',900,9000,90,0.01,10],
  ['2026-09-01',150,600,6,0.01,25],['2026-09-30',100,400,4,0.01,25],
  ['2026-10-01',900,9000,90,0.01,10],
@@ -43,6 +44,8 @@ assert.equal(searchFinal.placements[0].spend,250);
 assert.equal(searchFinal.placements[0].impressions,1000);
 const searchDays=supplement(searchBytes,'2026-09-30','2026-09-01');
 assert.equal(searchDays.length,2);assert.equal(searchDays.reduce((s,r)=>s+r.spend,0),250);
+const inferredSearchDays=supplement(searchBytes,'2026-09-30','');
+assert.equal(inferredSearchDays.length,2);assert.equal(inferredSearchDays.reduce((s,r)=>s+r.spend,0),250);
 const row=(media,target,period,guarantee,imp,spend)=>['',media,target,'30초',period,guarantee,imp,'','','',spend];
 const tv=parse(workbook('Summary',[row('LG U+','','9/27~9/30',10,99,20),['','<누적 Data>'],row('매체','타겟'),row('LG U+','맞춤','9/1~9/30',100,200,50),row('Total','','',100,200,50),row('매체','타겟'),row('SKB','맞춤','9/1~9/30',100,300,70),row('Total','','',100,300,70)]),attachments[0].filename,'');
 assert.equal(tv.reportDate,'2026-09-30');assert.equal(tv.placements.length,2);assert.equal(tv.placements.reduce((n,p)=>n+p.impressions,0),500);assert.equal(tv.placements[0].clicks,null);

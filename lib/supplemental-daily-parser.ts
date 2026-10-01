@@ -227,10 +227,14 @@ export function parseSupplementalDailyPerformance(buffer: Buffer, reportDate: st
   }
 
   const seen = new Set<string>();
-  return result.filter((row) => {
+  const unique = result.filter((row) => {
     const id = `${row.date}::${row.platform}::${row.placement}::${row.sourceSheet}`.toLowerCase();
     if (seen.has(id)) return false;
     seen.add(id);
     return true;
   });
+  // An undated campaign may use a workbook with several years of history.
+  // Prefer actual dates in the reporting month before legacy year correction.
+  const currentMonth = unique.filter(row => row.date.startsWith(reportDate.slice(0, 7)));
+  return !campaignStart && currentMonth.length ? currentMonth : unique;
 }
