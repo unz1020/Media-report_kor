@@ -97,11 +97,11 @@ try {
   await visible(page.getByAltText("등록할 지면 이미지 미리보기"));
   failImage = true;
   await page.getByRole("button", { name: "지면 저장", exact: true }).click();
-  await visible(page.getByRole("alert"));
+  await visible(page.getByText("IMAGE_TEST_FAILURE", { exact: true }));
   assert.equal(saveCount, 1);
   assert.equal(savedProof.status, "사전 세팅");
   assert.equal(savedProof.utm.utm_source, "naver");
-  assert.equal(await page.getByRole("button", { name: "지면 저장", exact: true }).count(), 1);
+  await visible(page.getByRole("button", { name: "지면 저장", exact: true }));
   failImage = false;
   await page.getByRole("button", { name: "지면 저장", exact: true }).click();
   await page.getByRole("region", { name: "지면 수동 세팅" }).waitFor({ state: "hidden" });
