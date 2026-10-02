@@ -15,7 +15,7 @@ vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/i
 const layoutValidation = { exports: {} };
 vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/layout-input.ts", "utf8")), { exports: layoutValidation.exports, Date, Error, Set, Object });
 const mediaValidation = { exports: {} };
-vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/media-plan-input.ts", "utf8")), { exports: mediaValidation.exports, Date, Error, Number });
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/media-plan-input.ts", "utf8")), { exports: mediaValidation.exports, Date, Error, Number, URL });
 let access = "editor", verified = true, active = true, concurrent = false;
 let handler;
 let rpcError = "";
@@ -181,7 +181,7 @@ assert.equal((await signed("fixture-advertiser/2026-10-01/proof.png")).status, 4
 console.log("Image access checks passed: viewer read, advertiser boundary, canonical paths, verified identity.");
 
 verified = true; active = true; access = "editor";
-const mediaRow = { platform: "네이버", product: "GFA", creativeName: "소재 A", periodStart: "2026-10-01", periodEnd: "2026-10-31", budget: 1000 };
+const mediaRow = { creativeUrl: "https://youtu.be/M7lc1UVf-VE", previewUrl: "https://example.com/ad-preview", platform: "네이버", product: "GFA", creativeName: "소재 A", periodStart: "2026-10-01", periodEnd: "2026-10-31", budget: 1000 };
 const mixInput = { advertiser: "자코모", month: "2026-10", rows: [mediaRow], expectedUpdatedAt: null };
 const saveMix = (input, token=true) => handler(new Request("https://example.com", { method: "POST", headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer fixture" } : {}) }, body: JSON.stringify({ action: "save_media_mix", input }) }));
 assert.equal((await saveMix(mixInput, false)).status, 401);
@@ -193,6 +193,8 @@ assert.equal(rows.report_imports.length,beforeMix+1);
 const mix = rows.report_imports.find(row=>row.source_sheet === "media-mix");
 assert.equal(mix.metadata.bundle.placements.length,0);
 assert.equal(mix.metadata.bundle.sourceKind,"media_mix");
+assert.equal(mix.metadata.bundle.mediaPlan[0].creativeUrl, mediaRow.creativeUrl);
+assert.equal(mix.metadata.bundle.mediaPlan[0].previewUrl, mediaRow.previewUrl);
 assert.equal((await saveMix(mixInput)).status,409);
 const nextMix = {...mixInput,expectedUpdatedAt:mix.updated_at,rows:[{...mediaRow,budget:2000}]};
 assert.equal((await saveMix(nextMix)).status,200);

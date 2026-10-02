@@ -3,6 +3,7 @@ import type { PlacementFact } from "@/lib/daily-report-parser";
 const normalizeKey = (value: string) => value.toLowerCase().replace(/[\s_\-\/()·&.]/g, "");
 
 const MEDIA_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
+  { canonical: "유튜브", aliases: ["유튜브", "youtube", "youtu.be"] },
   { canonical: "네이버", aliases: ["네이버", "네이버gfa", "gfa", "navergfa"] },
   { canonical: "카카오", aliases: ["카카오", "카카오모먼트", "카카오moment", "카카오키워드", "카카오검색광고", "kakao", "kakaomoment"] },
   { canonical: "당근", aliases: ["당근", "당근마켓", "karrot"] },

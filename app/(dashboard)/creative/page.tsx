@@ -15,6 +15,9 @@ import { canonicalMedia } from "@/lib/media-normalization";
 import { PlacementSetupForm } from "@/components/placement-setup-form";
 import { landingWithUtm, safeHttpUrl } from "@/lib/placement-urls";
 import styles from "./creative.module.css";
+import { CreativeUrlPreview } from "@/components/creative-url-preview";
+import { MediaPlanLinks } from "@/components/media-plan-links";
+import { mediaHierarchy, mediaPath } from "@/lib/media-hierarchy";
 
 function displayUrl(value = "") {
   try { return safeHttpUrl(value); } catch { return ""; }
@@ -94,10 +97,10 @@ export default function CreativePage() {
   }, [proofs]);
 
   useEffect(() => {
-    if (selectedMedia !== "전체" && !mediaStats.some((item) => item.media === selectedMedia)) {
+    if (selectedMedia !== "전체" && !mediaStats.some((item) => item.media === selectedMedia) && !plans.some(plan => (mediaHierarchy(plan).isTv ? "TV" : canonicalMedia(plan.platform)) === selectedMedia || plan.platform === selectedMedia)) {
       setSelectedMedia("전체");
     }
-  }, [mediaStats, selectedMedia]);
+  }, [mediaStats, plans, selectedMedia]);
 
   const visibleProofs = useMemo(
     () => selectedMedia === "전체" ? proofs : proofs.filter((proof) => proof.media === selectedMedia),
@@ -205,6 +208,7 @@ export default function CreativePage() {
           <div><span>캠페인 내용</span><strong>{proof.campaignName || "-"}</strong></div>
         </div>
         {proof.budgetReference !== null && <div className={styles.reference}><strong>연계 집행 기준 {formatWon(proof.budgetReference)}</strong> · 서비스 노출 지면 자체의 별도 집행액으로 계산하지 않습니다.</div>}
+        {preview && <CreativeUrlPreview url={preview} label="운영 소재" />}
         {(landing || preview) && <div className={styles.landingLinks}>
           {preview && <a href={preview} target="_blank" rel="noopener noreferrer">매체 미리보기 열기 ↗</a>}
           {landing && <><strong>랜딩 URL · UTM</strong><a href={landing} target="_blank" rel="noopener noreferrer">{landing}</a></>}
@@ -231,6 +235,10 @@ export default function CreativePage() {
     {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
 <LayoutCanvas page="creative">
+    {plans.length > 0 && <LayoutPanel id="creative:plan-urls" title="운영안 소재 URL"><section className="card card-pad"><div className="report-panel-head"><div><h2>운영안 소재 URL</h2><p>운영안별 매체 지면 미리보기와 소재 원본 링크를 등록하고 확인합니다. 일정 화면과 함께 반영됩니다.</p></div></div>
+      <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media}</button>)}</div>
+      <div className={styles.planUrlGrid}>{plans.filter(plan=>selectedMedia==='전체' || (mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform))===selectedMedia || plan.platform===selectedMedia).map((plan,index)=><article className={styles.planUrlCard} key={`${advertiser}:${month}:${plan.rowId || index}`}><small>{mediaPath(plan)} › {plan.product}</small><h3>{plan.creativeName || plan.placement || '소재명 미입력'}</h3><p>{plan.periodStart || '일정 미입력'} ~ {plan.periodEnd || '일정 미입력'}</p><MediaPlanLinks plan={plan} datasets={datasets} /></article>)}</div>
+    </section></LayoutPanel>}
     {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
 
     {proofs.length > 0 && <LayoutPanel id="creative:등록 지면 · 소재:4" title="등록 지면 · 소재"><section className={styles.proofSection}>
