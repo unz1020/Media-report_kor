@@ -233,3 +233,5 @@
 .planUrlCard small,.planUrlCard p {color:var(--text-muted,#68768a);font-size:12px;overflow-wrap:anywhere;}
 .planUrlFilters {display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
 .planUrlFilters button[aria-pressed=true] {background:#233c5f;color:white;}
+.planUrlCard,.proofCard{border-left:4px solid var(--creative-color,#e5e9ef)}
+.creativeQuickList>span{border-color:var(--creative-color);background:var(--creative-background);color:#344054}
