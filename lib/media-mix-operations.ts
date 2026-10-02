@@ -1,5 +1,6 @@
 import type { MediaPlanFact } from './daily-report-parser';
 import { canonicalMedia } from './media-normalization';
+import { mediaHierarchy } from './media-hierarchy';
 export type ProposalOption = { id: string; label: string; rows: MediaPlanFact[]; warnings: string[] };
 export type ProposalGroup = { id: string; label: string; summaryRows: MediaPlanFact[]; included: boolean; selected: string; options: ProposalOption[] };
 export type WorkbookReview = { summarySheet: string; summaryTotal: number | null; groups: ProposalGroup[]; inventory: Array<{ name: string; kind: string }>; checks: string[] };
@@ -20,6 +21,7 @@ export const PLAN_LABELS: Partial<Record<PlanField, string>> = {
   device: '기기', creativeType: '소재 유형', target: '타겟팅', expectedImpressions: '예상 노출', expectedClicks: '예상 클릭',
   category: '매체 유형', proposalStatus: '진행 상태', scenario: '선택안', sourceCell: '원본 위치', sourceNotes: '운영 참고',
   expectedViews: '예상 조회', expectedGrp: '예상 GRP', expectedCprp: '예상 CPRP',
+  tvChannelType: 'TV 분류', previewUrl: '매체 지면 미리보기 URL', creativeUrl: '운영 소재 URL',
 };
 export function resolveWorkbookReview(analysis: MediaMixAnalysis, choices: Record<string, string>, included: Record<string, boolean>): MediaMixAnalysis {
   if (!analysis.review) return analysis;
@@ -100,9 +102,10 @@ export function mediaMixChanges(before: MediaPlanFact[], after: MediaPlanFact[])
 export function mediaMixGroups(rows: MediaPlanFact[]) {
   const groups = new Map<string, { media: string; products: Set<string>; count: number; budget: number | null; undated: number }>();
   for (const row of rows) {
-    const media = canonicalMedia(row.platform);
+    const hierarchy = mediaHierarchy(row);
+    const media = hierarchy.isTv ? 'TV' : canonicalMedia(row.platform);
     const group = groups.get(media) || { media, products: new Set<string>(), count: 0, budget: null, undated: 0 };
-    group.products.add(row.product); group.count++;
+    group.products.add(hierarchy.isTv ? `${hierarchy.subcategory} · ${row.platform} · ${row.product}` : row.product); group.count++;
     if (row.budget != null) group.budget = (group.budget || 0) + row.budget;
     if (!row.periodStart || !row.periodEnd) group.undated++;
     groups.set(media, group);

@@ -226,3 +226,10 @@
 .landingLinks a { overflow-wrap: anywhere; color: #6941c6; line-height: 1.7; }
 .editActions { margin-top: 14px; }
 .visual img { object-fit: contain; }
+
+.planUrlGrid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px;margin-top:16px;}
+.planUrlCard {min-width:0;border:1px solid var(--line,#dce4ee);border-radius:12px;padding:16px;}
+.planUrlCard h3 {margin:10px 0;font-size:16px;}
+.planUrlCard small,.planUrlCard p {color:var(--text-muted,#68768a);font-size:12px;overflow-wrap:anywhere;}
+.planUrlFilters {display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
+.planUrlFilters button[aria-pressed=true] {background:#233c5f;color:white;}

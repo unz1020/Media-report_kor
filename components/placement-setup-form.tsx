@@ -6,6 +6,7 @@ import { hydratePublishedDailyState } from "@/lib/daily-report-store";
 import type { PlacementProof } from "@/lib/placement-proof";
 import { landingWithUtm, safeHttpUrl, UTM_KEYS } from "@/lib/placement-urls";
 import styles from "./placement-setup-form.module.css";
+import { CreativeUrlPreview } from './creative-url-preview';
 
 type SavedProof = PlacementProof & { importId: string };
 export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
@@ -115,6 +116,7 @@ export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
           {UTM_KEYS.map(key => <label key={key}>{key}<input maxLength={500} value={utm[key] || ""} onChange={e => setUtm(current => ({ ...current, [key]: e.target.value }))} /></label>)}
           <label className={styles.wide}>미리보기 / 게재 이미지<input type="file" aria-label="미리보기 / 게재 이미지" accept="image/png,image/jpeg,image/webp" onChange={e => { setFile(e.target.files?.[0]); setError(""); }} /><small>PNG, JPG, WEBP · 최대 4MB</small></label>
         </div>
+        <CreativeUrlPreview url={previewUrl} label="매체 미리보기" />
         {(filePreview || currentImage) && <img className={styles.image} src={filePreview || currentImage} alt="등록할 지면 이미지 미리보기" />}
         {finalUrl.error && <p className={styles.error}>{finalUrl.error}</p>}
         {finalUrl.value && <div className={styles.url}><strong>최종 랜딩 URL</strong><a href={finalUrl.value} target="_blank" rel="noopener noreferrer">{finalUrl.value}</a><small>기존 쿼리와 앵커를 유지하고 입력한 UTM을 적용합니다.</small></div>}

@@ -46,6 +46,9 @@ export type CreativeDailyFact = {
 export type MediaPlanFact = {
   rowId?: string;
   category?: string;
+  tvChannelType?: "지상파" | "케이블";
+  previewUrl?: string;
+  creativeUrl?: string;
   proposalStatus?: string;
   scenario?: string;
   sourceCell?: string;

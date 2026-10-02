@@ -8,6 +8,8 @@ import { normalizeMediaMix } from '@/supabase/functions/reporting-store/media-pl
 import { parseMediaMixFile } from '@/lib/media-mix-upload';
 import { mediaMixChanges, mergeMediaMix, type MediaMixAnalysis } from '@/lib/media-mix-operations';
 import { MediaMixSourceReview } from './media-mix-source-review';
+import { mediaHierarchy } from '@/lib/media-hierarchy';
+import { CreativeUrlPreview } from './creative-url-preview';
 import { MediaMixHistory, MediaMixSummary, PlanChanges } from './media-mix-summary';
 import styles from './media-mix-editor.module.css';
 function emptyRow(month: string): MediaPlanFact {
@@ -135,12 +137,15 @@ function Editor() {
         <div className={styles.rowHead}><strong>운영안 {index + 1}{row.scenario ? ` · ${row.scenario}` : ''}</strong><button type="button" className="btn" disabled={busy} onClick={() => setDraft(current => current?.filter((_, i) => i !== index) ?? null)}>행 삭제</button></div>
         {row.sourceCell && <p className={styles.sourceLabel}>원본: {row.sourceSheet} {row.sourceCell} · {row.category || '유형 미지정'} · 예상 성과</p>}
         <div className={styles.fields}>{([
-          ['platform', '매체 (대분류)', 'text'], ['product', '광고상품 (중분류)', 'text'], ['creativeName', '소재명 (소분류)', 'text'], ['placement', '게재지면', 'text'],
+          ['category', '상위 카테고리', 'text'], ['platform', '매체 (대분류)', 'text'], ['product', '광고상품 (중분류)', 'text'], ['creativeName', '소재명 (소분류)', 'text'], ['placement', '게재지면', 'text'],
           ['periodStart', '시작일', 'date'], ['periodEnd', '종료일', 'date'], ['budget', '계획 예산 (원)', 'number'],
         ] as const).map(([field, label, type]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type={type} min={type === 'number' ? 0 : undefined} value={row[field] ?? ''} disabled={busy} onChange={event => patch(index, field, event.target.value)} /></label>)}
           <label>진행 상태<select aria-label={`${index + 1}행 진행 상태`} value={row.proposalStatus || '제안'} disabled={busy} onChange={event => patch(index, 'proposalStatus', event.target.value)}>{['제안', '협의', 'TBD', '확정', '부킹 완료'].map(status => <option key={status}>{status}</option>)}</select></label>
           <label>집행상태<select aria-label={`${index + 1}행 집행상태`} value={row.operationStatus || '예정'} disabled={busy} onChange={event => patch(index, 'operationStatus', event.target.value)}>{['예정', '집행 중', '중단', '종료'].map(status => <option key={status}>{status}</option>)}</select></label>
+          {mediaHierarchy(row).isTv && <label>TV 분류<select aria-label={`${index + 1}행 TV 분류`} value={row.tvChannelType || ''} disabled={busy} onChange={event => patch(index, 'tvChannelType', event.target.value)}><option value="">자동 분류 ({mediaHierarchy(row).subcategory})</option><option>지상파</option><option>케이블</option></select></label>}
         </div>
+        <div className={styles.fields}>{([['previewUrl', '매체 지면 미리보기 URL'], ['creativeUrl', '운영 소재 URL']] as const).map(([field, label]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type="url" maxLength={4000} value={row[field] || ''} disabled={busy} placeholder={field === 'creativeUrl' ? '유튜브·틱톡 영상 또는 소재 원본 링크' : '매체가 제공한 광고 지면 미리보기 링크'} onChange={event => patch(index, field, event.target.value)} /></label>)}</div>
+        <CreativeUrlPreview url={row.previewUrl} label="매체 지면 미리보기" /><CreativeUrlPreview url={row.creativeUrl} label="운영 소재" />
         <details><summary>기기·소재 유형·타겟팅·계획 KPI</summary><div className={styles.fields}>{([
           ['device', '기기', 'text'], ['creativeType', '소재 유형', 'text'], ['target', '타겟팅', 'text'], ['expectedImpressions', '예상 노출수', 'number'], ['expectedClicks', '예상 클릭수', 'number'], ['expectedViews', '예상 조회수', 'number'], ['expectedGrp', '예상 GRP', 'number'], ['expectedCprp', '예상 CPRP', 'number'],
         ] as const).map(([field, label, type]) => <label key={field}>{label}<input aria-label={`${index + 1}행 ${label}`} type={type} min={type === 'number' ? 0 : undefined} value={row[field] ?? ''} disabled={busy} onChange={event => patch(index, field, event.target.value)} /></label>)}</div>{row.sourceNotes && <p className={styles.sourceNotes}>{row.sourceNotes}</p>}</details>

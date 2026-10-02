@@ -1,5 +1,7 @@
 export type MediaMixRow = {
   rowId?: string;
+  tvChannelType?: "지상파" | "케이블";
+  previewUrl?: string; creativeUrl?: string;
   category?: string; proposalStatus?: string; scenario?: string; sourceCell?: string; sourceGroup?: string; sourceKey?: string; sourceNotes?: string;
   expectedViews?: number | null; expectedGrp?: number | null; expectedCprp?: number | null;
   platform: string; product: string; placement: string; creativeName: string;
@@ -24,6 +26,13 @@ function date(value: unknown) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input) || !Number.isFinite(Date.parse(input)) || new Date(input).toISOString().slice(0, 10) !== input) throw new Error("INVALID_MEDIA_MIX_DATE");
   return input;
 }
+function url(value: unknown) {
+  const input = text(value, 4000);
+  if (!input) return "";
+  const parsed = new URL(input);
+  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("http 또는 https URL을 입력해주세요.");
+  return parsed.toString();
+}
 export function normalizeMediaMix(input: Record<string, unknown>) {
   const month = text(input.month, 7);
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("INVALID_MEDIA_MIX_MONTH");
@@ -45,7 +54,10 @@ export function normalizeMediaMix(input: Record<string, unknown>) {
       const proposalStatus = text(raw.proposalStatus, 30);
       if (proposalStatus && !["제안", "협의", "TBD", "확정", "부킹 완료"].includes(proposalStatus)) throw new Error("INVALID_PROPOSAL_STATUS");
       const provenance = { category: text(raw.category, 100), proposalStatus, scenario: text(raw.scenario, 500), sourceCell: text(raw.sourceCell, 100), sourceGroup: text(raw.sourceGroup, 500), sourceKey: text(raw.sourceKey, 4000), sourceNotes: text(raw.sourceNotes, 2000) };
-      return { ...(rowId ? { rowId } : {}), ...Object.fromEntries(Object.entries(provenance).filter(([, v]) => v)), platform, product, placement: text(raw.placement, 150) || product,
+      const tvChannelType = text(raw.tvChannelType, 20);
+      if (tvChannelType && !["지상파", "케이블"].includes(tvChannelType)) throw new Error("TV 분류를 확인해주세요.");
+      const links = { previewUrl: url(raw.previewUrl), creativeUrl: url(raw.creativeUrl) };
+      return { ...(rowId ? { rowId } : {}), ...(tvChannelType ? { tvChannelType: tvChannelType as MediaMixRow["tvChannelType"] } : {}), ...Object.fromEntries(Object.entries(links).filter(([, v]) => v)), ...Object.fromEntries(Object.entries(provenance).filter(([, v]) => v)), platform, product, placement: text(raw.placement, 150) || product,
         creativeName: text(raw.creativeName, 200), creativeType: text(raw.creativeType, 200), device: text(raw.device, 100),
         periodStart, periodEnd, budget: number(raw.budget), expectedImpressions: number(raw.expectedImpressions), expectedClicks: number(raw.expectedClicks),
         expectedViews: number(raw.expectedViews), expectedGrp: number(raw.expectedGrp), expectedCprp: number(raw.expectedCprp),

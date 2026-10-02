@@ -6,6 +6,10 @@ import { analyzeProposalWorkbook } from './media-mix-source-analysis';
 const key = (value: unknown) => String(value ?? '').toLowerCase().replace(/[\s_()（）·%\-.:/]/g, '');
 const text = (value: unknown) => String(value ?? '').trim();
 const patterns: Partial<Record<PlanField, RegExp>> = {
+  category: /^(상위카테고리|매체유형|category)$/,
+  tvChannelType: /^(tv분류|tv유형|방송유형)$/,
+  previewUrl: /^(매체지면미리보기url|매체미리보기url|지면미리보기url|previewurl)$/,
+  creativeUrl: /^(운영소재url|소재url|소재링크|영상url|creativeurl)$/,
   platform: /^(매체|매체명|광고매체|매체구분|플랫폼|대분류|media|channel|구분)$/,
   product: /^(광고상품|광고상품명|매체상품|상품|상품명|상품유형|광고유형|중분류|product|adproduct)$/,
   placement: /^(지면|광고지면|게재지면|게재위치|placement)$/,
@@ -139,6 +143,10 @@ export function analyzeMediaMixWorkbook(bytes: ArrayBuffer, month: string): Medi
       for (const field of ['placement', 'creativeName', 'creativeType', 'device', 'target'] as const) {
         if (text(get(field))) { plan[field] = text(get(field)); provided.push(field); }
       }
+      for (const field of ['category', 'previewUrl', 'creativeUrl'] as const) {
+        if (active.columns[field] != null) { plan[field] = text(get(field)); provided.push(field); }
+      }
+      if (text(get('tvChannelType'))) { plan.tvChannelType = text(get('tvChannelType')) as MediaPlanFact['tvChannelType']; provided.push('tvChannelType'); }
       for (const field of ['budget', 'expectedImpressions', 'expectedClicks'] as const) {
         const col = active.columns[field];
         // Even formatted numeric strings in merged cells must not duplicate budgets.
@@ -173,6 +181,6 @@ export function analyzeMediaMixWorkbook(bytes: ArrayBuffer, month: string): Medi
 export function parseMediaMixWorkbook(bytes: ArrayBuffer, month: string) { return analyzeMediaMixWorkbook(bytes, month).rows; }
 export function downloadMediaMixTemplate() {
   const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['매체', '광고상품', '소재명', '지면', '시작일', '종료일', '예산', '예상 노출수', '예상 클릭수', '기기', '소재유형', '타겟팅', '집행상태']]), '미디어믹스');
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['상위카테고리', 'TV분류', '매체', '광고상품', '소재명', '지면', '시작일', '종료일', '예산', '예상 노출수', '예상 클릭수', '기기', '소재유형', '타겟팅', '집행상태', '매체 지면 미리보기 URL', '운영 소재 URL']]), '미디어믹스');
   XLSX.writeFile(book, '미디어믹스_입력양식.xlsx');
 }
