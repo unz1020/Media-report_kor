@@ -7,6 +7,7 @@ import type { PlacementProof } from "@/lib/placement-proof";
 import { landingWithUtm, safeHttpUrl, UTM_KEYS } from "@/lib/placement-urls";
 import styles from "./placement-setup-form.module.css";
 import { CreativeUrlPreview } from './creative-url-preview';
+import { ProofImagePicker } from './proof-image-picker';
 
 type SavedProof = PlacementProof & { importId: string };
 export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
@@ -30,7 +31,8 @@ export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
   const [previewUrl, setPreviewUrl] = useState(proof?.previewUrl || "");
   const [landingUrl, setLandingUrl] = useState(proof?.landingUrl || "");
   const [utm, setUtm] = useState<Record<string, string>>(proof?.utm || {});
-  const [file, setFile] = useState<File | undefined>(initialFile);
+  const [file, setFile] = useState<File | undefined>(initialFile && /^image\/(png|jpeg|webp)$/.test(initialFile.type) && initialFile.size <= 4 * 1024 * 1024 ? initialFile : undefined);
+  const [imagePending, setImagePending] = useState(false);
   const [filePreview, setFilePreview] = useState("");
   const [saved, setSaved] = useState<PlacementProof | undefined>(proof);
   const [saving, setSaving] = useState(false);
@@ -52,7 +54,7 @@ export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canEdit || saving || dataSyncState === "loading") return;
+    if (!canEdit || saving || imagePending || dataSyncState === "loading") return;
     setError(""); setNotice(""); setSaving(true);
     let metadataSaved = false;
     try {
@@ -114,15 +116,16 @@ export function PlacementSetupForm({ proof, initial, initialFile, onClose }: {
           <label className={styles.wide}>매체 미리보기 URL<input type="url" maxLength={4000} value={previewUrl} placeholder="https://" onChange={e => setPreviewUrl(e.target.value)} /></label>
           <label className={styles.wide}>랜딩 URL<input type="url" maxLength={4000} value={landingUrl} placeholder="기존 UTM이 포함된 전체 URL도 입력할 수 있습니다." onChange={e => setLandingUrl(e.target.value)} /></label>
           {UTM_KEYS.map(key => <label key={key}>{key}<input maxLength={500} value={utm[key] || ""} onChange={e => setUtm(current => ({ ...current, [key]: e.target.value }))} /></label>)}
-          <label className={styles.wide}>미리보기 / 게재 이미지<input type="file" aria-label="미리보기 / 게재 이미지" accept="image/png,image/jpeg,image/webp" onChange={e => { setFile(e.target.files?.[0]); setError(""); }} /><small>PNG, JPG, WEBP · 최대 4MB</small></label>
+
         </div>
+        <ProofImagePicker initialFile={initialFile} disabled={saving || !canEdit} onChange={setFile} onPendingChange={setImagePending} />
         <CreativeUrlPreview url={previewUrl} label="매체 미리보기" />
         {(filePreview || currentImage) && <img className={styles.image} src={filePreview || currentImage} alt="등록할 지면 이미지 미리보기" />}
         {finalUrl.error && <p className={styles.error}>{finalUrl.error}</p>}
         {finalUrl.value && <div className={styles.url}><strong>최종 랜딩 URL</strong><a href={finalUrl.value} target="_blank" rel="noopener noreferrer">{finalUrl.value}</a><small>기존 쿼리와 앵커를 유지하고 입력한 UTM을 적용합니다.</small></div>}
         {notice && <p role="status">{notice}</p>}
         {error && <p className={styles.error} role="alert">{error}</p>}
-        <div className={styles.actions}><button className="btn" type="button" onClick={onClose}>취소</button><button className="btn primary" type="submit" disabled={Boolean(finalUrl.error) || dataSyncState === "loading"}>{saving ? "저장 중…" : "지면 저장"}</button></div>
+        <div className={styles.actions}><button className="btn" type="button" onClick={onClose}>취소</button><button className="btn primary" type="submit" disabled={imagePending || Boolean(finalUrl.error) || dataSyncState === "loading"}>{saving ? "저장 중…" : "지면 저장"}</button></div>
       </fieldset>
     </form>
   </section>;

@@ -51,6 +51,7 @@ jobs:
           npm run start > /tmp/media-report-server.log 2>&1 &
           node -e 'const http=require("http"); let tries=0; function probe(){ http.get("http://127.0.0.1:3000",r=>process.exit(0)).on("error",()=>{if(++tries>60)process.exit(1);setTimeout(probe,1000)})} probe()'
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-tv-preview-ui.mjs
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-proof-image-input-ui.mjs
           node scripts/verify-operations-ui.mjs
           node scripts/verify-report-sources-ui.mjs
           node scripts/verify-layout-ui.mjs
