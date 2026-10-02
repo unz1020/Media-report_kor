@@ -17,6 +17,7 @@ import { landingWithUtm, safeHttpUrl } from "@/lib/placement-urls";
 import styles from "./creative.module.css";
 import { CreativeUrlPreview } from "@/components/creative-url-preview";
 import { MediaPlanLinks } from "@/components/media-plan-links";
+import { CreativeMarker, CreativeLegend, creativeStyle } from "@/components/creative-marker";
 import { mediaHierarchy, mediaPath } from "@/lib/media-hierarchy";
 
 function displayUrl(value = "") {
@@ -170,7 +171,7 @@ export default function CreativePage() {
     const landing = finalLanding(proof);
     const preview = displayUrl(proof.previewUrl);
 
-    return <article className={styles.proofCard} key={proofKey}>
+    return <article className={styles.proofCard} style={creativeStyle(proof.creativeName)} key={proofKey}>
       <div className={styles.visual}>
         {visualUrl
           ? <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
@@ -193,7 +194,7 @@ export default function CreativePage() {
       <div className={styles.proofBody}>
         <span className={styles.proofEyebrow}>{proof.status === "게재 확인" ? `${proof.verificationDate || proof.reportDate} 확인` : proof.status} · {proof.serviceType}</span>
         <div className={styles.proofTitle}>
-          <h3>{proof.creativeName || proof.placement}</h3>
+          <h3>{proof.creativeName && <CreativeMarker name={proof.creativeName} />}{proof.creativeName || proof.placement}</h3>
           {proof.creativeName
             ? <span className={styles.creativeBadge}>운영 소재</span>
             : <span className={styles.serviceBadge}>{proof.serviceType}</span>}
@@ -237,7 +238,7 @@ export default function CreativePage() {
 <LayoutCanvas page="creative">
     {plans.length > 0 && <LayoutPanel id="creative:plan-urls" title="운영안 소재 URL"><section className="card card-pad"><div className="report-panel-head"><div><h2>운영안 소재 URL</h2><p>운영안별 매체 지면 미리보기와 소재 원본 링크를 등록하고 확인합니다. 일정 화면과 함께 반영됩니다.</p></div></div>
       <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media}</button>)}</div>
-      <div className={styles.planUrlGrid}>{plans.filter(plan=>selectedMedia==='전체' || (mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform))===selectedMedia || plan.platform===selectedMedia).map((plan,index)=><article className={styles.planUrlCard} key={`${advertiser}:${month}:${plan.rowId || index}`}><small>{mediaPath(plan)} › {plan.product}</small><h3>{plan.creativeName || plan.placement || '소재명 미입력'}</h3><p>{plan.periodStart || '일정 미입력'} ~ {plan.periodEnd || '일정 미입력'}</p><MediaPlanLinks plan={plan} datasets={datasets} /></article>)}</div>
+      <CreativeLegend names={plans.map(plan=>plan.creativeName)} /><div className={styles.planUrlGrid}>{plans.filter(plan=>selectedMedia==='전체' || (mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform))===selectedMedia || plan.platform===selectedMedia).map((plan,index)=><article className={styles.planUrlCard} style={creativeStyle(plan.creativeName)} key={`${advertiser}:${month}:${plan.rowId || index}`}><small>{mediaPath(plan)} › {plan.product}</small><h3><CreativeMarker name={plan.creativeName} />{plan.creativeName || plan.placement || '소재명 미입력'}</h3><p>{plan.periodStart || '일정 미입력'} ~ {plan.periodEnd || '일정 미입력'}</p><MediaPlanLinks plan={plan} datasets={datasets} /></article>)}</div>
     </section></LayoutPanel>}
     {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
 
@@ -293,7 +294,7 @@ export default function CreativePage() {
                     </div>
                   </div>
                   {namedCreatives.length > 0 && <div className={styles.creativeQuickList}>
-                    {namedCreatives.map((proof) => <span key={proof.proofId || proof.key || `${proof.messageId}-${proof.creativeName}`}>{proof.creativeName}</span>)}
+                    {namedCreatives.map((proof) => <span key={proof.proofId || proof.key || `${proof.messageId}-${proof.creativeName}`} style={creativeStyle(proof.creativeName)}><CreativeMarker name={proof.creativeName} />{proof.creativeName}</span>)}
                   </div>}
                   <div className={styles.proofGrid}>{placementGroup.proofs.map(proofCard)}</div>
                 </section>;
