@@ -1,402 +1,117 @@
 "use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
-import {
-  publishedDatasetsFor,
-  publishedInsightsFor,
-  publishedSnapshotsFor,
-  type PublishedDataset,
-  type PublishedInsight,
-} from "@/lib/daily-report-store";
-import {
-  mediaPlansFromDatasets,
-  creativePerformanceFromDatasets,
-  dailyPerformanceFromDatasets,
-  periodRowsFromSnapshots,
-  rowsFromDatasets,
-  summarizeRows,
-  type CreativeDailyRow,
-  type DailyPerformanceRow,
-  type ReportingRow,
-} from "@/lib/reporting-data";
+import { publishedDatasetsFor, publishedSnapshotsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { mediaPlansFromDatasets, creativePerformanceFromDatasets, dailyPerformanceFromDatasets, periodRowsFromSnapshots, rowsFromDatasets, type ReportingRow } from "@/lib/reporting-data";
 import { canonicalMedia, inferMediaMentions } from "@/lib/media-normalization";
-import { InsightEntry } from "@/components/daily-insight-history";
+import { buildPerformanceReport, isPerformanceReferenceRow, type MediaPerformanceReport } from "@/lib/performance-report";
 import type { MediaPlanFact } from "@/lib/daily-report-parser";
+import { PerformanceReportOverview, MediaReportKpis, PerformanceReportTrend } from "@/components/performance-report";
+import { PerformanceSourcePanels } from "@/components/performance-source-panels";
 import { MediaPlanPerformance } from "@/components/media-plan-performance";
 import { PerformanceCharts } from "@/components/performance-charts";
-import { PlacementPerformanceMatrix, MetricsMatrix } from "@/components/placement-performance-matrix";
 import { comparisonMetrics, placementMetricKey } from "@/lib/performance-visuals";
+import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
+import { InsightEntry } from "@/components/daily-insight-history";
 import styles from "./performance.module.css";
 
-function monthStart(month: string) { return `${month}-01`; }
-function monthEnd(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(year, monthNumber, 0).toISOString().slice(0, 10);
+type Screen="summary"|"detail"|"source"|"plan";
+type Mode="placement"|"creative";
+type Preset="core"|"cost"|"video"|"all";
+const monthStart=(month:string)=>`${month}-01`;
+function monthEnd(month:string){const [y,m]=month.split('-').map(Number);return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);}
+function value(value:number|null|undefined,unit=""){if(typeof value!=='number'||!Number.isFinite(value))return '—';if(unit==='원'&&value!==0&&Math.abs(value)<0.01)return `${Math.abs(value)<0.000001?value.toExponential(2):value.toLocaleString('ko-KR',{maximumSignificantDigits:3})}원`;return `${new Intl.NumberFormat('ko-KR',{maximumFractionDigits:unit==='원'||unit==='%'?2:0}).format(value)}${unit}`;}
+function viewTop(){window.scrollTo({top:0,behavior:'auto'});}
+function DetailTable({item,preset,complete}:{item:MediaPerformanceReport;preset:Preset;complete:boolean}){
+  const offline=item.kind==='ooh'||item.kind==='broadcast';
+  const valid=(n:unknown):n is number=>typeof n==='number'&&Number.isFinite(n);
+  const has=(key:keyof ReportingRow)=>item.rows.some(row=>valid(row[key]));
+  type Column={key:string;label:string;unit?:string;read:(row:ReportingRow)=>number|null|undefined;total:number|null|undefined};
+  const cpc=(r:ReportingRow)=>isPerformanceReferenceRow(r)?null:valid(r.spend)&&valid(r.clicks)&&r.clicks>0?r.spend/r.clicks:null;
+  const cpm=(r:ReportingRow)=>isPerformanceReferenceRow(r)?null:valid(r.spend)&&r.impressions>0?r.spend/r.impressions*1000:null;
+  const cpv=(r:ReportingRow)=>isPerformanceReferenceRow(r)?null:valid(r.spend)&&valid(r.views)&&r.views>0?r.spend/r.views:null;
+  const available:Column[]=[
+    {key:'spend',label:'집행액',unit:'원',read:(r:ReportingRow)=>isPerformanceReferenceRow(r)?null:r.spend,total:item.metrics.spend},
+    {key:'impressions',label:offline?'원본 Impression':'노출',read:(r:ReportingRow)=>r.impressions,total:item.metrics.impressions},
+    {key:'clicks',label:'클릭',read:(r:ReportingRow)=>r.clicks,total:item.metrics.clicks},
+    {key:'ctr',label:'CTR',unit:'%',read:(r:ReportingRow)=>valid(r.clicks)&&r.impressions>0?r.clicks/r.impressions*100:null,total:item.metrics.ctr},
+    {key:'views',label:'원본 조회',read:(r:ReportingRow)=>r.views,total:item.metrics.views},
+    {key:'vtr',label:'원본 VTR',unit:'%',read:(r:ReportingRow)=>r.vtr,total:null},
+    {key:'conversions',label:'원본 전환',read:(r:ReportingRow)=>r.conversions,total:item.metrics.conversions},
+    {key:'cpc',label:'CPC',unit:'원',read:cpc,total:item.metrics.cpc},
+    {key:'cpm',label:'CPM',unit:'원',read:cpm,total:item.metrics.cpm},
+    {key:'cpv',label:'CPV',unit:'원',read:cpv,total:item.metrics.cpv},
+  ].filter(col=>!offline||!['clicks','ctr','cpc','cpm','cpv','vtr'].includes(col.key));
+  const keys=preset==='cost'?['spend','cpc','cpm','cpv']:preset==='video'?['impressions','views','vtr','cpv']:preset==='all'?available.map(c=>c.key):offline?['spend','impressions']:item.kind==='video'?['impressions','views','vtr','clicks']:['impressions','clicks','ctr','cpc'];
+  const columns=available.filter(col=>keys.includes(col.key)&&(col.key==='impressions'||col.read&&item.rows.some(r=>valid(col.read(r)))));
+  const [sort,setSort]=useState<string>('');
+  const active=columns.find(c=>c.key===sort);
+  const rows=active?[...item.rows].sort((a,b)=>(active.read(b)??-Infinity)-(active.read(a)??-Infinity)):item.rows;
+  return <section className={styles.tableSection} aria-label={`${item.name} 지면 요약`}><div className={styles.sectionTitle}><h2>광고 지면별 성과</h2><span>{item.rows.length}개 지면 · 열 제목을 눌러 정렬</span></div>
+    <div className={styles.tableScroll} tabIndex={0}><table className={styles.table}><thead><tr><th scope="col">광고 지면</th>{columns.map(col=><th scope="col" key={col.key} aria-sort={active?.key===col.key?'descending':'none'}><button type="button" onClick={()=>setSort(col.key)}>{col.label}{active?.key===col.key?' ↓':''}</button></th>)}</tr></thead><tbody>
+      {rows.map((row,index)=><tr key={`${row.sourceFile}:${row.sourceSheet}:${row.placement}:${index}`}><th scope="row">{row.placement}<small>{row.reportDate} 보고 기준{isPerformanceReferenceRow(row)?" · 참고 비용은 유료 집행액 제외":""}</small></th>{columns.map(col=><td key={col.key}>{complete?value(col.read(row),col.unit):'—'}</td>)}</tr>)}
+      {!!rows.length&&<tr className={styles.totalRow}><th scope="row">선택 기간 합계</th>{columns.map(col=><td key={col.key}>{complete?value(col.total,col.unit):'—'}</td>)}</tr>}
+    </tbody></table></div><p className={styles.helper}>이 표의 비율·단가는 선택 기간의 분자·분모가 모두 있는 행으로 계산합니다. 원본 제공 단가는 일별·원본에서 확인합니다. 합계 CTR·단가는 해당 지표가 함께 제공된 범위만 사용하므로 단순 평균과 다를 수 있습니다. —는 미제공 또는 집계 보류입니다.</p>
+    {!columns.length&&<p className={styles.emptyInline}>이 지면에는 선택한 지표 묶음이 제공되지 않았습니다. 다른 지표 묶음을 선택해 주세요.</p>}
+  </section>;
 }
-function formatBareCount(value: number | null | undefined) {
-  return value === null || value === undefined ? "-" : Math.round(value).toLocaleString("ko-KR");
-}
-function formatWon(value: number | null | undefined) {
-  return value === null || value === undefined ? "-" : `${Math.round(value).toLocaleString("ko-KR")}원`;
-}
-function formatRate(value: number | null | undefined) {
-  return value === null || value === undefined ? "-" : `${value.toFixed(2)}%`;
-}
-function formatAchievement(value: number | null | undefined) {
-  return value === null || value === undefined ? "-" : `${Math.round(value)}%`;
-}
-function formatGuaranteed(value: string) {
-  const normalized = value.replace(/,/g, "").trim();
-  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return value || "-";
-  return Math.round(Number(normalized)).toLocaleString("ko-KR");
-}
-function guaranteedNumber(value: string) {
-  const normalized = value.replace(/,/g, "").trim();
-  if (!/^\d+(?:\.\d+)?$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-function dateForDay(month: string, day: number) {
-  return `${month}-${String(day).padStart(2, "0")}`;
-}
-
-type UiRow = ReportingRow & { media: string };
-type UiCreativeRow = CreativeDailyRow & { media: string };
-type ViewMode = "placement" | "creative";
-
-type MetricPresence = {
-  achievement: boolean;
-  guaranteed: boolean;
-  spend: boolean;
-  clicks: boolean;
-  views: boolean;
-  vtr: boolean;
-  conversions: boolean;
-  cpc: boolean;
-  cpm: boolean;
-  cpv: boolean;
-};
-
-function normalizeRow(row: ReportingRow): UiRow {
-  return { ...row, media: canonicalMedia(row.platform) };
-}
-function normalizeCreativeRow(row: CreativeDailyRow): UiCreativeRow {
-  return { ...row, media: canonicalMedia(row.platform) };
-}
-
-function metricPresence(media: string, rows: UiRow[]): MetricPresence {
-  const isDooh = media === "애드부스트스크린";
-  return {
-    achievement: rows.some((row) => row.achievement !== null && row.achievement !== undefined),
-    guaranteed: rows.some((row) => Boolean(row.guaranteed && row.guaranteed !== "-")),
-    spend: rows.some((row) => row.spend !== null && row.spend !== undefined),
-    clicks: !isDooh && rows.some((row) => row.clicks !== null && row.clicks !== undefined),
-    views: rows.some((row) => row.views !== null && row.views !== undefined),
-    vtr: rows.some((row) => row.vtr !== null && row.vtr !== undefined),
-    conversions: rows.some((row) => row.conversions !== null && row.conversions !== undefined),
-    cpc: rows.some((row) => row.cpc !== null && row.cpc !== undefined),
-    cpm: rows.some((row) => row.cpm !== null && row.cpm !== undefined),
-    cpv: rows.some((row) => row.cpv !== null && row.cpv !== undefined),
-  };
-}
-
-function dailyPresence(media: string, rows: DailyPerformanceRow[]) {
-  const isDooh = media === "애드부스트스크린";
-  return {
-    spend: rows.some((row) => row.spend !== null && row.spend !== undefined),
-    clicks: !isDooh && rows.some((row) => row.clicks !== null && row.clicks !== undefined),
-    views: rows.some((row) => row.views !== null && row.views !== undefined),
-    vtr: rows.some((row) => row.vtr !== null && row.vtr !== undefined),
-    cpc: rows.some((row) => row.cpc !== null && row.cpc !== undefined),
-    cpm: rows.some((row) => row.cpm !== null && row.cpm !== undefined),
-    cpv: rows.some((row) => row.cpv !== null && row.cpv !== undefined),
-  };
-}
-
-function renderTotal(media: string, rows: UiRow[], presence: MetricPresence) {
-  const summary = summarizeRows(rows);
-  const guaranteedValues = rows.map((row) => guaranteedNumber(row.guaranteed)).filter((value): value is number => value !== null);
-  const guaranteed = guaranteedValues.length ? guaranteedValues.reduce((sum, value) => sum + value, 0) : null;
-  const achievement = guaranteed && guaranteed > 0 ? summary.impressions / guaranteed * 100 : null;
-  const cpm = presence.cpm && summary.spend !== null && summary.impressions > 0 ? summary.spend / summary.impressions * 1000 : null;
-  const cpc = presence.cpc && summary.spend !== null && summary.clicks !== null && summary.clicks > 0 ? summary.spend / summary.clicks : null;
-  const cpv = presence.cpv && summary.spend !== null && summary.views !== null && summary.views > 0 ? summary.spend / summary.views : null;
-  const vtr = presence.vtr && summary.views !== null && summary.impressions > 0 ? summary.views / summary.impressions * 100 : null;
-  return { media, summary, guaranteed, achievement, cpm, cpc, cpv, vtr };
-}
-
-export default function PerformancePage() {
-  const { advertiser, month } = useWorkspace();
-  const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
-  const [mediaPlans, setMediaPlans] = useState<MediaPlanFact[]>([]);
-  const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
-  const [insights, setInsights] = useState<PublishedInsight[]>([]);
-  const [startDate, setStartDate] = useState(monthStart(month));
-  const [endDate, setEndDate] = useState(monthEnd(month));
-  const [selectedMedia, setSelectedMedia] = useState("전체 매체");
-  const [viewMode, setViewMode] = useState<ViewMode>("placement");
-  const datesInitialized = useRef(false);
-
-  useEffect(() => {
-    datesInitialized.current = false;
-    setStartDate(monthStart(month));
-    setEndDate(monthEnd(month));
-    setSelectedMedia("전체 매체");
-    setViewMode("placement");
-  }, [month, advertiser]);
-
-  useEffect(() => {
-    const load = () => {
-      const allDatasets = publishedDatasetsFor(advertiser, month);
-      setMediaPlans(mediaPlansFromDatasets(allDatasets));
-      const nextDatasets = allDatasets.filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
-      const nextSnapshots = publishedSnapshotsFor(advertiser, month).filter(item => item.bundle.placements.length || item.bundle.dailyPerformance?.length || item.bundle.creativeDailyPerformance?.length);
-      const nextInsights = publishedInsightsFor(advertiser, month);
-      setDatasets(nextDatasets);
-      setSnapshots(nextSnapshots);
-      setInsights(nextInsights);
-      const latestDate = nextSnapshots.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1)
-        || nextDatasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1);
-      if (latestDate && !datesInitialized.current) { setEndDate(latestDate); datesInitialized.current = true; }
-    };
-    load();
-    window.addEventListener("media-report-daily-updated", load);
-    window.addEventListener("storage", load);
-    return () => {
-      window.removeEventListener("media-report-daily-updated", load);
-      window.removeEventListener("storage", load);
-    };
-  }, [advertiser, month]);
-
-  const latestDataDate = useMemo(() => snapshots.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1)
-    || datasets.map((item) => item.bundle.reportDate).filter(Boolean).sort().at(-1)
-    || monthEnd(month), [snapshots, datasets, month]);
-
-  const period = useMemo(() => snapshots.length
-    ? periodRowsFromSnapshots(snapshots, startDate, endDate)
-    : { rows: rowsFromDatasets(datasets), baselineComplete: startDate.endsWith("-01") }, [snapshots, datasets, startDate, endDate]);
-
-  const placementRows = useMemo(() => period.rows.map(normalizeRow), [period.rows]);
-  const creativeRows = useMemo(() => creativePerformanceFromDatasets(datasets, endDate).map(normalizeCreativeRow), [datasets, endDate]);
-  const dailyRows = useMemo(() => dailyPerformanceFromDatasets(datasets, startDate, endDate), [datasets, startDate, endDate]);
-  const periodInsights = useMemo(() => insights.filter((item) => item.reportDate >= startDate && item.reportDate <= endDate), [insights, startDate, endDate]);
-
-  const mediaNames = useMemo(() => {
-    const rows = viewMode === "placement" ? placementRows : creativeRows;
-    return Array.from(new Set([...rows.map((row) => row.media), ...mediaPlans.map(row => canonicalMedia(row.platform))])).filter(Boolean).sort((a, b) => a.localeCompare(b, "ko"));
-  }, [viewMode, placementRows, creativeRows, mediaPlans]);
-
-  useEffect(() => {
-    if (selectedMedia !== "전체 매체" && !mediaNames.includes(selectedMedia)) setSelectedMedia("전체 매체");
-  }, [mediaNames, selectedMedia]);
-
-  const placementGroups = useMemo(() => {
-    const scoped = selectedMedia === "전체 매체" ? placementRows : placementRows.filter((row) => row.media === selectedMedia);
-    const map = new Map<string, UiRow[]>();
-    for (const row of scoped) {
-      const list = map.get(row.media) ?? [];
-      list.push(row);
-      map.set(row.media, list);
-    }
-    return [...map.entries()].map(([media, rows]) => ({ media, rows }));
-  }, [placementRows, selectedMedia]);
-
-  const creativeGroups = useMemo(() => {
-    const scoped = selectedMedia === "전체 매체" ? creativeRows : creativeRows.filter((row) => row.media === selectedMedia);
-    const map = new Map<string, UiCreativeRow[]>();
-    for (const row of scoped) {
-      const list = map.get(row.media) ?? [];
-      list.push(row);
-      map.set(row.media, list);
-    }
-    return [...map.entries()].map(([media, rows]) => ({ media, rows }));
-  }, [creativeRows, selectedMedia]);
-
-  const scopedDaily = useMemo(() => dailyRows.filter(row => selectedMedia === "전체 매체" || canonicalMedia(row.platform) === selectedMedia), [dailyRows, selectedMedia]);
-  const comparisons = useMemo(() => viewMode === "placement"
-    ? comparisonMetrics(placementGroups.flatMap(group => group.rows), placementMetricKey, row => `${row.placement} (${row.media})`)
-    : comparisonMetrics(creativeGroups.flatMap(group => group.rows), row => `${placementMetricKey(row)}::${row.creative}`, row => `${row.creative} · ${row.placement} (${row.media})`), [viewMode, placementGroups, creativeGroups]);
-
-  function relevantInsights(media: string) {
-    return periodInsights.filter(item => item.notes.some(note => inferMediaMentions(note).includes(media)));
-  }
-
-  function applyPreset(kind: "month" | "early" | "middle" | "late") {
-    if (kind === "month") {
-      setStartDate(monthStart(month));
-      setEndDate(latestDataDate);
-      return;
-    }
-    if (kind === "early") {
-      setStartDate(dateForDay(month, 1));
-      setEndDate(dateForDay(month, 10) <= latestDataDate ? dateForDay(month, 10) : latestDataDate);
-      return;
-    }
-    if (kind === "middle") {
-      setStartDate(dateForDay(month, 11));
-      setEndDate(dateForDay(month, 20) <= latestDataDate ? dateForDay(month, 20) : latestDataDate);
-      return;
-    }
-    setStartDate(dateForDay(month, 21));
-    setEndDate(latestDataDate);
-  }
-
-  return (
-    <>
-      <div className="page-head refined-head">
-        <div>
-          <div className="eyebrow">성과 분석</div>
-          <h1 className="page-title">{advertiser} 성과 보고</h1>
-          <p className="page-desc">원하는 기간을 직접 선택해 지면 성과를 합산하고, 소재별 성과는 선택한 기준일의 하루 성과로 확인합니다.</p>
-        </div>
-        <div className="page-meta"><span className="view-pill">{month}</span></div>
-      </div>
-<LayoutCanvas page="performance">
-      {!!mediaPlans.length && <LayoutPanel id="performance:media-plan-comparison" title="미디어믹스 예상 실제 비교"><MediaPlanPerformance plans={mediaPlans} actual={placementRows} selectedMedia={selectedMedia} period={`${startDate} ~ ${endDate}`} /></LayoutPanel>}
-
-      <LayoutPanel id="performance:조회 기간 · 필터:1" title="조회 기간 · 필터"><div className="report-toolbar performance-toolbar">
-        <div className="toolbar-group">
-          {viewMode === "placement" ? <>
-            <label className="toolbar-label">조회 기간</label>
-            <input className="toolbar-control" type="date" value={startDate} min={monthStart(month)} max={endDate} onChange={(event) => setStartDate(event.target.value)} />
-            <span className="toolbar-label">–</span>
-            <input className="toolbar-control" type="date" value={endDate} min={startDate} max={latestDataDate} onChange={(event) => setEndDate(event.target.value)} />
-            <button className="btn" onClick={() => applyPreset("month")}>월 누적</button>
-            <button className="btn" onClick={() => applyPreset("early")}>1~10일</button>
-            <button className="btn" onClick={() => applyPreset("middle")} disabled={latestDataDate < dateForDay(month, 11)}>11~20일</button>
-            <button className="btn" onClick={() => applyPreset("late")} disabled={latestDataDate < dateForDay(month, 21)}>21일~최신</button>
-          </> : <>
-            <label className="toolbar-label">소재 기준일</label>
-            <input className="toolbar-control" type="date" value={endDate} min={monthStart(month)} max={latestDataDate} onChange={(event) => setEndDate(event.target.value)} />
-            <span className="view-pill">1일 성과</span>
-          </>}
-        </div>
-        <div className="toolbar-group right"><span className="view-pill">데일리 업데이트 {datasets.length}건 · 최신 {latestDataDate}</span></div>
-      </div></LayoutPanel>
-
-      {viewMode === "placement" && !period.baselineComplete && <LayoutPanel id="performance:기간 집계 안내:2" title="기간 집계 안내"><div className="source-warning">일별 데이터가 없는 일부 매체는 선택 시작일 직전 누적 스냅샷이 있어야 정확한 기간 차감이 가능합니다. 일별 데이터가 있는 매체는 선택 기간을 직접 합산합니다.</div></LayoutPanel>}
-
-      {!datasets.length ? <LayoutPanel id="performance:아직 반영된 성과 데이터가 없습니다.:3" title="아직 반영된 성과 데이터가 없습니다."><section className="card card-pad empty-state"><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser} 데일리 리포트를 데이터 업데이트에서 검수 후 반영하면 실제 엑셀 수치로 표가 생성됩니다.</p></section></LayoutPanel> : <>
-        <LayoutPanel id="performance:성과 보기 방식:4" title="성과 보기 방식"><div className={styles.primaryTabs} role="tablist" aria-label="성과 구분">
-          <button className={viewMode === "placement" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("placement"); setSelectedMedia("전체 매체"); }}>광고 지면</button>
-          <button className={viewMode === "creative" ? styles.primaryTabActive : styles.primaryTab} onClick={() => { setViewMode("creative"); setSelectedMedia("전체 매체"); }}>소재별</button>
-        </div></LayoutPanel>
-
-        <LayoutPanel id="performance:매체 필터:5" title="매체 필터"><div className={styles.mediaFilterBar} aria-label="매체 필터">
-          <button className={selectedMedia === "전체 매체" ? styles.mediaFilterActive : styles.mediaFilter} onClick={() => setSelectedMedia("전체 매체")}>전체 매체</button>
-          {mediaNames.map((media) => <button key={media} className={selectedMedia === media ? styles.mediaFilterActive : styles.mediaFilter} onClick={() => setSelectedMedia(media)}>{media}</button>)}
-        </div></LayoutPanel>
-
-        <LayoutPanel id="performance:성과 그래프:9" title="성과 그래프">
-          <PerformanceCharts comparison={comparisons} dailyRows={scopedDaily} startDate={startDate} endDate={endDate} mode={viewMode} />
-        </LayoutPanel>
-
-        {viewMode === "placement" ? <LayoutGroup>
-          {placementGroups.map((group) => {
-            const presence = metricPresence(group.media, group.rows);
-            const total = renderTotal(group.media, group.rows, presence);
-            const mediaDaily = dailyRows.filter((row) => canonicalMedia(row.platform) === group.media);
-            const dailyMetrics = dailyPresence(group.media, mediaDaily);
-            const mediaInsights = relevantInsights(group.media);
-
-            return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
-              <header className={styles.summaryHeader}>
-                <div><span>매체</span><h2>{group.media}</h2></div>
-                <div className={styles.summaryMeta}><span>성과 기간 {startDate} ~ {endDate}</span><span>{group.rows.length}개 광고 지면</span></div>
-              </header>
-
-              <PlacementPerformanceMatrix media={group.media} rows={group.rows} dailyRows={mediaDaily} />
-              <details className={styles.detailBlock}>
-                <summary>집행액·보장 노출·상세 지표 보기</summary>
-              <div className={styles.summaryTableWrap}>
-                <table className={styles.summaryTable}>
-                  <thead><tr>
-                    <th>매체</th><th>광고 지면</th>
-                    {presence.achievement && <th>달성률</th>}
-                    {presence.guaranteed && <th>보장노출수</th>}
-                    {presence.spend && <th>집행액</th>}
-                    <th>노출</th>
-                    {presence.clicks && <th>클릭</th>}
-                    <th>CTR(%)</th>
-                    {presence.views && <th>조회수</th>}
-                    {presence.vtr && <th>VTR(%)</th>}
-                    {presence.conversions && <th>전환</th>}
-                    {presence.cpm && <th>CPM</th>}
-                    {presence.cpc && <th>CPC</th>}
-                    {presence.cpv && <th>CPV</th>}
-                  </tr></thead>
-                  <tbody>
-                    {group.rows.map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}>
-                      {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}>{group.media}</td>}
-                      <td className={styles.placementCell}>{row.placement}</td>
-                      {presence.achievement && <td className={styles.numCell}>{formatAchievement(row.achievement)}</td>}
-                      {presence.guaranteed && <td className={styles.numCell}>{formatGuaranteed(row.guaranteed)}</td>}
-                      {presence.spend && <td className={styles.numCell}>{formatWon(row.spend)}</td>}
-                      <td className={styles.numCell}>{formatBareCount(row.impressions)}</td>
-                      {presence.clicks && <td className={styles.numCell}>{formatBareCount(row.clicks)}</td>}
-                      <td className={styles.numCell}>{formatRate(row.ctr)}</td>
-                      {presence.views && <td className={styles.numCell}>{formatBareCount(row.views)}</td>}
-                      {presence.vtr && <td className={styles.numCell}>{formatRate(row.vtr)}</td>}
-                      {presence.conversions && <td className={styles.numCell}>{formatBareCount(row.conversions)}</td>}
-                      {presence.cpm && <td className={styles.numCell}>{formatWon(row.cpm)}</td>}
-                      {presence.cpc && <td className={styles.numCell}>{formatWon(row.cpc)}</td>}
-                      {presence.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}
-                    </tr>)}
-                    <tr className={styles.totalRow}>
-                      <td colSpan={2}>합계</td>
-                      {presence.achievement && <td className={styles.numCell}>{formatAchievement(total.achievement)}</td>}
-                      {presence.guaranteed && <td className={styles.numCell}>{total.guaranteed === null ? "-" : formatBareCount(total.guaranteed)}</td>}
-                      {presence.spend && <td className={styles.numCell}>{formatWon(total.summary.spend)}</td>}
-                      <td className={styles.numCell}>{formatBareCount(total.summary.impressions)}</td>
-                      {presence.clicks && <td className={styles.numCell}>{formatBareCount(total.summary.clicks)}</td>}
-                      <td className={styles.numCell}>{formatRate(total.summary.ctr)}</td>
-                      {presence.views && <td className={styles.numCell}>{formatBareCount(total.summary.views)}</td>}
-                      {presence.vtr && <td className={styles.numCell}>{formatRate(total.vtr)}</td>}
-                      {presence.conversions && <td className={styles.numCell}>{formatBareCount(total.summary.conversions)}</td>}
-                      {presence.cpm && <td className={styles.numCell}>{formatWon(total.cpm)}</td>}
-                      {presence.cpc && <td className={styles.numCell}>{formatWon(total.cpc)}</td>}
-                      {presence.cpv && <td className={styles.numCell}>{formatWon(total.cpv)}</td>}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              </details>
-
-              {mediaInsights.length > 0 && <div className={styles.insightPanel}>
-                <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>메일 성과 요약</span></div>
-                <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>
-              </div>}
-
-              <div className={styles.detailBar}>
-                <details className={styles.detailBlock}>
-                  <summary>일별 성과 데이터 보기</summary>
-                  {mediaDaily.length ? <div className={styles.dailyTableWrap}><table className={styles.dailyTable}><thead><tr><th>일자</th><th>광고 지면</th>{dailyMetrics.spend && <th>집행액</th>}<th>노출</th>{dailyMetrics.clicks && <th>클릭</th>}<th>CTR</th>{dailyMetrics.views && <th>조회</th>}{dailyMetrics.vtr && <th>VTR</th>}{dailyMetrics.cpm && <th>CPM</th>}{dailyMetrics.cpc && <th>CPC</th>}{dailyMetrics.cpv && <th>CPV</th>}</tr></thead><tbody>{mediaDaily.map((row, index) => <tr key={`${row.date}-${row.platform}-${row.placement}-${index}`}><td>{row.date}</td><td>{row.placement}</td>{dailyMetrics.spend && <td className={styles.numCell}>{formatWon(row.spend)}</td>}<td className={styles.numCell}>{formatBareCount(row.impressions)}</td>{dailyMetrics.clicks && <td className={styles.numCell}>{formatBareCount(row.clicks)}</td>}<td className={styles.numCell}>{formatRate(row.ctr)}</td>{dailyMetrics.views && <td className={styles.numCell}>{formatBareCount(row.views)}</td>}{dailyMetrics.vtr && <td className={styles.numCell}>{formatRate(row.vtr)}</td>}{dailyMetrics.cpm && <td className={styles.numCell}>{formatWon(row.cpm)}</td>}{dailyMetrics.cpc && <td className={styles.numCell}>{formatWon(row.cpc)}</td>}{dailyMetrics.cpv && <td className={styles.numCell}>{formatWon(row.cpv)}</td>}</tr>)}</tbody></table></div> : <div className={styles.detailEmpty}>이 매체의 일별 성과 데이터가 아직 연결되지 않았습니다. 현재는 누적 스냅샷이 쌓이는 구간부터 기간 차감 조회가 가능합니다.</div>}
-                </details>
-              </div>
-            </article></LayoutPanel>;
-          })}
-        </LayoutGroup> : creativeGroups.length ? <LayoutGroup>
-          {creativeGroups.map((group) => {
-            const columns = comparisonMetrics(group.rows, row => `${placementMetricKey(row)}::${row.creative}`, row => `${row.creative} · ${row.placement}`);
-            const mediaInsights = relevantInsights(group.media);
-            return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
-              <header className={styles.summaryHeader}>
-                <div><span>매체</span><h2>{group.media}</h2></div>
-                <div className={styles.summaryMeta}><span>기준일 1일 성과 · {endDate}</span><span>{group.rows.length}개 소재</span></div>
-              </header>
-              <MetricsMatrix columns={columns} caption={`${group.media} 소재별 성과`} summaryLabel={`${endDate} 성과`} emptyNote="선택한 기준일의 소재별 하루 성과입니다." />
-              {mediaInsights.length > 0 && <div className={styles.insightPanel}>
-                <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
-                <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>
-              </div>}
-            </article></LayoutPanel>;
-          })}
-        </LayoutGroup> : <LayoutPanel id="performance:소재별 성과가 없습니다.:8" title="소재별 성과가 없습니다."><section className="card card-pad empty-state"><h2>{endDate} 소재별 성과가 없습니다.</h2><p>소재별 일별 성과가 포함된 데일리 파일을 다시 반영하면 해당 기준일 하루 성과만 표시됩니다.</p></section></LayoutPanel>}
+export default function PerformancePage(){
+  const {advertiser,month,dataSyncState,dataSyncError,sessionLoading,reloadData}=useWorkspace();
+  const [datasets,setDatasets]=useState<PublishedDataset[]>([]),[snapshots,setSnapshots]=useState<PublishedDataset[]>([]),[insights,setInsights]=useState<PublishedInsight[]>([]),[mediaPlans,setMediaPlans]=useState<MediaPlanFact[]>([]);
+  const [loadedScope,setLoadedScope]=useState('');
+  const [startDate,setStartDate]=useState(monthStart(month)),[endDate,setEndDate]=useState(monthEnd(month)),[creativeDate,setCreativeDate]=useState(monthEnd(month));
+  const [selectedMedia,setSelectedMedia]=useState('전체 매체'),[screen,setScreen]=useState<Screen>('summary'),[viewMode,setViewMode]=useState<Mode>('placement'),[metricPreset,setMetricPreset]=useState<Preset>('core');
+  const datesInitialized=useRef(false),scope=`${advertiser}:${month}`;
+  useEffect(()=>{datesInitialized.current=false;setStartDate(monthStart(month));setEndDate(monthEnd(month));setCreativeDate(monthEnd(month));setSelectedMedia('전체 매체');setScreen('summary');setViewMode('placement');setMetricPreset('core');},[advertiser,month]);
+  useEffect(()=>{
+    const load=()=>{const all=publishedDatasetsFor(advertiser,month);const usable=all.filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);const history=publishedSnapshotsFor(advertiser,month).filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);setDatasets(usable);setSnapshots(history);setInsights(publishedInsightsFor(advertiser,month));setMediaPlans(mediaPlansFromDatasets(all));setLoadedScope(`${advertiser}:${month}`);const latest=history.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||usable.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1);if(latest&&!datesInitialized.current){setEndDate(latest);setCreativeDate(latest);datesInitialized.current=true;}};
+    load();window.addEventListener('media-report-daily-updated',load);window.addEventListener('storage',load);return()=>{window.removeEventListener('media-report-daily-updated',load);window.removeEventListener('storage',load);};
+  },[advertiser,month]);
+  const latestDataDate=useMemo(()=>snapshots.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||datasets.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||monthEnd(month),[snapshots,datasets,month]);
+  const period=useMemo(()=>snapshots.length?periodRowsFromSnapshots(snapshots,startDate,endDate):{rows:rowsFromDatasets(datasets),baselineComplete:startDate.endsWith('-01')},[snapshots,datasets,startDate,endDate]);
+  const placementRows=useMemo(()=>period.rows.map(row=>({...row,media:canonicalMedia(row.platform)})),[period.rows]);
+  const allCreativeRows=useMemo(()=>[...new Set(datasets.flatMap(item=>item.bundle.creativeDailyPerformance||[]).map(row=>row.date))].flatMap(date=>creativePerformanceFromDatasets(datasets,date)).map(row=>({...row,media:canonicalMedia(row.platform)})),[datasets]);
+  const creativeRows=useMemo(()=>allCreativeRows.filter(row=>row.date===creativeDate),[allCreativeRows,creativeDate]);
+  const dailyRows=useMemo(()=>dailyPerformanceFromDatasets(datasets,startDate,endDate),[datasets,startDate,endDate]);
+  const periodInsights=useMemo(()=>insights.filter(i=>i.reportDate>=startDate&&i.reportDate<=endDate),[insights,startDate,endDate]);
+  const report=useMemo(()=>buildPerformanceReport({rows:placementRows,dailyRows,creativeRows:allCreativeRows,plans:mediaPlans,startDate,endDate,baselineComplete:period.baselineComplete}),[placementRows,dailyRows,allCreativeRows,mediaPlans,startDate,endDate,period.baselineComplete]);
+  const creativeInventory=useMemo(()=>buildPerformanceReport({rows:[],dailyRows:[],creativeRows:allCreativeRows,plans:[],startDate:monthStart(month),endDate:monthEnd(month),baselineComplete:false}).media,[allCreativeRows,month]);
+  const mediaNames=useMemo(()=>Array.from(new Set([...report.media.map(m=>m.name),...creativeInventory.map(m=>m.name)])).sort((a,b)=>a.localeCompare(b,'ko')),[report.media,creativeInventory]);
+  const chosen=selectedMedia==='전체 매체'?(report.media.find(m=>m.rows.length)||report.media[0]):report.media.find(m=>m.name===selectedMedia)||creativeInventory.find(m=>m.name===selectedMedia);
+  useEffect(()=>{if(selectedMedia!=='전체 매체'&&!mediaNames.includes(selectedMedia))setSelectedMedia('전체 매체');},[selectedMedia,mediaNames]);
+  const activeMedia=chosen?.name||selectedMedia;
+  const placementGroups=useMemo(()=>chosen&&(chosen.rows.length||chosen.dailyRows.length)?[{media:chosen.name,rows:chosen.rows}]:[],[chosen]);
+  const creativeGroups=useMemo(()=>{const rows=creativeRows.filter(r=>r.media===activeMedia);return rows.length?[{media:activeMedia,rows}]:[];},[creativeRows,activeMedia]);
+  const scopedDaily=chosen?.dailyRows||[];
+  const comparisons=useMemo(()=>viewMode==='placement'?comparisonMetrics(placementGroups.flatMap(g=>g.rows),placementMetricKey,r=>`${r.placement} (${canonicalMedia(r.platform)})`):comparisonMetrics(creativeGroups.flatMap(g=>g.rows),r=>`${placementMetricKey(r)}::${r.creative}`,r=>`${r.creative} · ${r.placement}`),[viewMode,placementGroups,creativeGroups]);
+  const relevantInsights=(media:string)=>periodInsights.filter(i=>i.notes.some(note=>inferMediaMentions(note).includes(media)));
+  function chooseMedia(name:string){setSelectedMedia(name);const item=report.media.find(m=>m.name===name)||creativeInventory.find(m=>m.name===name);const creativeOnly=!!item?.creativeRows?.length&&!item.rows.length&&!item.dailyRows.length;setViewMode(creativeOnly?'creative':'placement');if(creativeOnly&&item?.creativeThrough)setCreativeDate(item.creativeThrough);setMetricPreset('core');}
+  function chooseMode(mode:Mode){if(mode==='creative'&&viewMode!=='creative'&&chosen?.creativeThrough)setCreativeDate(chosen.creativeThrough);setViewMode(mode);}
+  function openMedia(name:string){chooseMedia(name);setScreen('detail');viewTop();}
+  function go(next:Screen){if(next!=='summary'&&next!=='plan'&&chosen)setSelectedMedia(chosen.name);setScreen(next);viewTop();}
+  function preset(kind:string){const day=(n:number)=>`${month}-${String(n).padStart(2,'0')}`;if(kind==='month'){setStartDate(monthStart(month));setEndDate(latestDataDate);}else{const from=kind==='early'?day(1):kind==='middle'?day(11):day(21);const to=kind==='early'?day(10):kind==='middle'?day(20):latestDataDate;if(from>latestDataDate)return;setStartDate(from);setEndDate(to>latestDataDate?latestDataDate:to);}}
+  const creativeMode=(screen==='detail'||screen==='source')&&viewMode==='creative';
+  const scopeReady=loadedScope===scope;
+  const hasData=!!(datasets.length||mediaPlans.length);
+  const bootLoading=!scopeReady||sessionLoading||(!hasData&&(dataSyncState==='idle'||dataSyncState==='loading'));
+  return <div className={styles.reportShell}>
+    <div className="page-head refined-head"><div><div className="eyebrow">성과 리포트</div><h1 className="page-title">{advertiser} 성과 보고</h1><p className="page-desc">전체 성과와 확인할 내용을 먼저 읽고, 매체를 선택해 상세 지표와 근거를 확인하세요.</p></div></div>
+    <details className={styles.periodControls}><summary><span>조회 기간</span><strong>{creativeMode?`소재 ${creativeDate}`:`${startDate} ~ ${endDate}`}</strong><small aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':'변경'}</small></summary><section className={styles.reportToolbar} aria-label="성과 리포트 조회 조건"><div className={styles.dateFields}><label>{creativeMode?'소재 기준일':'조회 기간'}</label>{!(creativeMode)&&<><input type="date" aria-label="성과 조회 시작일" value={startDate} min={monthStart(month)} max={endDate} onChange={e=>e.target.value&&setStartDate(e.target.value)}/><span>~</span></>}<input type="date" aria-label="성과 조회 종료일" value={creativeMode?creativeDate:endDate} min={creativeMode?monthStart(month):startDate} max={latestDataDate} onChange={e=>{if(e.target.value){if(creativeMode)setCreativeDate(e.target.value);else setEndDate(e.target.value);}}}/><button type="button" onClick={()=>creativeMode?setCreativeDate(latestDataDate):preset('month')}>{creativeMode?'최신 기준일':'월 누적'}</button>{!creativeMode&&<select aria-label="기간 바로가기" value="" onChange={e=>preset(e.target.value)}><option value="" disabled>기간 바로가기</option><option value="early">1~10일</option><option value="middle" disabled={latestDataDate<`${month}-11`}>11~20일</option><option value="late" disabled={latestDataDate<`${month}-21`}>21일~최신</option></select>}</div><span className={styles.syncLabel} aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':dataSyncState==='error'?'자료 동기화 확인 필요':datasets.length?`연결된 성과 자료 ${datasets.length}건`:'실적 자료 연결 대기'}</span></section></details>
+    {dataSyncState==='error'&&<div className={styles.syncError} role="alert"><strong>최신 자료를 불러오지 못했습니다.</strong><span>{hasData?'아래 내용은 마지막으로 불러온 자료입니다. ':''}{dataSyncError||'동기화 상태를 확인해 주세요.'}</span><button type="button" onClick={()=>void reloadData()}>다시 불러오기</button></div>}
+    <nav className={styles.reportNav} aria-label="성과 리포트 화면">{([['summary','요약 리포트'],['detail','매체 상세'],['source','일별·원본'],['plan','운영안 비교']] as const).map(([key,label])=><button type="button" key={key} aria-current={screen===key?'page':undefined} onClick={()=>go(key)}>{label}</button>)}</nav>
+    {bootLoading?<section className={styles.loading} role="status"><h2>성과 자료를 불러오고 있습니다.</h2><p>동기화 중의 빈 화면을 실적 0이나 데이터 없음으로 처리하지 않습니다.</p><div/><div/></section>:!hasData&&dataSyncState==='error'?<section className={styles.empty}><h2>성과 자료를 확인하지 못했습니다.</h2><p>불러오기 실패는 데이터 없음이나 성과 0을 뜻하지 않습니다. 위의 다시 불러오기로 재시도해 주세요.</p></section>:!hasData?<section className={styles.empty}><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser}의 {month} 자료가 연결되면 요약과 매체 상세가 표시됩니다.</p></section>:<>
+      {!period.baselineComplete&&<aside className={styles.sourceWarning} role="status"><strong>이 기간의 정확한 합계를 확인할 기준선이 부족합니다.</strong><p>일부 매체는 시작일 직전 누적 자료가 없어 기간 합계를 보류했습니다. 월 누적 또는 원본 자료를 확인해 주세요.</p></aside>}
+      {screen==='summary'&&<PerformanceReportOverview report={report} insights={periodInsights} startDate={startDate} endDate={endDate} onOpenMedia={openMedia} onOpenPlan={()=>go('plan')}/>}
+      {(screen==='detail'||screen==='source')&&<>
+        <header className={styles.mediaHeader}><div><button type="button" className={styles.back} onClick={()=>go('summary')}>전체 요약으로</button><h2>{chosen?.name||'매체 선택'}</h2><p>{chosen?.reportDate?`매체 보고 기준 ${chosen.reportDate}`:'실적 자료 미연결'}{viewMode==='creative'?(chosen?.creativeThrough?` · 최근 소재 원본 ${chosen.creativeThrough}`:''):(chosen?.dailyThrough?` · 일별 원본 ${chosen.dailyThrough}까지`:'')}</p></div><label>매체<select aria-label="상세 매체 선택" value={activeMedia==='전체 매체'?'':activeMedia} onChange={e=>chooseMedia(e.target.value)}>{mediaNames.map(name=><option key={name} value={name}>{name}</option>)}</select></label></header>
+        <div className={styles.detailNavigation} role="group" aria-label="성과 구분"><button type="button" aria-pressed={viewMode==='placement'} onClick={()=>chooseMode('placement')}>광고 지면</button><button type="button" aria-pressed={viewMode==='creative'} onClick={()=>chooseMode('creative')}>소재별</button>{screen==='detail'&&<button type="button" onClick={()=>go('source')}>일별·원본 확인</button>}{screen==='source'&&<button type="button" onClick={()=>go('detail')}>핵심 지표로</button>}</div>
+        {chosen&&screen==='detail'&&<>
+          {viewMode==='placement'?<><MediaReportKpis media={chosen} baselineComplete={report.baselineComplete}/>{chosen.rows.length||chosen.dailyRows.length?<><PerformanceReportTrend key={chosen.name} media={chosen} startDate={startDate} endDate={endDate}/>{chosen.rows.length?<><div className={styles.metricControls} role="group" aria-label="상세 지표 묶음"><span>표시할 지표</span>{([['core','핵심'],['cost','비용'],['video','영상'],['all','전체']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={metricPreset===key} onClick={()=>setMetricPreset(key)}>{label}</button>)}</div><DetailTable key={chosen.name} item={chosen} preset={metricPreset} complete={report.baselineComplete}/></>:<p className={styles.helper}>매체 누적 원장은 미제공이며, 위 일별 원본을 별도로 확인합니다. 누적 성과 0을 뜻하지 않습니다.</p>}</>:<section className={styles.empty}><h3>{chosen.creativeRows?.length?'소재별 원본만 제공된 매체입니다.':'운영안은 연결돼 있지만 실적 자료는 아직 없습니다.'}</h3><p>{chosen.creativeRows?.length?'소재별에서 기준일 원본을 확인하세요. 매체 누적 성과로 합산하지 않습니다.':'집행 여부나 성과 0을 뜻하지 않습니다. 운영안과 실제 성과를 분리해 확인합니다.'}</p>{chosen.creativeRows?.length?<button type="button" onClick={()=>chooseMode('creative')}>소재 원본 보기</button>:<button type="button" onClick={()=>go('plan')}>운영안 비교 보기</button>}</section>}</>:<><p className={styles.helper}>{creativeDate} 하루 소재별 성과입니다. 기간 합계와 섞지 않습니다.</p><PerformanceSourcePanels advertiser={advertiser} month={month} startDate={startDate} endDate={creativeDate} viewMode="creative" baselineComplete={period.baselineComplete} placementGroups={[]} creativeGroups={creativeGroups} dailyRows={[]} relevantInsights={relevantInsights}/></>}
+          {viewMode==='placement'&&relevantInsights(chosen.name).length>0&&<details className={styles.notes}><summary>원본 운영 메모 · {relevantInsights(chosen.name).length}건</summary><p>아래 내용은 자료에 기록된 메모입니다. 현재 조치 완료나 독립적인 실게재 확인을 뜻하지 않습니다.</p>{relevantInsights(chosen.name).map(item=><InsightEntry key={item.key} item={item} displayNotes={item.notes.filter(note=>inferMediaMentions(note).includes(chosen.name))}/>)}</details>}
+        </>}
+        {screen==='source'&&<>{chosen&&!chosen.rows.length&&!chosen.dailyRows.length&&!creativeGroups.length&&<p className={styles.emptyInline}>이 매체의 실적 원장 자료가 아직 연결되지 않았습니다. 계획을 실제 성과 0으로 처리하지 않습니다.</p>}<p className={styles.helper}>검산과 출처 확인을 위한 원본 보기입니다. 아래 일별 표·원본 메모·편집 기능은 선택한 매체에만 적용됩니다.</p><details className={styles.analysisCharts}><summary>분석 그래프 열기</summary><PerformanceCharts comparison={comparisons} dailyRows={scopedDaily} startDate={startDate} endDate={creativeMode?creativeDate:endDate} mode={viewMode}/></details><PerformanceSourcePanels advertiser={advertiser} month={month} startDate={startDate} endDate={creativeMode?creativeDate:endDate} viewMode={viewMode} baselineComplete={period.baselineComplete} placementGroups={placementGroups} creativeGroups={creativeGroups} dailyRows={dailyRows} relevantInsights={relevantInsights}/></>}
       </>}
-    </LayoutCanvas>
-</>
-  );
+      {screen==='plan'&&<section className={styles.planView}><div className={styles.sectionTitle}><div><button type="button" className={styles.back} onClick={()=>go('summary')}>전체 요약으로</button><h2>운영안과 실제 성과 비교</h2></div></div><p className={styles.helper}>월 운영안 전체와 선택 기간 실적의 범위가 다를 수 있습니다. 예상 성과를 보장값으로 보거나 월 예산을 날짜 비율로 임의 배분하지 않습니다.</p>{mediaPlans.length?<LayoutCanvas page="performance"><LayoutPanel id="performance:media-plan-comparison" title="미디어믹스 예상 실제 비교"><MediaPlanPerformance plans={mediaPlans} actual={period.baselineComplete?placementRows:[]} selectedMedia="전체 매체" period={`${startDate} ~ ${endDate}`}/></LayoutPanel></LayoutCanvas>:<p className={styles.emptyInline}>선택한 월의 운영안이 아직 연결되지 않았습니다.</p>}</section>}
+    </>}
+  </div>;
 }

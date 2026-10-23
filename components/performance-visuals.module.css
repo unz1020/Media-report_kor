@@ -48,3 +48,7 @@
 .lineWrap svg text{font-size:16px}
 }
 
+
+/* Calendar labels are context, not a signal of performance risk. */
+.saturday, .sunday { color: inherit; }
+.saturday > th, .sunday > th { color: #667085; }

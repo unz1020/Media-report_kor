@@ -20,19 +20,20 @@ await page.route('**/api/reporting/store',r=>{const body=r.request().postDataJSO
 const visible=locator=>locator.waitFor({state:'visible',timeout:25000});
 try{
  await page.goto(rootUrl+'/performance');await page.getByLabel('조회 월 선택').selectOption('2026-10');
+ await visible(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}));await page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}).click();await page.getByRole('button',{name:'일별·원본 확인',exact:true}).click();
  const matrix=page.getByRole('region',{name:'네이버 지면별 성과'});await visible(matrix);
  assert.equal(await matrix.locator('thead tr').count(),2);assert.equal(await matrix.locator('thead th[colspan]').filter({hasText:'디스커버리 배너'}).getAttribute('colspan'),'3');
  assert.deepEqual(await matrix.locator('[data-matrix-total] td').allTextContents(),['1,000','10','1.00%']);
  assert.deepEqual(await matrix.locator('[data-matrix-date="2026-10-03"] td').allTextContents(),['900','0','0.00%']);
- assert.deepEqual(await matrix.locator('[data-matrix-date="2026-10-04"] td').allTextContents(),['0','0','—']);
- assert.equal(await matrix.locator('[data-matrix-date="2026-10-03"]').evaluate(e=>getComputedStyle(e).color),'rgb(23, 92, 211)');
- assert.equal(await matrix.locator('[data-matrix-date="2026-10-04"]').evaluate(e=>getComputedStyle(e).color),'rgb(217, 45, 32)');
- const tvMatrix=page.getByRole('region',{name:'어드레서블TV 지면별 성과'});assert.deepEqual(await tvMatrix.locator('[data-matrix-total] td').allTextContents(),['2,000','—','—']);
+ assert.deepEqual(await matrix.locator('[data-matrix-date="2026-10-04"] td').allTextContents(),['0','0','-']);
+ assert.equal(await matrix.locator('[data-matrix-date="2026-10-03"]').evaluate(e=>getComputedStyle(e).color),await matrix.locator('[data-matrix-date="2026-10-01"]').evaluate(e=>getComputedStyle(e).color),'Weekend rows must not look like performance alerts');
+ assert.ok((await matrix.locator('[data-matrix-date="2026-10-04"] th').textContent()).includes('(일)')); 
+ await page.getByLabel('상세 매체 선택').selectOption('어드레서블TV');const tvMatrix=page.getByRole('region',{name:'어드레서블TV 지면별 성과'});await visible(tvMatrix);assert.deepEqual(await tvMatrix.locator('[data-matrix-total] td').allTextContents(),['2,000','-','-']);await page.getByLabel('상세 매체 선택').selectOption('네이버');await visible(matrix);await page.getByText('분석 그래프 열기',{exact:true}).click();
  let graph=page.getByRole('group',{name:'일별 노출 추이 그래프'});await visible(graph);assert.equal(await graph.locator('circle').count(),3);assert.equal(await graph.locator('path').count(),2,'Missing 10/02 must break the line');
  await page.getByLabel('그래프 지표').selectOption('ctr');graph=page.getByRole('group',{name:'일별 CTR 추이 그래프'});await visible(graph);assert.equal(await graph.locator('circle').count(),2);assert.ok((await page.getByLabel('지면별 CTR 비교',{exact:true}).innerText()).includes('1.00%'));
  await graph.getByRole('button',{name:'2026-10-01 CTR 10.00%'}).focus();await visible(page.getByText('10-01 · 10.00%',{exact:true}));
- await page.locator('[aria-label="매체 필터"]').getByRole('button',{name:'네이버',exact:true}).click();assert.equal(await page.locator('[data-performance-matrix]').count(),1);assert.equal(await page.getByLabel('지면별 CTR 비교',{exact:true}).locator('strong').count(),1);
- const dates=page.locator('input[type=date]');await dates.first().fill('2026-10-03');await dates.nth(1).fill('2026-10-03');await page.waitForTimeout(100);assert.deepEqual(await matrix.locator('[data-matrix-total] td').allTextContents(),['900','0','0.00%']);
+ await page.getByLabel('상세 매체 선택').selectOption('네이버');assert.equal(await page.locator('[data-performance-matrix]').count(),1);assert.equal(await page.getByLabel('지면별 CTR 비교',{exact:true}).locator('strong').count(),1);
+ await page.getByText('조회 기간',{exact:true}).first().click();const dates=page.locator('input[type=date]');await dates.first().fill('2026-10-03');await dates.nth(1).fill('2026-10-03');await page.waitForTimeout(100);assert.deepEqual(await matrix.locator('[data-matrix-total] td').allTextContents(),['900','0','0.00%']);
  await page.evaluate(()=>window.dispatchEvent(new Event('media-report-daily-updated')));await page.waitForTimeout(100);assert.equal(await dates.nth(1).inputValue(),'2026-10-03','Insight/data refresh must preserve date filter');
  await page.getByRole('button',{name:'월 누적',exact:true}).click();await page.getByRole('button',{name:'소재별',exact:true}).click();await visible(page.getByRole('region',{name:'네이버 소재별 성과'}));assert.equal(await page.getByRole('group',{name:/일별.*추이 그래프/}).count(),0);assert.deepEqual(await page.getByRole('region',{name:'네이버 소재별 성과'}).locator('[data-matrix-total] td').allTextContents(),['500','5','1.00%']);assert.equal(await page.getByText('소재 과거',{exact:true}).count(),0);
  await page.getByRole('button',{name:'광고 지면',exact:true}).click();await page.setViewportSize({width:390,height:844});await visible(matrix);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Performance UI must not overflow viewport');await page.screenshot({path:'/tmp/performance-visuals-mobile.png',fullPage:true});

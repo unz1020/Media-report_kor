@@ -25,7 +25,7 @@ try{
  const latest=page.locator('section').filter({has:page.getByRole('heading',{name:'현재 월 최신 원본',exact:true})});
  assert.equal(await latest.locator('tbody tr').count(),2);assert.equal(await latest.getByText('자코모 26년 9월_네이버GFA_260916.xlsx',{exact:true}).count(),0);
  await visible(latest.getByText('Addr.TV 자코모_9월 리포트_261001.xlsx',{exact:true}));
- await page.goto('http://localhost:3000/performance');await visible(page.getByRole('heading',{name:'어드레서블TV',exact:true}));
+ await page.goto('http://localhost:3000/performance');await visible(page.getByRole('button',{name:'어드레서블TV 성과 상세 보기',exact:true}));await page.getByRole('button',{name:'어드레서블TV 성과 상세 보기',exact:true}).click();await visible(page.getByRole('heading',{name:'어드레서블TV',exact:true}));
  await page.goto('http://localhost:3000/data-update');await visible(page.getByText('Gmail 연결됨',{exact:true}));await page.getByLabel('데일리 리포트 메일 수신일').fill('2026-10-01');
  await page.getByRole('button',{name:'2026-10-01 데일리 불러오기',exact:true}).click();await visible(page.getByText('준비 1/1',{exact:true}));
  assert.equal(await page.getByText('· 일별 보조자료 (중복 집계 제외)',{exact:true}).count(),2);
