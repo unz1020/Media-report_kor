@@ -2,8 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ADVERTISERS, WorkspaceProvider, useWorkspace, type AdvertiserKey } from "@/components/workspace-context";
+
+const loginErrors: Record<string, string> = {
+  invalid_state: "로그인 요청이 만료되었거나 확인되지 않았습니다. Google 계정으로 다시 로그인하세요.",
+  oauth_denied: "Google 로그인이 취소되었습니다. 계속하려면 다시 로그인하고 권한을 허용하세요.",
+  oauth_error: "Google 로그인 중 오류가 발생했습니다. 잠시 후 다시 로그인하세요.",
+  token_exchange: "Google 로그인 정보를 확인하지 못했습니다. 다시 로그인하고, 반복되면 관리자에게 문의하세요.",
+  workspace_unavailable: "팀 서버에 연결할 수 없습니다. 잠시 후 다시 로그인하세요. 계속되면 관리자에게 서버 상태 확인을 요청하세요.",
+  session_encryption: "로그인 세션을 안전하게 저장하지 못했습니다. 관리자에게 로그인 설정 확인을 요청한 뒤 다시 로그인하세요.",
+  access_denied: "등록되지 않았거나 접근이 해제된 계정입니다. 관리자에게 팀 계정 등록을 요청하세요.",
+};
 
 const navItems = [
   { href: "/overview", label: "개요", icon: "overview" },
@@ -24,12 +34,20 @@ function Icon({ name }: { name: string }) {
 
 function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [callbackError, setCallbackError] = useState("");
+  useEffect(() => {
+    // Read only after hydration; no useSearchParams/Suspense requirement at build time.
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("gmail") === "error" ? params.get("reason") : null;
+    const message = reason && Object.prototype.hasOwnProperty.call(loginErrors, reason) ? loginErrors[reason] : "";
+    setCallbackError(message || (params.get("access") === "denied" ? loginErrors.access_denied : ""));
+  }, [pathname]);
   const { advertiserKey, month, months, setAdvertiserKey, setMonth, dataSyncState, dataSyncError,
     session, sessionLoading, sessionError, refreshSession, canEdit, allowedAdvertiserKeys, reloadData } = useWorkspace();
   if (sessionLoading) return <main className="workspace-gate"><h1>계정 확인 중…</h1></main>;
   if (!session) return <main className="workspace-gate">
     <div className="brand-mark">M</div><h1>Media Report 로그인</h1>
-    <p>{sessionError === "WORKSPACE_ACCESS_DENIED" ? "등록되지 않았거나 접근이 해제된 계정입니다. 관리자에게 팀 계정 등록을 요청하세요." : "등록된 Google 계정으로 로그인해 팀 리포트를 확인하세요."}</p>
+    <p role={callbackError ? "alert" : undefined}>{callbackError || (sessionError === "WORKSPACE_ACCESS_DENIED" ? loginErrors.access_denied : sessionError === "WORKSPACE_UNAVAILABLE" ? loginErrors.workspace_unavailable : "등록된 Google 계정으로 로그인해 팀 리포트를 확인하세요.")}</p>
     <a className="btn primary" href="/api/gmail/connect?mode=workspace">Google 계정으로 로그인</a>
     <button className="btn" onClick={() => void refreshSession()}>다시 확인</button>
   </main>;
