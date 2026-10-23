@@ -2,9 +2,10 @@ import type { PlacementProof } from './placement-proof';
 import type { MediaPlanFact } from './daily-report-parser';
 import type { ReportingRow } from './reporting-data';
 import { canonicalMedia } from './media-normalization';
+import { safeHttpUrl } from './placement-urls';
 
-export type ShowroomEnvironment = 'ooh' | 'tv' | 'digital' | 'unclassified';
-export type ShowroomSurface = 'outdoor' | 'cinema' | 'elevator' | 'transit' | 'broadcast' | 'ott' | 'mobile' | 'desktop' | 'mixed' | 'unknown';
+export type ShowroomEnvironment = 'ooh' | 'tv' | 'digital' | 'viral' | 'unclassified';
+export type ShowroomSurface = 'outdoor' | 'cinema' | 'elevator' | 'transit' | 'broadcast' | 'ott' | 'community' | 'mobile' | 'desktop' | 'mixed' | 'unknown';
 export type ShowroomItem = {
   id: string;
   environment: ShowroomEnvironment;
@@ -48,6 +49,15 @@ export function classifyShowroom(row: ClassificationInput): Classification {
   const category = compact(row.category || '');
   // Buying platforms are not the broadcasters whose names happen to appear in a placement.
   if (media === 'DV360') return classified('digital', deviceSurface(row));
+  // Inspect the original fields: canonicalMedia intentionally folds 네이버 바이럴 into 네이버.
+  // Café URLs and ordinary café/native inventory are not evidence of a viral placement.
+  const viral = [row.media, row.platform, row.category, row.placement, row.product]
+    .some(value => {
+      const label = text(value);
+      if (/^(?:https?:\/\/|(?:www\.)?cafe\.naver\.com\/)\S+$/i.test(label)) return false;
+      return /바이럴|(?:^|[^a-z0-9])viral(?:$|[^a-z0-9])/i.test(label);
+    });
+  if (viral) return classified('viral', 'community');
   if (['넷플릭스', '티빙'].includes(media)) return classified('tv', 'ott');
   if (/서울버스|seoulbustv/i.test(name)) return classified('ooh', 'transit');
   if (/포커스미디어|focusmedia|타운보드|townboard|미디어믿|엘리베이터|elevator/i.test(name)) return classified('ooh', 'elevator');
@@ -110,6 +120,47 @@ function sourcePhotos(proof: PlacementProof): Record<string, unknown>[] {
     const photo = object(value);
     return photo && text(photo.site) ? [photo] : [];
   }) : [];
+}
+
+
+function isoDate(value: unknown): string {
+  const date = text(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '';
+  const parsed = new Date(date + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date ? date : '';
+}
+
+/** Reported article metadata only. No article fetching, inferred content, or live-verification claim. */
+export function viralPostInfo(proof: PlacementProof): {
+  cafeName: string; title: string; topic: string; articleUrl: string;
+  reportedPlacementDate: string; reportDate: string; verificationDate: string;
+} {
+  const evidence = object((proof as PlacementProof & { evidence?: unknown }).evidence);
+  // Remove a known showroom label only, preserving punctuation inside the café's actual name.
+  const cafeName = text(proof.placement)
+    .replace(/^(?:커뮤니티\s*바이럴|네이버\s*바이럴|바이럴|viral)(?:\s*·\s*|$)/i, '').trim();
+  const creative = text(proof.creativeName);
+  // Only the original-report importer declares this legacy category/title encoding.
+  // Arbitrary manually registered creative names, including middle dots, remain intact.
+  const legacyReportName = evidence?.type === 'report_document_with_embedded_cafe_screenshot'
+    && evidence?.creativeNameBasis === '원본 게재표의 분류와 게시글 제목'
+    && evidence?.verifiedFromOriginalReport === true;
+  const separator = legacyReportName ? creative.indexOf(' · ') : -1;
+  const topic = text(evidence?.topic) || (separator >= 0 ? creative.slice(0, separator).trim() : '');
+  const title = text(evidence?.articleTitle) || (separator >= 0 ? creative.slice(separator + 3).trim() : creative);
+  let articleUrl = '';
+  // Never fall back to landing, mail, attachment, or private source-document URLs.
+  for (const candidate of [text(evidence?.articleUrl), text(proof.previewUrl)]) {
+    try { articleUrl = safeHttpUrl(candidate); } catch { continue; }
+    if (articleUrl) break;
+  }
+  return {
+    cafeName, title, topic, articleUrl,
+    // A campaign period is not evidence of the article publication date.
+    reportedPlacementDate: isoDate(evidence?.reportedPlacementDate),
+    reportDate: isoDate(evidence?.reportDate) || isoDate(proof.reportDate),
+    verificationDate: isoDate(proof.verificationDate),
+  };
 }
 
 /** Pure display projection. No filtering by campaign/month/date, writes, or source deduplication.

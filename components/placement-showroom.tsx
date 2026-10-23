@@ -5,6 +5,9 @@ import type { PlacementProof } from "@/lib/placement-proof";
 import type { MediaPlanFact } from "@/lib/daily-report-parser";
 import type { ReportingRow } from "@/lib/reporting-data";
 import { buildShowroomItems, showroomEvidenceFor, type ShowroomEnvironment, type ShowroomSurface, type ShowroomItem } from "@/lib/placement-showroom";
+import { ViralPlacementBoard } from "./viral-placement-board";
+import { MediaIcon } from "./media-icon";
+import { mediaVisual } from "@/lib/media-icons";
 import { CreativeUrlPreview } from "./creative-url-preview";
 import type { ProofLightboxImage } from "./proof-image-lightbox";
 import { safeHttpUrl } from "@/lib/placement-urls";
@@ -22,9 +25,10 @@ const environments = [
   { id: "ooh", label: "OOH·공간매체", sub: "옥외 · 영화관 · 생활공간", number: "01" },
   { id: "tv", label: "TV·OTT", sub: "채널 · 프로그램 · 소재", number: "02" },
   { id: "digital", label: "디지털 앱·웹", sub: "앱 · 기기 · 광고 지면", number: "03" },
+  { id: "viral", label: "바이럴", sub: "카페 · 게시글 · 게재 증빙", number: "04" },
 ] as const;
 const surfaceLabels: Record<ShowroomSurface, string> = {
-  outdoor: "옥외 LED·로드블럭", cinema: "영화관", elevator: "엘리베이터·생활공간", transit: "교통", broadcast: "TV 방송", ott: "OTT", mobile: "모바일", desktop: "PC", mixed: "복수 기기", unknown: "환경 미지정",
+  outdoor: "옥외 LED·로드블럭", cinema: "영화관", elevator: "엘리베이터·생활공간", transit: "교통", broadcast: "TV 방송", ott: "OTT", community: "카페·커뮤니티", mobile: "모바일", desktop: "PC", mixed: "복수 기기", unknown: "환경 미지정",
 };
 function imageUrl(proof?: PlacementProof) {
   if (!proof) return "";
@@ -35,6 +39,20 @@ function imageUrl(proof?: PlacementProof) {
 function safeUrl(url = "") { try { return safeHttpUrl(url); } catch { return ""; } }
 function valueText(value: number | null | undefined, won = false) {
   return value === null || value === undefined || !Number.isFinite(value) ? "미제공" : `${Math.round(value).toLocaleString("ko-KR")}${won ? "원" : ""}`;
+}
+function SurfaceGlyph({surface}:{surface?:ShowroomSurface}) {
+  const path=surface==='cinema'?'M4 4h24v14H4zM7 23v5M16 23v5M25 23v5M4 28h24':surface==='elevator'?'M5 3h17v26H5zM13.5 4v24M26 9h3v8h-3z':surface==='transit'?'M4 7h24v17H4zM6 11h6v6H6zM16 11h9v6h-9zM8 25v3M24 25v3':surface==='outdoor'?'M3 5h26v17H3zM11 23v6M21 23v6M7 29h18':'M4 4h10v10H4zM19 4h9v10h-9zM4 19h10v9H4zM19 19h9v9h-9z';
+  return <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d={path} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+}
+function spatialMediaLabel(name:string,items:ShowroomItem[]) {
+  const group=items.filter(item=>item.media===name);
+  if (/그로스스텔라|올이즈웰/i.test(name)&&group.some(item=>/여의\s*12/.test(item.title)||item.proofs.some(proof=>/여의\s*12/.test(proof.sourceFile)))) return '여의12 로드블럭';
+  if (/메가박스/i.test(name)&&group.length&&group.every(item=>item.surface==='transit')&&group.some(item=>/버스/.test(item.title))) return '서울버스TV';
+  return name;
+}
+function spatialItemLabel(item?:ShowroomItem,items:ShowroomItem[]=[]) {
+  if(!item)return '지면을 선택하세요';const label=spatialMediaLabel(item.media,items);
+  return label==='여의12 로드블럭'&&!item.title.includes('여의12')?label+' · '+item.title:item.title;
 }
 function MapScene() {
   return <svg className={styles.cityMap} viewBox="0 0 720 390" role="img" aria-label="서울권 공간 탐색용 아이소메트릭 개념도. 실제 설치 위치나 커버리지를 표시하지 않습니다.">
@@ -72,6 +90,7 @@ function EmptyScreen({ selected }: { selected?: ShowroomItem }) {
 }
 export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
   const items = useMemo(() => buildShowroomItems(proofs, plans, rows), [proofs, plans, rows]);
+  const [spatialView, setSpatialView] = useState<"evidence" | "context">("evidence");
   const [environment, setEnvironment] = useState<ShowroomEnvironment>("ooh");
   const [surface, setSurface] = useState<ShowroomSurface | "all">("all");
   const [media, setMedia] = useState("전체");
@@ -83,6 +102,8 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
   const inEnvironment = items.filter(item => item.environment === environment);
   const filteredSurface = inEnvironment.filter(item => surface === "all" || item.surface === surface);
   const medias = Array.from(new Set(filteredSurface.map(item => item.media)));
+  const appMedias = medias.filter(name => mediaVisual(name)?.kind === "app");
+  const platformMedias = medias.filter(name => mediaVisual(name)?.kind !== "app");
   const visible = filteredSurface.filter(item => media === "전체" || item.media === media);
   const selected = visible.find(item => item.id === selectedId) || visible[0];
   const selectedProof = selected?.proofs[Math.min(proofIndex, Math.max(0, selected.proofs.length - 1))];
@@ -94,15 +115,15 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
   const date = selectedPhoto?.photoDate || selectedEvidence.date;
   const unclassified = items.filter(item => item.environment === "unclassified");
   const packageSelected = Boolean(selected?.packageName);
-  const digitalDevice = deviceOverride || (selected?.surface === "desktop" ? "desktop" : "mobile");
+  const digitalDevice = deviceOverride || (appOpen && selected?.surface === "desktop" ? "desktop" : "mobile");
   const surfaces: ShowroomSurface[] = environment === "ooh" ? ["outdoor", "cinema", "elevator", "transit", "unknown"] : environment === "tv" ? ["broadcast", "ott"] : ["mobile", "desktop", "mixed", "unknown"];
-  function chooseEnvironment(next: ShowroomEnvironment) { setEnvironment(next); setSurface("all"); setMedia("전체"); setSelectedId(""); setProofIndex(0); setPhotoPage(undefined); setAppOpen(false); setDeviceOverride(null); }
-  function chooseItem(item: ShowroomItem) { setSelectedId(item.id); setProofIndex(0); setPhotoPage(undefined); setDeviceOverride(null); }
-  function chooseMedia(next: string) { setMedia(next); setSelectedId(""); setProofIndex(0); setPhotoPage(undefined); setDeviceOverride(null); if (environment === "digital") setAppOpen(true); }
+  function chooseEnvironment(next: ShowroomEnvironment) { setEnvironment(next); setSurface("all"); setMedia("전체"); setSelectedId(""); setProofIndex(0); setPhotoPage(undefined); setAppOpen(false); setDeviceOverride(null); setSpatialView("evidence"); }
+  function chooseItem(item: ShowroomItem) { setSelectedId(item.id); setProofIndex(0); setPhotoPage(undefined); setDeviceOverride(environment === "digital" && mediaVisual(item.media)?.kind !== "app" ? "desktop" : null); }
+  function chooseMedia(next: string) { setMedia(next); setSelectedId(""); setProofIndex(0); setPhotoPage(undefined); setDeviceOverride(null); if (environment === "digital") { setAppOpen(true); if (mediaVisual(next)?.kind !== "app") setDeviceOverride("desktop"); } }
   function tabsKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
     if (!direction && event.key !== "Home" && event.key !== "End") return;
-    event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? 2 : (index + direction + 3) % 3;
+    event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? environments.length - 1 : (index + direction + environments.length) % environments.length;
     chooseEnvironment(environments[next].id); document.getElementById(`showroom-tab-${environments[next].id}`)?.focus();
   }
   function openProof() {
@@ -112,32 +133,46 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
   const visual = selectedProof && imageUrl(selectedProof) ? <EvidenceImage key={`${selected?.id}:${selectedProof.key || selectedProof.manualImagePath}:${activePage || "full"}`} proof={selectedProof} page={activePage} title={selected?.title || ""} /> : <EmptyScreen selected={selected} />;
   const screen = <button type="button" className={styles.screenButton} onClick={openProof} disabled={!selectedProof || !imageUrl(selectedProof)} aria-label={`${selected?.title || "지면"} 증빙 원본 크게 보기`}>{visual}{selectedProof && imageUrl(selectedProof) && <span className={styles.zoomHint}>원본 확대</span>}</button>;
 
+  const inventory = <div className={`${styles.inventoryList} ${environment === "ooh" ? styles.spatialInventory : ""}`} aria-label="지면 선택"><div className={styles.inventoryHead}><strong>지면 선택</strong><span>{visible.length}개 탐색 항목 · 캠페인 수 아님</span></div>{visible.length ? visible.map(item => <button type="button" key={item.id} aria-pressed={selected?.id === item.id} onClick={() => { chooseItem(item); if(environment === "digital")setAppOpen(true); }}><span className={styles.inventoryIcon} aria-hidden="true"><SurfaceGlyph surface={item.surface}/></span><span><small>{item.media}{item.service ? " · 서비스" : ""}</small><strong>{environment === "ooh" ? spatialItemLabel(item,items) : item.title}</strong></span><b>{item.proofs.length ? "증빙" : item.plans.length ? "운영안" : "성과"}</b></button>) : <div className={styles.empty}>이 환경에 연결된 지면이 없습니다.<br/>하단 관리·원본 자료에서 기존 자료를 확인할 수 있습니다.</div>}</div>;
+  const contextScreen = <div className={styles.contextPlaceholder}><SurfaceGlyph surface={selected?.surface}/><strong>실제 소재 연결 대기</strong><small>소재가 준비되면 지면에 맞춘 목업을 연결합니다.</small></div>;
+
   return <section className={styles.showroom} aria-label="게재지면 쇼룸">
-    <header className={styles.heading}><div><span className={styles.eyebrow}>PLACEMENT SHOWROOM</span><h2>광고가 보이는 곳에서 시작하세요.</h2><p>공간, 채널, 앱을 고르면 해당 지면의 소재와 게재 증빙이 연결됩니다.</p></div><div className={styles.sourceCount}><strong>{proofs.length}</strong><span>등록 자료<br/>원본 기준 · 중복 집계 없음</span></div></header>
+    <header className={styles.heading}><div><span className={styles.eyebrow}>PLACEMENT SHOWROOM</span><h2>매체·지면 탐색</h2><p>공간, 채널, 앱과 게시글을 고르면 해당 지면의 소재와 게재 증빙이 연결됩니다.</p></div><div className={styles.sourceCount}><strong>{proofs.length}</strong><span>등록 게재 증빙<br/>탐색 항목 수와 별도</span></div></header>
     <div className={styles.environmentTabs} role="tablist" aria-label="게재 환경">
-      {environments.map((tab, index) => <button key={tab.id} id={`showroom-tab-${tab.id}`} type="button" role="tab" aria-selected={environment === tab.id} aria-controls="showroom-panel" tabIndex={environment === tab.id ? 0 : -1} className={environment === tab.id ? styles.environmentActive : styles.environmentTab} onClick={() => chooseEnvironment(tab.id)} onKeyDown={event => tabsKey(event, index)}><span>{tab.number}</span><div><strong>{tab.label}</strong><small>{tab.sub}</small></div><b>{items.filter(item => item.environment === tab.id).length}</b></button>)}
+      {environments.map((tab, index) => <button key={tab.id} id={`showroom-tab-${tab.id}`} type="button" role="tab" aria-selected={environment === tab.id} aria-controls="showroom-panel" tabIndex={environment === tab.id ? 0 : -1} className={environment === tab.id ? styles.environmentActive : styles.environmentTab} onClick={() => chooseEnvironment(tab.id)} onKeyDown={event => tabsKey(event, index)}><span>{tab.number}</span><div><strong>{tab.label}</strong><small>{tab.sub}</small></div><b>{tab.id === "viral" ? items.filter(item => item.environment === "viral").reduce((sum,item) => sum + item.proofs.length,0) : items.filter(item => item.environment === tab.id).length}<small>{tab.id === "viral" ? "게시글" : "항목"}</small>{tab.id === "viral" && items.some(item => item.environment === "viral" && !item.proofs.length) && <small>+ {items.filter(item => item.environment === "viral" && !item.proofs.length).length} 미연결</small>}</b></button>)}
     </div>
     <div id="showroom-panel" role="tabpanel" aria-labelledby={`showroom-tab-${environment}`}>
+      {environment === "viral" ? <ViralPlacementBoard items={inEnvironment} imageUrl={imageUrl} onOpenImage={onOpenImage}/> : <>
       <div className={styles.filters} aria-label="노출 환경 세부 필터"><button type="button" aria-pressed={surface === "all"} onClick={() => { setSurface("all"); setMedia("전체"); }}>전체</button>{surfaces.map(kind => <button type="button" key={kind} aria-pressed={surface === kind} onClick={() => { setSurface(kind); setMedia("전체"); setProofIndex(0); setPhotoPage(undefined); setDeviceOverride(null); }}>{kind === "unknown" && environment === "ooh" ? "패키지·환경 미지정" : surfaceLabels[kind]} <span>{inEnvironment.filter(item => item.surface === kind).length}</span></button>)}</div>
       <div className={styles.explorer}>
         <div className={styles.experience}>
-          {environment !== "digital" && <div className={styles.mediaRail} aria-label="매체·채널 선택"><button type="button" aria-pressed={media === "전체"} onClick={() => chooseMedia("전체")}>전체 매체</button>{medias.map(name => <button type="button" key={name} aria-pressed={media === name} onClick={() => chooseMedia(name)}>{name}</button>)}</div>}
-          {environment === "ooh" && <div className={styles.spatialStage}>
-            {(!selected || selected.surface === "outdoor" || selected.surface === "unknown") && <><MapScene/><div className={styles.mapLegend}>SEOUL · 공간 탐색 개념도<span>좌표·설치망·노선의 실측 지도가 아닙니다.</span></div><div className={styles.billboard}><div className={styles.billboardLabel}>{selected?.locationLabel || selected?.media || "옥외 지면"}</div>{screen}<div className={styles.billboardFeet}/></div></>}
-            {selected?.surface === "cinema" && <div className={styles.cinema}><div className={styles.sceneKicker}>CINEMA · 영화관 스크린</div><div className={styles.cinemaScreen}>{screen}</div><div className={styles.cinemaSeats} aria-hidden="true">{Array.from({length: 18}, (_, index) => <i key={index}/>)}</div></div>}
-            {selected?.surface === "elevator" && <div className={styles.elevator}><div className={styles.sceneKicker}>LIVING SPACE · 엘리베이터·생활공간</div><div className={styles.elevatorDoors}><span>엘리베이터</span><div className={styles.floorNumber}>12</div></div><div className={styles.elevatorScreen}>{screen}</div></div>}
-            {selected?.surface === "transit" && <div className={styles.transit}><div className={styles.sceneKicker}>TRANSIT · 교통 매체</div><div className={styles.busWindows}><i/><i/><i/></div><div className={styles.transitScreen}>{screen}</div><div className={styles.transitSeats} aria-hidden="true"><i/><i/><i/></div></div>}
-          </div>}
+          {environment !== "digital" && <div className={styles.mediaRail} aria-label="매체·채널 선택"><button type="button" aria-pressed={media === "전체"} onClick={() => chooseMedia("전체")}>전체 매체</button>{medias.map(name => <button type="button" key={name} aria-pressed={media === name} onClick={() => chooseMedia(name)} title={name}>{environment === "ooh" ? spatialMediaLabel(name,items) : name}</button>)}</div>}
+          {environment === "ooh" && <>
+            <div className={styles.spatialToolbar}><div><span>선택한 지면</span><h3>{spatialItemLabel(selected,items)}</h3></div><div className={styles.spatialViewSwitch} role="group" aria-label="OOH 보기 방식"><button type="button" aria-pressed={spatialView==='evidence'} onClick={()=>setSpatialView('evidence')}>게재 증빙</button><button type="button" aria-pressed={spatialView==='context'} onClick={()=>setSpatialView('context')}>공간 안내</button></div></div>
+            <p className={styles.spatialScope}>{visible.length}개 탐색 항목 · 캠페인 수가 아닙니다. 목록을 좌우로 움직여 선택하세요.</p>
+            {inventory}
+            {spatialView === 'evidence' ? <section className={styles.evidenceStage} aria-label="OOH 원본 증빙"><header><span>{selectedProof?'원본 게재 증빙':'증빙 연결 대기'}</span><strong>{activePage?'원본 '+activePage+'쪽':selectedProof?.status||'자료 미연결'}</strong></header><div className={styles.evidenceCanvas}>{selectedProof ? screen : <div className={styles.evidenceEmpty}><SurfaceGlyph surface={selected?.surface}/><strong>{selected?.title==='패키지 합계'?'패키지 합계는 오른쪽에서 확인하세요.':'이 지면의 게재 증빙은 아직 연결되지 않았습니다.'}</strong><p>목록에서 증빙이 있는 지면을 선택하면 원본을 크게 볼 수 있습니다.</p></div>}</div><footer>선택한 지면의 원본 증빙입니다. 소재를 합성한 목업이나 현재 송출 화면이 아닙니다.</footer></section> : <>
+          <div className={styles.spatialStage} aria-label="OOH 공간 안내 도식">
+            {(!selected || selected.surface === "outdoor" || selected.surface === "unknown") && <><MapScene/><div className={styles.mapLegend}>SEOUL · 공간 탐색 개념도<span>좌표·설치망·노선의 실측 지도가 아닙니다.</span></div><div className={styles.billboard}><div className={styles.billboardLabel}>{selected?.locationLabel || selected?.media || "옥외 지면"}</div>{contextScreen}<div className={styles.billboardFeet}/></div></>}
+            {selected?.surface === "cinema" && <div className={styles.cinema}><div className={styles.sceneKicker}>CINEMA · 영화관 스크린</div><div className={styles.cinemaScreen}>{contextScreen}</div><div className={styles.cinemaSeats} aria-hidden="true">{Array.from({length: 18}, (_, index) => <i key={index}/>)}</div></div>}
+            {selected?.surface === "elevator" && <div className={styles.elevator}><div className={styles.sceneKicker}>LIVING SPACE · 엘리베이터·생활공간</div><div className={styles.elevatorDoors}><span>엘리베이터</span><div className={styles.floorNumber}>12</div></div><div className={styles.elevatorScreen}>{contextScreen}</div></div>}
+            {selected?.surface === "transit" && <div className={styles.transit}><div className={styles.sceneKicker}>TRANSIT · 교통 매체</div><div className={styles.busWindows}><i/><i/><i/></div><div className={styles.transitScreen}>{contextScreen}</div><div className={styles.transitSeats} aria-hidden="true"><i/><i/><i/></div></div>}
+          </div>
+            <div className={styles.contextNote}><strong>공간 안내용 도식</strong><span>실측 위치·커버리지를 표시하지 않습니다. 실제 소재가 제공되면 별도의 소재 적용 목업으로 연결합니다.</span></div>
+            </>}
+          </>}
           {environment === "tv" && <div className={styles.televisionStage}><div className={styles.sceneKicker}>{selected?.surface === "ott" ? "OTT · 등록 증빙" : "TELEVISION · 채널 탐색"}</div><div className={styles.television}>{screen}<span className={styles.tvBrand}>{selected?.media || "TV·OTT"}</span></div><div className={styles.televisionStand}/><p>등록된 소재·게재 증빙을 보여줍니다. 실시간 방송이나 현재 광고 송출이 아닙니다.</p></div>}
           {environment === "digital" && <div className={styles.digitalStage}><div className={styles.deviceBar}><span>앱·매체를 선택해 지면 탐색</span><div><button type="button" aria-pressed={digitalDevice === "mobile"} onClick={() => setDeviceOverride("mobile")}>휴대폰</button><button type="button" aria-pressed={digitalDevice === "desktop"} onClick={() => setDeviceOverride("desktop")}>PC</button></div></div>
-            <div className={digitalDevice === "desktop" ? styles.desktop : styles.phone}><div className={styles.deviceHeader}><strong>{appOpen ? selected?.media || "앱·웹" : "앱·매체 선택"}</strong><button type="button" onClick={() => { setAppOpen(false); setMedia("전체"); setSelectedId(""); }}>홈</button></div>{!appOpen ? <div className={styles.appGrid}>{medias.map((name,index) => <button type="button" key={name} onClick={() => chooseMedia(name)}><span aria-hidden="true" data-tone={index % 4}>{name.slice(0,2)}</span><small>{name}</small></button>)}{!medias.length && <p>연결된 앱·매체가 없습니다.</p>}</div> : <><div className={styles.appCaption}>{selected?.title || "지면 선택"}</div><div className={styles.appScreen}>{screen}</div></>}</div>
+            <div className={digitalDevice === "desktop" ? styles.desktop : styles.phone}><div className={styles.deviceHeader}><strong>{appOpen ? selected?.media || "앱·웹" : "앱·매체 선택"}</strong><button type="button" onClick={() => { setAppOpen(false); setMedia("전체"); setSelectedId(""); setDeviceOverride(null); }}>홈</button></div>{!appOpen ? <div className={styles.appGrid}>{appMedias.map((name) => <button type="button" key={name} onClick={() => chooseMedia(name)}><MediaIcon media={name}/><small>{name}</small></button>)}{!appMedias.length && <p>연결된 앱이 없습니다. 아래 웹·광고 플랫폼을 확인해주세요.</p>}</div> : <><div className={styles.appCaption}>{selected?.title || "지면 선택"}</div><div className={styles.appScreen}>{screen}</div></>}</div>
+            {platformMedias.length > 0 && <div className={styles.platformPanel}><strong>웹·광고 플랫폼</strong><div>{platformMedias.map(name => <button type="button" key={name} aria-label={name} aria-pressed={media === name && appOpen} onClick={() => chooseMedia(name)}><MediaIcon media={name}/><span>{name}<small>플랫폼 기준 탐색</small></span></button>)}</div></div>}
             <p className={styles.simulationNote}>실제 앱 실행이 아닌 탐색용 목업입니다.{selected?.surface === "mixed" || selected?.surface === "unknown" ? " 기기별 구분이 없으면 목업 선택이 실제 노출 기기를 뜻하지 않습니다." : " 원본의 기기 구분과 비율은 별도로 유지합니다."}</p>
-            {appOpen && <div className={styles.mediaRail} aria-label="앱·매체 전환">{medias.map(name => <button key={name} type="button" aria-pressed={media === name} onClick={() => chooseMedia(name)}>{name}</button>)}</div>}
+            {appOpen && <div className={styles.mediaRail} aria-label="앱·매체 전환">{medias.map(name => <button key={name} type="button" aria-label={name} aria-pressed={media === name} onClick={() => chooseMedia(name)}><MediaIcon media={name} className={styles.railIcon}/>{name}</button>)}</div>}
           </div>}
-          <div className={styles.inventoryList} aria-label="지면 선택"><div className={styles.inventoryHead}><strong>지면 선택</strong><span>{visible.length}개 탐색 항목 · 캠페인 수 아님</span></div>{visible.length ? visible.map(item => <button type="button" key={item.id} aria-pressed={selected?.id === item.id} onClick={() => { chooseItem(item); if(environment === "digital")setAppOpen(true); }}><span className={styles.inventoryIcon} aria-hidden="true">{item.surface === "cinema" ? "C" : item.surface === "outdoor" ? "O" : item.surface === "elevator" ? "E" : item.surface === "transit" ? "T" : item.media.slice(0,1)}</span><span><small>{item.media}{item.service ? " · 서비스" : ""}</small><strong>{item.title}</strong></span><b>{item.proofs.length ? "증빙" : item.plans.length ? "운영안" : "성과"}</b></button>) : <div className={styles.empty}>이 환경에 연결된 지면이 없습니다.<br/>하단 관리·원본 자료에서 기존 자료를 확인할 수 있습니다.</div>}</div>
+          {environment !== "ooh" && inventory}
+
         </div>
         <aside className={styles.detail} aria-label="선택 지면 상세" aria-live="polite">
-          {selected ? <><div className={styles.detailEyebrow}>{surfaceLabels[selected.surface]}{selected.service && <span className={styles.serviceBadge}>서비스 지면</span>}</div><h3>{selected.title}</h3><p className={styles.mediaName}>{selected.media}</p>{packageSelected && <div className={styles.packageNote}><strong>{selected.packageName}</strong><p>하나의 구매 패키지에 속한 지면입니다. 장소·증빙 페이지를 별도 캠페인으로 합산하지 않습니다.</p></div>}
+          {selected && !(environment === "digital" && !appOpen) ? <><div className={styles.detailEyebrow}>{surfaceLabels[selected.surface]}{selected.service && <span className={styles.serviceBadge}>서비스 지면</span>}</div><h3>{environment === "ooh" ? spatialItemLabel(selected,items) : selected.title}</h3><p className={styles.mediaName}>{selected.media}</p>{packageSelected && <div className={styles.packageNote}><strong>{selected.packageName}</strong><p>하나의 구매 패키지에 속한 지면입니다. 장소·증빙 페이지를 별도 캠페인으로 합산하지 않습니다.</p></div>}
             <dl className={styles.facts}><div><dt>게재 증빙</dt><dd>{selectedProof?.status || "증빙 미연결"}</dd></div><div><dt>자료상 확인일</dt><dd>{date || "미제공"}</dd></div><div><dt>운영 기간</dt><dd>{selectedProof?.periodStart || selected.plans[0]?.periodStart || "미제공"} ~ {selectedProof?.periodEnd || selected.plans[0]?.periodEnd || "미제공"}</dd></div><div><dt>{environment === "ooh" ? "원본 위치·지면" : environment === "tv" ? "채널·플랫폼" : "원본 기기 구분"}</dt><dd>{environment === "ooh" ? selected.locationLabel || "상세 위치 미등록" : environment === "tv" ? selected.media : selected.surface === "unknown" ? "기기별 구분 미제공" : surfaceLabels[selected.surface]}</dd></div>{activePage && <div><dt>선택한 증빙</dt><dd>원본 {activePage}쪽{selectedPhoto?.site ? ` · ${selectedPhoto.site}` : ""}</dd></div>}</dl>
             {selected.proofs.length > 0 && <div className={styles.creativeSelector}><strong>소재·증빙 선택</strong><div>{selected.proofs.map((proof,index) => <button type="button" key={proof.key || proof.manualImagePath || index} aria-pressed={proof === selectedProof} onClick={() => {setProofIndex(index);setPhotoPage(undefined);}}>{proof.creativeName || `증빙 ${index + 1}`}</button>)}</div></div>}
             {availablePages.length > 1 && <div className={styles.pageSelector} aria-label="증빙 페이지 선택">{availablePages.map(page => <button type="button" key={page} aria-pressed={activePage === page} onClick={() => setPhotoPage(page)}>원본 {page}쪽</button>)}</div>}
@@ -149,6 +184,7 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
           </> : <div className={styles.empty}>지면을 선택하면 소재, 증빙, 연결된 성과를 확인할 수 있습니다.</div>}
         </aside>
       </div>
+      </>}
     </div>
     {unclassified.length > 0 && <details className={styles.unclassified}><summary>환경 분류 확인이 필요한 항목 {unclassified.length}개</summary><ul>{unclassified.map(item => <li key={item.id}>{item.media} · {item.title}</li>)}</ul><p>알 수 없는 지면을 디지털·TV로 임의 분류하지 않습니다. 원본 자료는 하단에서 계속 확인할 수 있습니다.</p></details>}
   </section>;

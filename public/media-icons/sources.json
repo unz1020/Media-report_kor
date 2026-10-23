@@ -1,0 +1,92 @@
+[
+  {
+    "key": "hogangnono",
+    "name": "호갱노노",
+    "kind": "app",
+    "src": "/media-icons/hogangnono.png",
+    "sourcePage": "https://play.google.com/store/apps/details?gl=US&hl=en_US&id=com.hogangnono.hogangnono",
+    "sourceAsset": "https://play-lh.googleusercontent.com/SVBA_QKH_stGx_cEl6vephaNWSkI50jKIWJTgSJ2lMTwlGegxNUPJ1JvMF2by0prSy3avwo4oD0WydHAM0uddQ=s0-br30",
+    "mime": "image/png",
+    "bytes": 129388
+  },
+  {
+    "key": "zigbang",
+    "name": "직방",
+    "kind": "app",
+    "src": "/media-icons/zigbang.png",
+    "sourcePage": "https://play.google.com/store/apps/details?hl=en_GB&id=com.chbreeze.jikbang4a",
+    "sourceAsset": "https://play-lh.googleusercontent.com/EBARJIdlIwlcamw42rXvIp2CTrf3LKEh2e6ctSRGiOATF5PAbgKj6iBR0hXCt4Bj3hSFZPnZASv7odiCPwoI=s0-br30",
+    "mime": "image/png",
+    "bytes": 11651
+  },
+  {
+    "key": "karrot",
+    "name": "당근",
+    "kind": "app",
+    "src": "/media-icons/karrot.png",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.towneers.www&hl=en_US",
+    "sourceAsset": "https://play-lh.googleusercontent.com/VZw7xpXum12IRdCJQ_CbeJEGixGrJw9irWkqvIIgp78hQRt7tk_aPOzFRDKMqr3RgMhhzj8VFr7dFPU4GaHhXQ=s0-br30",
+    "mime": "image/png",
+    "bytes": 12683
+  },
+  {
+    "key": "mamitalk",
+    "name": "마미톡",
+    "kind": "app",
+    "src": "/media-icons/mamitalk.png",
+    "sourcePage": "https://play.google.com/store/apps/details?hl=ko&id=com.mommytalkappv1",
+    "sourceAsset": "https://play-lh.googleusercontent.com/Q9QBLbVxtPcWtB5xUSdqJth7VxERXBNFZUeWop7MYh0Ry7nUlidus7SoQke7mTfSjRt5D3OPAY-l2vBUA8tftw=s0-br30",
+    "mime": "image/png",
+    "bytes": 56487
+  },
+  {
+    "key": "naver",
+    "name": "네이버",
+    "kind": "app",
+    "src": "/media-icons/naver.png",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.nhn.android.search",
+    "sourceAsset": "https://play-lh.googleusercontent.com/8g15G46I-P4wZRcQqX---TMMia5yzpXJLPBh2TWhwbD1zb7AvhMuTc05OZZfnVzXZxOtxLuU6d1G9JKCRUCdnQ=s0-br30",
+    "mime": "image/png",
+    "bytes": 140653
+  },
+  {
+    "key": "kidsnote",
+    "name": "키즈노트",
+    "kind": "app",
+    "src": "/media-icons/kidsnote.png",
+    "sourcePage": "https://play.google.com/store/apps/details?hl=ko&id=com.vaultmicro.kidsnote",
+    "sourceAsset": "https://play-lh.googleusercontent.com/GgIBembEIdsBnv_h92jErnNr0FYu-ZXjWX4vkKbHKYhMM-CnfeBVFf7lFWdvFE18zHrmkxyPFdQVOGGi82SNhA=s0-br30",
+    "mime": "image/png",
+    "bytes": 73298
+  },
+  {
+    "key": "tiktok",
+    "name": "틱톡",
+    "kind": "app",
+    "src": "/media-icons/tiktok.png",
+    "sourcePage": "https://play.google.com/store/apps/details?hl=en_US&id=com.zhiliaoapp.musically",
+    "sourceAsset": "https://play-lh.googleusercontent.com/2o7iuqPe-0msP3DvNhzoOgNo4eZ6GkL_RtGVeKyBn5UBQAW5cw-GW5V3wDOHB1yTQuqWzrFLFOv2u4_5ea1uhg=s0-br30",
+    "mime": "image/png",
+    "bytes": 24764
+  },
+  {
+    "key": "kakao",
+    "name": "카카오",
+    "kind": "platform",
+    "src": "/media-icons/kakao.ico",
+    "sourcePage": "https://business.kakao.com/",
+    "sourceAsset": "https://t1.kakaocdn.net/kakaobusiness_fe/public/img/favicon-v2.ico",
+    "mime": "image/vnd.microsoft.icon",
+    "bytes": 15406
+  },
+  {
+    "key": "dv360",
+    "name": "DV360",
+    "kind": "platform",
+    "src": "/media-icons/dv360.png",
+    "sourcePage": "https://marketingplatform.google.com/about/resources/display-and-video-360-product-overview",
+    "sourceAsset": "https://www.gstatic.com/images/branding/googleg_gradient/1x/googleg_gradient_standard_64dp.png",
+    "mime": "image/png",
+    "bytes": 3270
+  }
+]

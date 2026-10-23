@@ -271,3 +271,70 @@
   .environmentActive, .showroom button[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -3px; }
   .screenButton:disabled { color: GrayText; border: 1px solid GrayText; }
 }
+
+/* Four environments; café articles no longer share the app home screen. */
+.environmentTabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.appGrid button > span { overflow: hidden; background: #fff; border-color: #e2e5eb; border-radius: 12px; }
+.appGrid button > span img { border-radius: inherit; }
+.railIcon { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; overflow: hidden; border-radius: 4px; background: #fff; }
+.digitalStage > .mediaRail button { display: inline-flex; align-items: center; gap: 6px; }
+.platformPanel { margin: 16px 0 0; padding-top: 13px; border-top: 1px solid #e2deeb; }
+.platformPanel > strong { display: block; margin-bottom: 9px; color: #746b80; font-size: 10px; }
+.platformPanel > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.platformPanel button { display: inline-flex; align-items: center; gap: 9px; flex: 1 1 150px; padding: 9px 11px; border: 1px solid #e0dbe9; border-radius: 8px; background: #fff; text-align: left; }
+.platformPanel button > span:first-child { display: inline-flex; width: 30px; height: 30px; flex: 0 0 30px; overflow: hidden; border-radius: 7px; }
+.platformPanel button > span:nth-child(2) { font-size: 11px; font-weight: 650; }
+.platformPanel button small { display: block; color: #7d7587; font-size: 9px; font-weight: 400; }
+.inventoryIcon svg { width: 24px; height: 24px; }
+.spatialToolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 17px 0 14px; }
+.spatialToolbar > div:first-child { flex: 1 1 210px; }
+.spatialToolbar > div > span { display: block; color: #8a8196; font-size: 9px; margin-bottom: 4px; }
+.spatialToolbar h3 { color: #352c44; font-size: 17px; font-weight: 750; letter-spacing: -.025em; line-height: 1.45; }
+.spatialViewSwitch { display: inline-flex; flex: 0 0 auto; gap: 3px; padding: 3px; border: 1px solid #e2dcea; border-radius: 8px; background: #f8f6fc; }
+.spatialViewSwitch button { min-height: 32px; padding: 6px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #796e88; font-size: 10px; }
+.spatialInventory { display: flex; flex-wrap: nowrap; gap: 8px; max-height: none; margin: 0 0 16px; padding: 0 1px 10px; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: auto; scroll-snap-type: x proximity; }
+.spatialInventory .inventoryHead { display: none; }
+.spatialInventory > button { flex: 0 0 min(240px, 72%); min-height: 88px; scroll-snap-align: start; }
+.spatialInventory > button strong { font-size: 11px; }
+.evidenceStage { overflow: hidden; border: 1px solid #ded9e9; border-radius: 12px; background: #f7f7fa; }
+.evidenceStage > header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 7px; padding: 12px 15px; border-bottom: 1px solid #e5e1ec; background: #fff; font-size: 10px; }
+.evidenceStage > header > span { color: #766b85; }
+.evidenceStage > header > strong { color: #63517e; font-size: 10px; }
+.evidenceCanvas { --evidence-canvas-height: clamp(285px, 29vw, 420px); display: grid; place-items: center; height: var(--evidence-canvas-height); min-height: 0; padding: 12px; }
+.evidenceCanvas > .screenButton { overflow: hidden; border: 1px solid #e8e5ee; border-radius: 6px; background: #efedf4; }
+.evidenceCanvas .croppedImage { width: min(100%, calc((var(--evidence-canvas-height) - 24px) * 16 / 9)); max-height: none; }
+.evidenceStage > footer { padding: 11px 14px; border-top: 1px solid #e6e1ed; background: #fff; color: #807489; font-size: 10px; line-height: 1.7; }
+.evidenceEmpty, .contextPlaceholder { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; gap: 10px; padding: 22px; color: #746680; text-align: center; }
+.evidenceEmpty svg { width: 56px; height: 56px; color: #b1a1c1; }
+.evidenceEmpty strong { max-width: 330px; font-size: 13px; }
+.evidenceEmpty p { max-width: 340px; color: #9a8da5; font-size: 11px; }
+.contextPlaceholder { gap: 6px; padding: 10px; background: #efedf4; color: #8e809c; }
+.contextPlaceholder svg { width: 36px; height: 36px; color: #b6a8c3; }
+.contextPlaceholder strong { font-size: 10px; }
+.contextPlaceholder small { max-width: 180px; font-size: 8px; line-height: 1.5; }
+.cinemaScreen .contextPlaceholder { background: #292b3a; color: #d1c8dd; }
+.elevatorScreen .contextPlaceholder { padding: 5px; gap: 2px; }
+.elevatorScreen .contextPlaceholder small { display: none; }
+.elevatorScreen .contextPlaceholder svg { width: 24px; height: 24px; }
+.contextNote { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding: 10px 12px; border-left: 3px solid #cfc3e2; background: #faf8fd; font-size: 10px; color: #8c7d9b; }
+.contextNote strong { color: #6c5a80; }
+@container placement-showroom (max-width: 780px) { .environmentTabs { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@container placement-showroom (max-width: 540px) {
+  .environmentTab, .environmentActive { min-height: 86px; }
+  .evidenceCanvas { --evidence-canvas-height: 280px; padding: 7px; }
+  .spatialToolbar h3 { font-size: 15px; }
+  .spatialInventory > button { min-height: 80px; }
+  .spatialViewSwitch button { min-height: 34px; }
+  .platformPanel button { flex-basis: 125px; }
+}
+
+.spatialScope { margin: 0 0 9px !important; color: #8b7c99; font-size: 10px; line-height: 1.6; }
+
+/* Keep evidence and articles above the fold instead of repeating a large hero. */
+.heading { padding: 0 0 16px; gap: 18px; }
+.heading h2 { font-size: 23px; }
+.heading p { margin-top: 6px; font-size: 11px; }
+.eyebrow { margin-bottom: 5px; font-size: 9px; }
+.environmentTab, .environmentActive { min-height: 82px; padding: 15px; }
+.environmentTab strong, .environmentActive strong { font-size: 15px; }
+@container placement-showroom (max-width: 540px) { .environmentTab, .environmentActive { min-height: 78px; padding: 10px; } .heading h2 { font-size: 20px; } }

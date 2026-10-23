@@ -24,3 +24,13 @@ An editor can upload a matching monthly workbook to the review-only breakdown pa
 After explicit review, the uploader stores a separate augmentation dataset (`sourceKind: showroom_breakdown`) with empty placements, daily performance and media-plan arrays. Existing monthly totals, daily facts, proof records and operating plans are not replaced. Only the creative showroom consumes the additional breakdown metadata. Original workbook bytes are never sent by this workflow.
 
 Regression fixtures are synthetic. Never commit private reports, raw mail, client data snapshots, image files, credentials, or local preview authentication mocks.
+
+## Four-environment refinement
+
+Explicit café/viral records have a fourth `viral` environment. Ordinary paid café-native ads stay digital. The viral board flattens individual proof records, including multiple posts within one café, and filters locally by café, title/topic and source-reported status. Report date, reported publication date and verification date are separate fields. Missing dates stay unknown, original links are sanitized, and a report-page thumbnail is never represented as an independently verified live post screenshot.
+
+Digital navigation uses locally served, unmodified public app identification icons. Mobile app choices and advertising/web platforms are separate. A browser-shaped platform preview does not assert an actual PC delivery. Asset provenance is listed in `public/media-icons/sources.json`.
+
+OOH defaults to large original evidence, with a compact site selector and supplier-preserving display aliases. The contextual city/cinema/elevator/transit diagrams are a secondary mode. They contain no report page placed on a screen as if it were an actual creative. Material-based composites remain pending the user's later creative delivery. No Google Drive access, permission changes, client-asset copying or report-data mutation is included in this UI refinement.
+
+Plan/performance-only viral items remain available in a separate, non-evidence panel, including proof-less scopes. Manual creative names retain middle dots. Explicit articleTitle/topic fields take priority; only the inspected original-report importer marker (type + creativeNameBasis + verifiedFromOriginalReport) permits decoding the known legacy category/title encoding.
