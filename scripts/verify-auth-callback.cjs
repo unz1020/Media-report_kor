@@ -9,7 +9,7 @@ const ts = require("typescript");
 const root = path.resolve(__dirname, "..");
 const TOKEN_COOKIE = "media_report_gmail_token";
 const STATE_COOKIE = "media_report_gmail_state";
-const secrets = ["synthetic-code-secret", "synthetic-state-secret", "synthetic-access-secret", "synthetic-refresh-secret", "synthetic-cookie-secret", "synthetic-upstream-secret"];
+const secrets = ["synthetic-code-secret", "synthetic-state-secret", "synthetic-access-secret", "synthetic-refresh-secret", "synthetic-cookie-secret", "synthetic-upstream-secret", "synthetic-existing-cookie-secret"];
 const token = { access_token: secrets[2], refresh_token: secrets[3], expires_at: 9e12 };
 const session = {
   user: { email: "member@example.invalid", display_name: null, role: "member", is_active: true },
@@ -31,6 +31,9 @@ const shellCode = compile("components/app-shell.tsx");
 
 function callbackHarness(options = {}) {
   const calls = { exchange: [], fetch: [], encrypt: [], logs: [] };
+  const cookieJar = new Map();
+  if (!options.noStoredState) cookieJar.set(STATE_COOKIE, secrets[1]);
+  if (!options.noExistingToken) cookieJar.set(TOKEN_COOKIE, secrets[6]);
   class NextRequest {
     constructor() {
       this.nextUrl = new URL("https://app.example.invalid/api/gmail/callback");
@@ -40,7 +43,7 @@ function callbackHarness(options = {}) {
       if (options.noCode) this.nextUrl.searchParams.delete("code");
       if (options.noState) this.nextUrl.searchParams.delete("state");
       this.url = this.nextUrl.href;
-      this.cookies = { get: name => name === STATE_COOKIE && !options.noStoredState ? { value: secrets[1] } : undefined };
+      this.cookies = { get: name => cookieJar.has(name) ? { value: cookieJar.get(name) } : undefined };
     }
   }
   const NextResponse = {
@@ -86,7 +89,14 @@ function callbackHarness(options = {}) {
     },
   };
   vm.runInNewContext(callbackCode, context, { filename: "callback.js" });
-  return { calls, run: () => context.exports.GET(new NextRequest()) };
+  return { calls, cookieJar, async run() {
+    const result = await context.exports.GET(new NextRequest());
+    for (const mutation of result.mutations) {
+      if (mutation.action === "delete") cookieJar.delete(mutation.name);
+      else cookieJar.set(mutation.name, mutation.value);
+    }
+    return result;
+  } };
 }
 function assertSafe(result, calls) {
   const exposed = JSON.stringify([result.location, calls.logs]);
@@ -96,7 +106,12 @@ async function failed(options, reason, destination) {
   const harness = callbackHarness(options);
   const result = await harness.run();
   assert.equal(result.location, `https://app.example.invalid${destination || `/data-update?gmail=error&reason=${reason}`}`);
-  assert.deepEqual(result.mutations, [{ action: "delete", name: TOKEN_COOKIE }, { action: "delete", name: STATE_COOKIE }]);
+  const expectedMutations = [{ action: "delete", name: STATE_COOKIE }];
+  if (reason === "access_denied") expectedMutations.unshift({ action: "delete", name: TOKEN_COOKIE });
+  assert.deepEqual(result.mutations, expectedMutations); // No failure may create a cookie.
+  assert.equal(harness.cookieJar.has(STATE_COOKIE), false);
+  assert.equal(harness.cookieJar.get(TOKEN_COOKIE),
+    reason === "access_denied" || options.noExistingToken ? undefined : secrets[6]);
   assert.equal(harness.calls.encrypt.length, options.encryptError ? 1 : 0);
   assert.equal(JSON.stringify(harness.calls.logs), JSON.stringify([[`gmail_callback_failed:${reason}`]]));
   assertSafe(result, harness.calls);
@@ -141,8 +156,19 @@ test("provider errors are mapped to fixed reasons and never reflected", async ()
     assert.equal(calls.fetch.length, 0);
   }
 });
-test("membership/auth rejection preserves denied route and removes cookies", async () => {
-  for (const status of [401, 403]) await failed({ status }, "access_denied", "/overview?access=denied");
+test("workspace 401 requests Google re-login and preserves existing encrypted session", async () => {
+  const calls = await failed({ status: 401 }, "google_identity");
+  assert.equal(calls.fetch.length, 1);
+});
+test("confirmed membership 403 preserves denied route and removes existing session", async () => {
+  await failed({ status: 403 }, "access_denied", "/overview?access=denied");
+});
+test("recoverable callback failures never create a session when none existed", async () => {
+  for (const [options, reason] of [
+    [{ state: "mismatch" }, "invalid_state"], [{ error: "access_denied" }, "oauth_denied"],
+    [{ exchangeError: true }, "token_exchange"], [{ networkError: true }, "workspace_unavailable"],
+    [{ status: 401 }, "google_identity"], [{ encryptError: true }, "session_encryption"],
+  ]) await failed({ ...options, noExistingToken: true }, reason);
 });
 test("workspace DNS and 5xx failures are availability errors, not access denial", async () => {
   await failed({ networkError: true }, "workspace_unavailable");
@@ -197,7 +223,7 @@ test("login gate shows Korean allowlisted callback errors only after hydration",
     invalid_state: "로그인 요청이 만료", oauth_denied: "Google 로그인이 취소",
     oauth_error: "Google 로그인 중 오류", token_exchange: "Google 로그인 정보를 확인하지 못",
     workspace_unavailable: "팀 서버에 연결할 수 없", session_encryption: "로그인 세션을 안전하게 저장하지 못",
-    access_denied: "등록되지 않았거나 접근이 해제",
+    google_identity: "Google 계정을 확인하지 못", access_denied: "등록되지 않았거나 접근이 해제",
   };
   for (const [reason, text] of Object.entries(messages)) {
     const result = renderGate(`?gmail=error&reason=${reason}`);
@@ -205,6 +231,9 @@ test("login gate shows Korean allowlisted callback errors only after hydration",
     assert.ok(result.hydrated.includes(text));
     assert.ok(result.hydrated.includes('"role":"alert"'));
   }
+  const identityError = renderGate("?gmail=error&reason=google_identity").hydrated;
+  assert.ok(identityError.includes("Google 계정으로 다시 로그인"));
+  assert.ok(!identityError.includes("팀 계정 등록"));
   assert.ok(renderGate("?access=denied").hydrated.includes(messages.access_denied));
   assert.ok(renderGate("", "WORKSPACE_UNAVAILABLE").hydrated.includes(messages.workspace_unavailable));
   for (const reason of [secrets[5], "__proto__", "constructor"]) {
