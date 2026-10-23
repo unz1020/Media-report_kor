@@ -5,6 +5,7 @@ on:
     paths:
       - 'app/**'
       - 'components/**'
+      - 'public/media-icons/**'
       - 'lib/**'
       - 'supabase/functions/**'
       - 'supabase/migrations/**'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'app/**'
       - 'components/**'
+      - 'public/media-icons/**'
       - 'lib/**'
       - 'supabase/functions/**'
       - 'supabase/migrations/**'
@@ -33,6 +35,7 @@ jobs:
       - run: npm ci
       - name: Verify URLs and placement validation
         run: |
+          node scripts/verify-media-icons.cjs
           node scripts/verify-showroom-breakdown.cjs
           node scripts/verify-placement-showroom.cjs
           node scripts/verify-proof-lightbox.cjs
