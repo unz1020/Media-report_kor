@@ -169,9 +169,9 @@ for (const placement of ['네이버 바이럴', 'SBS-TV', 'CGV 커뮤니티 바�
 const articleA = proof({ media: '네이버 바이럴', placement: '커뮤니티 바이럴 · Fixture Café · A: [Club]',
   creativeName: 'Fixture topic · Original title · subtitle', previewUrl: 'https://cafe.naver.com/synthetic/100',
   periodStart: '2030-01-02', reportDate: '2030-01-21', verificationDate: '',
-  evidence: { type: 'report_document_with_embedded_cafe_screenshot', articleUrl: 'https://cafe.naver.com/synthetic/101', reportedPlacementDate: '2030-01-03', reportDate: '2030-01-20', independentlyLiveVerified: false } });
+  evidence: { type: 'report_document_with_embedded_cafe_screenshot', articleUrl: 'https://cafe.naver.com/synthetic/101', topic: 'Fixture topic', articleTitle: 'Original title · subtitle', reportedPlacementDate: '2030-01-03', reportDate: '2030-01-20', independentlyLiveVerified: false } });
 const articleB = proof({ ...articleA, creativeName: 'Another topic · Another original title', periodStart: '2030-01-04', reportDate: '2030-01-22', verificationDate: '2030-01-23',
-  evidence: { type: 'report_document_with_embedded_cafe_screenshot', articleUrl: 'https://cafe.naver.com/synthetic/102', reportedPlacementDate: '2030-01-05', reportDate: '2030-01-22', independentlyLiveVerified: false } });
+  evidence: { type: 'report_document_with_embedded_cafe_screenshot', articleUrl: 'https://cafe.naver.com/synthetic/102', topic: 'Another topic', articleTitle: 'Another original title', reportedPlacementDate: '2030-01-05', reportDate: '2030-01-22', independentlyLiveVerified: false } });
 deepFreeze(articleA); deepFreeze(articleB);
 const articleBefore = JSON.stringify([articleA, articleB]);
 const viralPlan = plan({ platform: '네이버 바이럴', placement: articleA.placement, product: '커뮤니티 바이럴', device: '' });
@@ -222,6 +222,16 @@ for (const url of ['', 'not a URL', '//cafe.naver.com/synthetic/1', 'javascript:
 }
 assert.equal(viralPostInfo(proof({ ...unknownArticle, previewUrl: 'https://cafe.naver.com/synthetic/103', evidence: {} })).articleUrl, 'https://cafe.naver.com/synthetic/103');
 assert.equal(viralPostInfo(proof({ ...unknownArticle, previewUrl: 'https://cafe.naver.com/synthetic/104', evidence: { articleUrl: 'javascript:alert(1)' } })).articleUrl, 'https://cafe.naver.com/synthetic/104');
+
+// Names from manual registration are titles, not an undocumented category/title delimiter.
+const manualDots = proof({ ...unknownArticle, creativeName: 'Original title · subtitle · preserved', evidence: {} });
+assert.equal(viralPostInfo(manualDots).title, 'Original title · subtitle · preserved');
+assert.equal(viralPostInfo(manualDots).topic, '');
+const legacyName = proof({ ...manualDots, creativeName: 'Known category · Original title · subtitle', evidence: { type: 'report_document_with_embedded_cafe_screenshot', creativeNameBasis: '원본 게재표의 분류와 게시글 제목', verifiedFromOriginalReport: true } });
+assert.equal(viralPostInfo(legacyName).title, 'Original title · subtitle');
+assert.equal(viralPostInfo(legacyName).topic, 'Known category');
+assert.equal(viralPostInfo(proof({ ...legacyName, evidence: { ...legacyName.evidence, verifiedFromOriginalReport: false } })).title, legacyName.creativeName);
+assert.equal(viralPostInfo(proof({ ...manualDots, evidence: { articleTitle: 'Explicit title · preserved', topic: 'Explicit topic' } })).title, 'Explicit title · preserved');
 
 // Every retained record belongs to exactly one environment, without changing input ownership.
 const environmentFixtures = [

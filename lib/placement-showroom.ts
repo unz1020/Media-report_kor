@@ -140,9 +140,14 @@ export function viralPostInfo(proof: PlacementProof): {
   const cafeName = text(proof.placement)
     .replace(/^(?:커뮤니티\s*바이럴|네이버\s*바이럴|바이럴|viral)(?:\s*·\s*|$)/i, '').trim();
   const creative = text(proof.creativeName);
-  const separator = creative.indexOf(' · ');
-  const topic = separator >= 0 ? creative.slice(0, separator).trim() : '';
-  const title = separator >= 0 ? creative.slice(separator + 3).trim() : creative;
+  // Only the original-report importer declares this legacy category/title encoding.
+  // Arbitrary manually registered creative names, including middle dots, remain intact.
+  const legacyReportName = evidence?.type === 'report_document_with_embedded_cafe_screenshot'
+    && evidence?.creativeNameBasis === '원본 게재표의 분류와 게시글 제목'
+    && evidence?.verifiedFromOriginalReport === true;
+  const separator = legacyReportName ? creative.indexOf(' · ') : -1;
+  const topic = text(evidence?.topic) || (separator >= 0 ? creative.slice(0, separator).trim() : '');
+  const title = text(evidence?.articleTitle) || (separator >= 0 ? creative.slice(separator + 3).trim() : creative);
   let articleUrl = '';
   // Never fall back to landing, mail, attachment, or private source-document URLs.
   for (const candidate of [text(evidence?.articleUrl), text(proof.previewUrl)]) {

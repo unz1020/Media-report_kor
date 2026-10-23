@@ -63,6 +63,7 @@ export function ViralPlacementBoard({ items, imageUrl, onOpenImage }: Props) {
     if (!right) return -1;
     return right.localeCompare(left);
   }), [items]);
+  const pendingItems = items.filter(item => !item.proofs.length);
   const cafes = useMemo(() => [...new Set(posts.map(cafeLabel))].sort((a, b) => a.localeCompare(b, "ko")), [posts]);
   const activeCafe = cafes.includes(cafe) ? cafe : "";
   const query = search.trim().normalize("NFKC").toLocaleLowerCase("ko");
@@ -134,5 +135,23 @@ export function ViralPlacementBoard({ items, imageUrl, onOpenImage }: Props) {
         </> : <p className={styles.unavailable}>표시할 게시글이 없습니다.</p>}
       </aside>
     </div>
+    {pendingItems.length > 0 && <section className={styles.pending} aria-label="바이럴 증빙 미연결 항목">
+      <h3>게재 증빙 연결 전 항목 {pendingItems.length}개</h3>
+      <p>게시글 필터와 별도인 운영안·성과입니다. 등록된 게시글이나 실제 게재 확인을 뜻하지 않습니다.</p>
+      <div className={styles.pendingGrid}>{pendingItems.map(item => <article className={styles.pendingCard} key={item.id} data-viral-pending-id={item.id}>
+        <span className={styles.pendingBadge}>게재 증빙 미연결</span><h4>{item.title}</h4><p>{item.media}</p>
+        {item.plans.length > 0 && <section aria-label="증빙 미연결 운영안"><h5>운영안</h5>{item.plans.map((plan,index) => <dl key={index} className={styles.pendingFacts}>
+          <div><dt>계획 기간</dt><dd>{plan.periodStart || "?"} ~ {plan.periodEnd || "?"}</dd></div>
+          <div><dt>계획 예산</dt><dd>{sourceValue(plan.budget, true)}</dd></div>
+        </dl>)}</section>}
+        {item.metrics.length > 0 && <section aria-label="증빙 미연결 성과"><h5>연결된 성과 · 게재 증빙 아님</h5>{item.metrics.map((row,index) => <dl key={index} className={styles.pendingFacts}>
+          <div><dt>보고서 기준일</dt><dd>{row.reportDate || "?"}</dd></div><div><dt>집행액</dt><dd>{sourceValue(row.spend, true)}</dd></div>
+          <div><dt>노출</dt><dd>{sourceValue(row.impressions)}</dd></div><div><dt>클릭</dt><dd>{sourceValue(row.clicks)}</dd></div>
+        </dl>)}</section>}
+      </article>)}</div>
+    </section>}
   </section>;
+}
+function sourceValue(value: number | null | undefined, currency = false): string {
+  return typeof value === "number" && Number.isFinite(value) ? new Intl.NumberFormat("ko-KR").format(value) + (currency ? "원" : "") : "?";
 }
