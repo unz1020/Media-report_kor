@@ -1,0 +1,27 @@
+.viewer { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #0c1018; color: #f8fafc; overflow: hidden; color-scheme: dark; }
+.viewer[open] { display: flex; flex-direction: column; }
+.viewer:not([open]) { display: none; }
+.viewer::backdrop { background: rgba(3, 7, 18, .94); }
+.header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: calc(16px + env(safe-area-inset-top)) 24px 14px; border-bottom: 1px solid #293140; background: #131a26; }
+.heading { min-width: 0; }
+.heading > span { color: #b6b0ff; font-size: 11px; font-weight: 800; }
+.heading h2 { margin: 5px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; line-height: 1.45; color: #fff; }
+.heading p { margin: 4px 0 0; color: #a9b4c5; font-size: 12px; }
+.close { flex-shrink: 0; display: inline-flex; align-items: center; gap: 9px; min-height: 42px; padding: 9px 14px; border: 1px solid #495367; border-radius: 10px; background: #293345; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 750; }
+.close kbd { padding: 2px 5px; border: 1px solid #687389; border-radius: 4px; color: #cfd7e6; font-size: 10px; }
+.toolbar { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 10px 24px; border-bottom: 1px solid #293140; background: #171f2d; }
+.toolbar button, .toolbar a { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 12px; border: 1px solid #465167; border-radius: 8px; background: #253044; color: #f4f6fc; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.toolbar button:hover, .toolbar a:hover, .close:hover { background: #354158; }
+.toolbar button[aria-pressed="true"] { border-color: #b6acff; background: #3b3267; color: #fff; }
+.toolbar button:disabled { opacity: .45; cursor: not-allowed; }
+.toolbar button:focus-visible, .toolbar a:focus-visible, .close:focus-visible { outline: 3px solid #c1baff; outline-offset: 3px; }
+.zoomControls { display: flex; align-items: center; gap: 3px; }
+.zoomControls button { width: 40px; padding: 6px; font-size: 22px; }
+.zoomControls output { min-width: 58px; text-align: center; color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; }
+.stage { position: relative; flex: 1 1 0; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; background: #090d14; }
+.surface { min-width: 100%; min-height: 100%; display: flex; align-items: center; justify-content: center; }
+.image { display: block; flex: 0 0 auto; max-width: none; max-height: none; object-fit: contain; user-select: none; cursor: zoom-in; }
+.message { position: absolute; top: 35%; left: 16px; right: 16px; text-align: center; color: #d1d8e5; font-size: 14px; }
+.message a { color: #c5bcff; }
+.help { flex: 0 0 auto; padding: 10px 24px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid #293140; color: #a9b4c5; background: #131a26; font-size: 11px; line-height: 1.6; text-align: center; }
+@media (max-width: 640px) { .header { gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 12px 12px; } .heading h2 { font-size: 14px; } .heading p { font-size: 11px; } .close { gap: 4px; padding: 8px 10px; } .close kbd { display: none; } .toolbar { padding: 8px 12px; gap: 7px; } .toolbar button, .toolbar a { padding: 8px 9px; font-size: 11px; } .help { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); font-size: 10px; } }
