@@ -20,6 +20,7 @@ import { MediaPlanLinks } from "@/components/media-plan-links";
 import { PROOF_IMAGE_ACCEPT } from "@/lib/proof-image-input";
 import { CreativeMarker, CreativeLegend, creativeStyle } from "@/components/creative-marker";
 import { mediaHierarchy, mediaPath } from "@/lib/media-hierarchy";
+import { ProofImageLightbox, type ProofLightboxImage } from "@/components/proof-image-lightbox";
 
 function displayUrl(value = "") {
   try { return safeHttpUrl(value); } catch { return ""; }
@@ -61,6 +62,7 @@ export default function CreativePage() {
   const [selectedMedia, setSelectedMedia] = useState("전체");
   const [uploadingKey, setUploadingKey] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [lightboxImage, setLightboxImage] = useState<ProofLightboxImage | null>(null);
 
   useEffect(() => {
     const load = () => {
@@ -78,7 +80,7 @@ export default function CreativePage() {
 
   useEffect(() => {
     setSelectedMedia("전체");
-    setEditor(null); setUploadError("");
+    setEditor(null); setUploadError(""); setLightboxImage(null);
   }, [advertiser, month]);
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
@@ -175,7 +177,12 @@ export default function CreativePage() {
     return <article className={styles.proofCard} style={creativeStyle(proof.creativeName)} key={proofKey}>
       <div className={styles.visual} tabIndex={canEdit?0:undefined} aria-label={`${proof.creativeName || proof.placement} 이미지 드롭 또는 붙여넣기`} onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(file)setEditor({proof,initialFile:file,selectionId:crypto.randomUUID()});}} onPaste={event=>{if(!canEdit || dataSyncState==='loading')return;const file=[...event.clipboardData.items].find(item=>item.kind==='file' && item.type.startsWith('image/'))?.getAsFile();if(file){event.preventDefault();setEditor({proof,initialFile:file,selectionId:crypto.randomUUID()});}}}>
         {visualUrl
-          ? <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
+          ? <button type="button" className={styles.imageOpenButton}
+              aria-label={`${proof.media} ${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 이미지 크게 보기`}
+              onClick={() => setLightboxImage({ src: visualUrl, title: [proof.media, proof.placement, proof.creativeName].filter(Boolean).join(" · "), description: `${proof.status}${proof.verificationDate ? ` · ${proof.verificationDate} 확인` : ""}` })}>
+              <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
+              <span className={styles.imageOpenHint}>크게 보기</span>
+            </button>
           : <div className={styles.visualFallback}>이미지·PDF·PPTX를 놓거나 클릭 후 이미지를 붙여넣으세요.</div>}
         <span className={styles.visualBadge}>{proof.status}</span>
         {canEdit && <label className={styles.replaceImageButton}>
@@ -321,5 +328,6 @@ export default function CreativePage() {
       }} style={{ display: "block", maxWidth: 200, marginTop: 6 }} /></label> : "미등록"}</td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.placement || plan.product, creativeName: plan.creativeName || "", periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
     </section></LayoutPanel>
   </LayoutCanvas>
+  {lightboxImage && <ProofImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />}
 </>;
 }
