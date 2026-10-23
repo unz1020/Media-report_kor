@@ -9,7 +9,7 @@ import {
 
 export const runtime = "nodejs";
 
-type FailureReason = "invalid_state" | "oauth_denied" | "oauth_error" | "token_exchange" | "workspace_unavailable" | "access_denied" | "session_encryption";
+type FailureReason = "invalid_state" | "oauth_denied" | "oauth_error" | "token_exchange" | "workspace_unavailable" | "google_identity" | "access_denied" | "session_encryption";
 
 function failedCallback(request: NextRequest, reason: FailureReason) {
   // Only fixed categories: upstream exceptions may contain credentials or user data.
@@ -18,7 +18,8 @@ function failedCallback(request: NextRequest, reason: FailureReason) {
     ? "/overview?access=denied"
     : `/data-update?gmail=error&reason=${reason}`;
   const response = NextResponse.redirect(new URL(destination, request.url));
-  response.cookies.delete(GMAIL_TOKEN_COOKIE);
+  // A failed Gmail reconnect must not log out an existing workspace session.
+  if (reason === "access_denied") response.cookies.delete(GMAIL_TOKEN_COOKIE);
   response.cookies.delete(GMAIL_STATE_COOKIE);
   return response;
 }
@@ -69,7 +70,8 @@ export async function GET(request: NextRequest) {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token.access_token}` },
       body: JSON.stringify({ action: "session" }), cache: "no-store",
     });
-    if (accessResponse.status === 401 || accessResponse.status === 403) return failedCallback(request, "access_denied");
+    if (accessResponse.status === 401) return failedCallback(request, "google_identity");
+    if (accessResponse.status === 403) return failedCallback(request, "access_denied");
     if (!accessResponse.ok) return failedCallback(request, "workspace_unavailable");
     // Even HTTP 200 must contain the expected session, not an error/HTML payload.
     if (!isWorkspaceSession(await accessResponse.json())) return failedCallback(request, "workspace_unavailable");
