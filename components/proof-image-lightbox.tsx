@@ -76,6 +76,14 @@ export function ProofImageLightbox({ image, onClose }: { image: ProofLightboxIma
 
   function changeZoom(factor: number) { setZoom(clampImageScale(scale * factor)); }
   function keyboard(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key === "Tab") {
+      const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]')).filter(item => item.getClientRects().length > 0);
+      const first = items[0], last = items.at(-1);
+      const active = document.activeElement;
+      if (event.shiftKey && last && (active === first || !event.currentTarget.contains(active))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && first && (active === last || !event.currentTarget.contains(active))) { event.preventDefault(); first.focus(); }
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey || !loaded) return;
     if (event.key === "+" || event.key === "=") { event.preventDefault(); changeZoom(1.25); }
     else if (event.key === "-") { event.preventDefault(); changeZoom(0.8); }
@@ -99,7 +107,7 @@ export function ProofImageLightbox({ image, onClose }: { image: ProofLightboxIma
       <button type="button" aria-label="원본 크기" aria-pressed={zoom === 1} disabled={!loaded} onClick={() => setZoom(1)}>원본 크기 100%</button>
       <a href={image.src} target="_blank" rel="noopener noreferrer">원본 열기</a>
     </div>
-    <div ref={stage} className={styles.stage} aria-label="확대 이미지 영역">
+    <div ref={stage} className={styles.stage} tabIndex={0} aria-label="확대 이미지 영역">
       {!loaded && !failed && <p className={styles.message} role="status">이미지를 불러오는 중입니다.</p>}
       {failed && <div className={styles.message} role="alert"><p>이미지를 불러오지 못했습니다.</p><a href={image.src} target="_blank" rel="noopener noreferrer">원본 이미지 다시 열기</a></div>}
       <div className={styles.surface} style={loaded ? { width: Math.max(viewport.width, natural.width * scale + 32), height: Math.max(viewport.height, natural.height * scale + 32) } : undefined}>
