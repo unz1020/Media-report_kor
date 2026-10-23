@@ -10,7 +10,10 @@ import {
   type PublishedDataset,
 } from "@/lib/daily-report-store";
 import type { PlacementProof, PlacementProofAttachment } from "@/lib/placement-proof";
-import { mediaPlansFromDatasets } from "@/lib/reporting-data";
+import { mediaPlansFromDatasets, rowsFromDatasets } from "@/lib/reporting-data";
+import { PlacementShowroom } from "@/components/placement-showroom";
+import { ShowroomBreakdownUpload } from "@/components/showroom-breakdown-upload";
+import { breakdownRowsFromDatasets } from "@/lib/showroom-breakdown";
 import { canonicalMedia } from "@/lib/media-normalization";
 import { PlacementSetupForm } from "@/components/placement-setup-form";
 import { landingWithUtm, safeHttpUrl } from "@/lib/placement-urls";
@@ -84,6 +87,7 @@ export default function CreativePage() {
   }, [advertiser, month]);
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
+  const showroomRows = useMemo(() => [...rowsFromDatasets(datasets), ...breakdownRowsFromDatasets(datasets)], [datasets]);
   const placementCount = useMemo(() => new Set(proofs.map((proof) => `${proof.media}::${proof.placement}`)).size, [proofs]);
   const creativeCount = useMemo(() => proofs.filter((proof) => Boolean(proof.creativeName?.trim())).length, [proofs]);
 
@@ -235,7 +239,7 @@ export default function CreativePage() {
       <div>
         <div className="eyebrow">소재 · 게재지면</div>
         <h1 className="page-title">{advertiser} 소재 · 게재지면</h1>
-        <p className="page-desc">디지털 지면은 미리보기로 사전 세팅하고, 집행 후 게재 확인 자료와 함께 관리합니다.</p>
+        <p className="page-desc">공간·채널·앱에서 광고 지면을 탐색하고, 소재·게재 증빙·연결된 성과를 함께 확인합니다.</p>
       </div>
       <div className="page-meta"><span className="view-pill">{month}</span>{canEdit && <button type="button" className="btn primary" disabled={dataSyncState === "loading"} onClick={() => setEditor({})}>지면 수동 등록</button>}</div>
     </div>
@@ -243,6 +247,9 @@ export default function CreativePage() {
 
     {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
+<PlacementShowroom key={`${advertiser}:${month}`} proofs={proofs} plans={plans} rows={showroomRows} onOpenImage={setLightboxImage} />
+    {canEdit && <ShowroomBreakdownUpload key={`breakdown:${advertiser}:${month}`} advertiser={advertiser} month={month} datasets={datasets} disabled={dataSyncState === "loading" || dataSyncState === "saving"} />}
+    <details className={styles.management} open><summary><span>관리·원본 자료</span><small>운영안 URL · 등록 지면 · 자료 연결 · 수동 세팅</small></summary>
 <LayoutCanvas page="creative">
     {plans.length > 0 && <LayoutPanel id="creative:plan-urls" title="운영안 소재 URL"><section className="card card-pad"><div className="report-panel-head"><div><h2>운영안 소재 URL</h2><p>운영안별 매체 지면 미리보기와 소재 원본 링크를 등록하고 확인합니다. 일정 화면과 함께 반영됩니다.</p></div></div>
       <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media}</button>)}</div>
@@ -328,6 +335,7 @@ export default function CreativePage() {
       }} style={{ display: "block", maxWidth: 200, marginTop: 6 }} /></label> : "미등록"}</td><td>미입력</td><td>미입력</td>{canEdit && <td><button type="button" className="btn" disabled={dataSyncState === "loading"} onClick={() => setEditor({ initial: { media: plan.platform, placement: plan.placement || plan.product, creativeName: plan.creativeName || "", periodStart: plan.periodStart || "", periodEnd: plan.periodEnd || "" } })}>세팅 추가</button></td>}</tr>)}</tbody></table></div> : <div className="card-pad empty-inline">{selectedMedia === "전체" ? "운영안 지면 데이터가 아직 연결되지 않았습니다." : `${selectedMedia}의 연결 대기 지면이 없습니다.`}</div>}
     </section></LayoutPanel>
   </LayoutCanvas>
+    </details>
   {lightboxImage && <ProofImageLightbox image={lightboxImage} onClose={() => setLightboxImage(null)} />}
 </>;
 }

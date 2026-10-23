@@ -242,3 +242,11 @@
 .imageOpenHint { position: absolute; left: 14px; bottom: 14px; padding: 7px 10px; border-radius: 8px; background: rgba(17,24,39,.78); color: #fff; font-size: 11px; font-weight: 750; pointer-events: none; }
 .visualBadge { pointer-events: none; }
 .replaceImageButton { z-index: 1; }
+
+/* Keep original registration and report tools below the visual explorer. */
+.management { margin: 26px 0; border-top: 1px solid #e4e7ec; padding-top: 18px; }
+.management > summary { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; cursor: pointer; margin-bottom: 18px; color: #344054; }
+.management > summary::before { content: "＋"; font-size: 16px; }
+.management[open] > summary::before { content: "−"; }
+.management > summary span { font-size: 16px; font-weight: 800; }
+.management > summary small { font-size: 11px; color: #667085; }
