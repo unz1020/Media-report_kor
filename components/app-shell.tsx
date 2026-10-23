@@ -12,6 +12,7 @@ const loginErrors: Record<string, string> = {
   token_exchange: "Google 로그인 정보를 확인하지 못했습니다. 다시 로그인하고, 반복되면 관리자에게 문의하세요.",
   workspace_unavailable: "팀 서버에 연결할 수 없습니다. 잠시 후 다시 로그인하세요. 계속되면 관리자에게 서버 상태 확인을 요청하세요.",
   session_encryption: "로그인 세션을 안전하게 저장하지 못했습니다. 관리자에게 로그인 설정 확인을 요청한 뒤 다시 로그인하세요.",
+  google_identity: "Google 계정을 확인하지 못했습니다. Google 계정으로 다시 로그인하고, 반복되면 관리자에게 문의하세요.",
   access_denied: "등록되지 않았거나 접근이 해제된 계정입니다. 관리자에게 팀 계정 등록을 요청하세요.",
 };
 
