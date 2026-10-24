@@ -86,7 +86,12 @@ try {
   await edit(); await page.getByRole("button", { name: "배치 취소", exact: true }).click();
   assert.deepEqual(await panelIds(), ids);
   for (const route of ["performance", "schedule", "creative", "reports", "data-update", "team"]) {
-    await page.goto(rootUrl + "/" + route); await edit();
+    await page.goto(rootUrl + "/" + route);
+    if (route === "performance") {
+      const sourceView = page.getByRole("navigation", { name: "성과 리포트 화면", exact: true }).getByRole("button", { name: "일별·원본", exact: true });
+      await visible(sourceView); await sourceView.click();
+    }
+    await edit();
     assert.ok(await page.locator(`[data-layout-page="${route}"] > [data-layout-panel]`).count() > 0);
     if(route === "data-update") await visible(page.getByLabel("데일리 리포트 메일 수신일"));
     await page.getByRole("button", { name: "배치 취소", exact: true }).click();
