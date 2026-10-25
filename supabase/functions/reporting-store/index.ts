@@ -2,6 +2,7 @@ import { normalizeMediaMix } from "./media-plan-input.ts";
 import { layoutPage, normalizeLayout } from "./layout-input.ts";
 import { normalizeInsightInput, retainInsightOverride } from "./insight-input.ts";
 import { normalizePlacementInput } from "./placement-input.ts";
+import { normalizeCreativeLinkInput, retainCreativeAnnotations } from "./creative-link-input.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.99.3";
 
 const supabase = createClient(
@@ -105,6 +106,7 @@ async function getOrCreateImport(input: {
   if ("expectedUpdatedAt" in input && (existing?.updated_at || null) !== input.expectedUpdatedAt) throw new Error("MEDIA_MIX_CHANGED");
 
   retainInsightOverride(input.metadata, existing?.metadata);
+  retainCreativeAnnotations(input.metadata, existing?.metadata);
   const payload = {
     advertiser_id: input.advertiserId,
     report_date: input.reportDate,
@@ -323,6 +325,43 @@ Deno.serve(async (req: Request) => {
       });
       if (error) throw new Error(error.message);
       return json({ ok: true, insight: data });
+    }
+
+    if (action === "save_creative_link") {
+      let input;
+      try { input = normalizeCreativeLinkInput(body.input); }
+      catch (error) { return json({ error: error instanceof Error ? error.message : "INVALID_CREATIVE_LINK_INPUT" }, 400); }
+      const { advertiser, accessLevel } = await resolveAdvertiser(user.email, input.advertiser);
+      if (!["owner", "editor"].includes(accessLevel)) return json({ error: "WRITE_ACCESS_DENIED" }, 403);
+      // Namespace validation does not authorize using these fields as facts or publishing data.
+      if (input.performanceLink && !input.performanceLink.sourceFamily.startsWith(`${advertiser.name}::${input.month}::`)) {
+        return json({ error: "CREATIVE_LINK_SCOPE_DENIED" }, 403);
+      }
+      const { data: existing, error: findError } = await supabase.from("report_imports")
+        .select("id, metadata, updated_at").eq("advertiser_id", advertiser.id).eq("id", input.importId).maybeSingle();
+      if (findError) throw findError;
+      if (!existing) return json({ error: "PLACEMENT_NOT_FOUND" }, 404);
+      const previous = existing.metadata?.bundle?.placementProof;
+      if (!previous || previous.month !== input.month) return json({ error: "PLACEMENT_SCOPE_DENIED" }, 403);
+      if (typeof previous.creativeName !== "string" || !previous.creativeName.trim()) return json({ error: "INVALID_CREATIVE_LINK_PROOF" }, 400);
+      if (input.expectedUpdatedAt !== existing.updated_at) return json({ error: "PLACEMENT_CHANGED" }, 409);
+      // AE operation is report-only; evidence status/dates and platform state remain independent.
+      const proof = { ...previous, performanceLink: input.performanceLink,
+        ...("operation" in input ? { operation: input.operation } : {}) };
+      const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updated_at) + 1)).toISOString();
+      const { data: updated, error } = await supabase.from("report_imports").update({
+        metadata: { ...existing.metadata, bundle: { ...existing.metadata.bundle, placementProof: proof } },
+        updated_at: updatedAt, updated_by: user.email,
+      }).eq("advertiser_id", advertiser.id).eq("id", existing.id).eq("updated_at", existing.updated_at)
+        .select("id, updated_at").maybeSingle();
+      if (error) throw error;
+      if (!updated) return json({ error: "PLACEMENT_CHANGED" }, 409);
+      const audit = await supabase.from("workspace_activity").insert({
+        actor_email: user.email, advertiser_id: advertiser.id, action: "creative_link_saved",
+        detail: { importId: existing.id, month: input.month },
+      });
+      if (audit.error) throw audit.error;
+      return json({ ok: true, proof: { ...proof, importId: existing.id, publishedAt: updated.updated_at } });
     }
 
     if (action === "save_manual_proof") {

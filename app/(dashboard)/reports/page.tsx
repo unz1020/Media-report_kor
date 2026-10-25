@@ -3,34 +3,52 @@
 import { useEffect, useMemo, useState } from "react";
 import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
-import { publishedDatasetsFor, publishedInsightsFor, publishedSnapshotsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
-import { formatCount, formatKrw, formatRate, rowsFromDatasets, summarizeRows } from "@/lib/reporting-data";
+import { publishedDatasetsFor, publishedInsightsFor, publishedSnapshotsFor, publishedPlacementProofsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { formatCount, formatKrw, formatRate, rowsFromDatasets, mediaPlansFromDatasets, periodRowsFromSnapshots } from "@/lib/reporting-data";
+import { buildCreativeRotationReport, type CreativeRotationGroup } from "@/lib/creative-rotation";
+import { buildPerformanceReport } from "@/lib/performance-report";
+import { breakdownRowsFromDatasets } from "@/lib/showroom-breakdown";
+import type { PlacementProof } from "@/lib/placement-proof";
+import { CreativeRotationPanel } from "@/components/creative-rotation-panel";
+import { CreativeLinkEditor } from "@/components/creative-link-editor";
+import { ProofImageLightbox, type ProofLightboxImage } from "@/components/proof-image-lightbox";
 import { DailyInsightHistory } from "@/components/daily-insight-history";
 
 export default function ReportsPage() {
-  const { advertiser, month } = useWorkspace();
+  const { advertiser, month,canEdit,dataSyncState } = useWorkspace();
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
+  const [proofs,setProofs]=useState<PlacementProof[]>([]);
+  const [loadedScope,setLoadedScope]=useState("");
+  const [linkEditor,setLinkEditor]=useState<{proof:PlacementProof;group:CreativeRotationGroup}|null>(null);
+  const [lightboxImage,setLightboxImage]=useState<ProofLightboxImage|null>(null);
   const [insights, setInsights] = useState<PublishedInsight[]>([]);
   const [from, setFrom] = useState(`${month}-01`);
   const [to, setTo] = useState(`${month}-${String(new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).getDate()).padStart(2,"0")}`);
 
-  useEffect(() => { setFrom(`${month}-01`); setTo(`${month}-${String(new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).getDate()).padStart(2,"0")}`); }, [month]);
+  useEffect(() => { setFrom(`${month}-01`); setTo(`${month}-${String(new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).getDate()).padStart(2,"0")}`); setLinkEditor(null);setLightboxImage(null);}, [advertiser,month]);
   useEffect(() => {
-    const load = () => { setDatasets(publishedDatasetsFor(advertiser, month)); setSnapshots(publishedSnapshotsFor(advertiser, month)); setInsights(publishedInsightsFor(advertiser, month)); };
+    const load = () => { setDatasets(publishedDatasetsFor(advertiser, month)); setSnapshots(publishedSnapshotsFor(advertiser, month));setProofs(publishedPlacementProofsFor(advertiser,month));setLoadedScope(`${advertiser}:${month}`); setInsights(publishedInsightsFor(advertiser, month)); };
     load(); window.addEventListener("media-report-daily-updated", load); window.addEventListener("storage", load);
     return () => { window.removeEventListener("media-report-daily-updated", load); window.removeEventListener("storage", load); };
   }, [advertiser, month]);
 
   const filteredInsights = useMemo(() => insights.filter((item) => item.reportDate >= from && item.reportDate <= to), [insights, from, to]);
   const filteredSnapshots = useMemo(() => snapshots.filter((item) => item.bundle.reportDate >= from && item.bundle.reportDate <= to), [snapshots, from, to]);
-  const summary = useMemo(() => summarizeRows(rowsFromDatasets(datasets)), [datasets]);
+  const plans=useMemo(()=>mediaPlansFromDatasets(datasets),[datasets]);
+  const placementRows=useMemo(()=>[...rowsFromDatasets(datasets),...breakdownRowsFromDatasets(datasets)],[datasets]);
+  const creativeReport=useMemo(()=>buildCreativeRotationReport({advertiser,month,datasets:snapshots.length?snapshots:datasets,proofs,plans,placementRows,startDate:from,endDate:to}),[advertiser,month,snapshots,datasets,proofs,plans,placementRows,from,to]);
+  const period=useMemo(()=>snapshots.length?periodRowsFromSnapshots(snapshots,from,to):{rows:rowsFromDatasets(datasets),baselineComplete:from.endsWith("-01")},[snapshots,datasets,from,to]);
+  const summary=useMemo(()=>buildPerformanceReport({rows:period.rows,dailyRows:[],plans:[],startDate:from,endDate:to,baselineComplete:period.baselineComplete}).totals,[period,from,to]);
 
   return <>
-    <div className="page-head"><div><div className="eyebrow">Reports · SOURCE HISTORY</div><h1 className="page-title">{advertiser} 리포트</h1><p className="page-desc">Daily Fact 원본, 전일 Insight, Snapshot 이력을 기간별로 확인합니다.</p></div></div>
+    {linkEditor&&canEdit&&<CreativeLinkEditor key={`${advertiser}:${month}:${linkEditor.proof.importId}`} {...linkEditor} onClose={()=>setLinkEditor(null)}/>}
+    {lightboxImage&&<ProofImageLightbox image={lightboxImage} onClose={()=>setLightboxImage(null)}/>}
+    <div className="page-head"><div><div className="eyebrow">Reports · SOURCE HISTORY</div><h1 className="page-title">{advertiser} 리포트</h1><p className="page-desc">같은 지면에서 운영한 소재별 성과를 구분하고, 보고·증빙·원본 이력을 기간별로 확인합니다.</p></div></div>
 <LayoutCanvas page="reports">
-    <LayoutPanel id="reports:조회 기간 · 필터:1" title="조회 기간 · 필터"><div className="report-toolbar"><div className="toolbar-group"><span className="toolbar-label">기간</span><input className="toolbar-control" type="date" value={from} onChange={(e)=>setFrom(e.target.value)}/><span>–</span><input className="toolbar-control" type="date" value={to} min={from} onChange={(e)=>setTo(e.target.value)}/></div></div></LayoutPanel>
+    <LayoutPanel id="reports:조회 기간 · 필터:1" title="조회 기간 · 필터"><div className="report-toolbar"><div className="toolbar-group"><span className="toolbar-label">기간</span><input className="toolbar-control" type="date" aria-label="리포트 조회 시작일" value={from} onChange={(e)=>{if(e.target.value){setFrom(e.target.value);if(e.target.value>to)setTo(e.target.value);}}}/><span>–</span><input className="toolbar-control" type="date" aria-label="리포트 조회 종료일" value={to} min={from} onChange={(e)=>{if(e.target.value){setTo(e.target.value);if(e.target.value<from)setFrom(e.target.value);}}}/></div></div></LayoutPanel>
 
+    <LayoutPanel id="reports:소재별 운영 성과" title="소재별 운영 성과"><>{dataSyncState==="ready"&&loadedScope===`${advertiser}:${month}`?<CreativeRotationPanel key={`${advertiser}:${month}`} report={creativeReport} onOpenImage={setLightboxImage} onEditLink={canEdit?(proof,group)=>setLinkEditor({proof,group}):undefined}/>:<p role="status">{dataSyncState==="error"?"소재 자료 동기화에 실패했습니다. 새로고침 후 다시 확인해주세요.":"소재 자료를 불러오는 중입니다."}</p>}</></LayoutPanel>
     <LayoutPanel id="reports:데일리 인사이트:2" title="데일리 인사이트"><section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>데일리 인사이트</h2><p>기간을 선택하고 날짜를 눌러 상세 내용을 확인하세요.</p></div><span className="view-pill">{filteredInsights.length}건</span></div>
       <DailyInsightHistory key={advertiser + month} insights={filteredInsights} />
@@ -38,10 +56,10 @@ export default function ReportsPage() {
 
     {!datasets.length ? <LayoutPanel id="reports:반영된 성과 데이터가 없습니다.:3" title="반영된 성과 데이터가 없습니다."><section className="card card-pad empty-state"><h2>반영된 성과 데이터가 없습니다.</h2><p>성과 리포트를 반영하면 성과 요약과 원본 이력이 추가됩니다.</p></section></LayoutPanel> : <>
       <LayoutGroup>
-<LayoutPanel id="reports:집행액:4" title="집행액" width={12}><article className="metric-card"><span className="metric-kicker">집행액</span><strong>{formatKrw(summary.spend)}</strong></article></LayoutPanel>
-<LayoutPanel id="reports:노출:5" title="노출" width={12}><article className="metric-card"><span className="metric-kicker">노출</span><strong>{formatCount(summary.impressions)}</strong></article></LayoutPanel>
-<LayoutPanel id="reports:클릭:6" title="클릭" width={12}><article className="metric-card"><span className="metric-kicker">클릭</span><strong>{formatCount(summary.clicks)}</strong></article></LayoutPanel>
-<LayoutPanel id="reports:CTR:7" title="CTR" width={12}><article className="metric-card"><span className="metric-kicker">CTR</span><strong>{formatRate(summary.ctr)}</strong></article></LayoutPanel>
+<LayoutPanel id="reports:집행액:4" title="집행액" width={12}><article className="metric-card"><span className="metric-kicker">보고된 집행액 · 선택 기간 제공분</span><strong>{formatKrw(summary.reportedSpend)}</strong></article></LayoutPanel>
+<LayoutPanel id="reports:노출:5" title="노출" width={12}><article className="metric-card"><span className="metric-kicker">디지털 노출 · 제공분</span><strong>{formatCount(summary.digitalImpressions)}</strong></article></LayoutPanel>
+<LayoutPanel id="reports:클릭:6" title="클릭" width={12}><article className="metric-card"><span className="metric-kicker">디지털 클릭 · 제공분</span><strong>{formatCount(summary.digitalClicks)}</strong></article></LayoutPanel>
+<LayoutPanel id="reports:CTR:7" title="CTR" width={12}><article className="metric-card"><span className="metric-kicker">디지털 CTR · 원본 쌍 기준</span><strong>{formatRate(summary.digitalCtr)}</strong></article></LayoutPanel>
 <LayoutPanel id="reports:원본 파일:8" title="원본 파일" width={12}><article className="metric-card"><span className="metric-kicker">원본 파일</span><strong>{datasets.length}</strong></article></LayoutPanel>
 </LayoutGroup>
 

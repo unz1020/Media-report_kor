@@ -10,3 +10,5 @@
 .periodControls > summary small { margin-left:auto; border:1px solid #dce2ec; border-radius:5px; padding:3px 8px; font-size:10px; }
 .periodControls .reportToolbar { border-bottom:0; }
 @container(max-width:650px) { .reportShell :global(.page-desc) { display:none; } .reportShell :global(.page-head) { margin-bottom:14px; } .reportShell :global(.page-title) { font-size:23px; } .periodControls > summary { gap:8px; font-size:11px; } }
+
+.reportNav { overflow-x:auto; scrollbar-width:thin; min-width:0; }

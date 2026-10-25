@@ -41,6 +41,9 @@ jobs:
       - run: npm ci
       - name: Verify URLs and placement validation
         run: |
+          node scripts/verify-creative-rotation.cjs
+          node scripts/verify-creative-rotation-render.cjs
+          node scripts/verify-creative-link-input.mjs
           node scripts/verify-performance-report.cjs
           node scripts/verify-performance-brief.cjs
           node scripts/verify-performance-report-render.cjs
@@ -67,6 +70,7 @@ jobs:
         run: |
           npm run start > /tmp/media-report-server.log 2>&1 &
           node -e 'const http=require("http"); let tries=0; function probe(){ http.get("http://127.0.0.1:3000",r=>process.exit(0)).on("error",()=>{if(++tries>60)process.exit(1);setTimeout(probe,1000)})} probe()'
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-creative-rotation-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-performance-report-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-placement-showroom-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-tv-preview-ui.mjs

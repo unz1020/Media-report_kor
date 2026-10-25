@@ -5,6 +5,14 @@ export type PlacementProofAttachment = {
   kind: "image" | "report" | "other";
 };
 
+/** An AE-confirmed pointer to a creative source, never an inferred asset alias. */
+export type CreativePerformanceLink = {
+  sourceFamily: string;
+  platform: string;
+  placement: string;
+  creative: string;
+};
+
 export type PlacementProof = {
   key?: string;
   advertiser: string;
@@ -24,6 +32,9 @@ export type PlacementProof = {
   budgetReference: number | null;
   status: "게재 확인" | "확인 필요" | "사전 세팅";
   creativeName?: string;
+  performanceLink?: CreativePerformanceLink | null;
+  /** Report-only AE statement. Never pauses or activates an advertising platform. */
+  operation?: { status: "예정" | "집행 중" | "중단" | "종료"; asOf: string; note?: string } | null;
   importId?: string;
   setupOrigin?: "manual";
   previewUrl?: string;
