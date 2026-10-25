@@ -122,6 +122,12 @@ try {
     const conflictHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [conflictGroup] }, compact: true, groupId: group.id }));
     assert.match(conflictHtml, /<td>상충 보고 · 2030-01-19<\/td>/);
   });
+  test('select controls expose exact labels independent of option text', () => {
+    const capturesGroup = { ...group, creatives: [entry('기획전', { proofs: [proof('기획전'), proof('기획전', { reportDate: '2030-01-18' })] }), group.creatives[1]] };
+    const controlsHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [capturesGroup] } }));
+    assert.match(controlsHtml, /<select[^>]*aria-label="비교할 매체·지면"/);
+    assert.match(controlsHtml, /<select[^>]*aria-label="증빙 자료 선택"/);
+  });
   test('viewer, loading, missing proof identity and wrong workspace disable writing', () => {
     for (const state of [{ canEdit: false }, { dataSyncState: 'loading' }, { advertiser: 'Other' }]) {
       workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready', ...state };
