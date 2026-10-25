@@ -317,7 +317,7 @@ console.log("Creative-link Edge checks passed: verified active editors/owners, v
 
 // Operation statement and link share one metadata CAS; proof evidence fields never change.
 const operationBefore=structuredClone(linkFixture), operationAuditBefore=rows.workspace_activity.length;
-const statement={status:"집행 중",asOf:"2026-10-23",note:"AE report only"};
+const statement={status:"집행 중",asOf:"2026-10-23",note:"AE report only\nSecond line\r\nThird line\tindented"};
 const operationReply=await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,operation:statement});
 assert.equal(operationReply.status,200);
 assert.deepEqual((await operationReply.json()).proof.operation,statement);
@@ -328,7 +328,7 @@ operationExpected.updated_at=linkFixture.updated_at;
 assert.equal(JSON.stringify(linkFixture),JSON.stringify(operationExpected));
 assert.equal(rows.workspace_activity.length,operationAuditBefore+1);
 for (const operation of [{...statement,status:"unknown"},{...statement,asOf:"bad"},{...statement,asOf:"2026-02-30"},
-  {...statement,note:"bad\nname"},{...statement,unknown:true}]) {
+  {...statement,note:"bad\u000bname"},{...statement,unknown:true}]) {
   const untouched=stable();
   assert.equal((await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,operation})).status,400);
   assert.equal(stable(),untouched);
@@ -373,3 +373,25 @@ assert.equal((await publish({action:"publish_bundle",bundle:withoutAnnotations})
 assert.equal(linkFixture.metadata.bundle.placementProof.performanceLink,null);
 assert.equal(linkFixture.metadata.bundle.placementProof.operation,null);
 console.log("Annotation regression checks passed: existing manual edit and same-proof bundle reimport preserve omitted annotations; evidence/facts refresh independently; explicit null clears remain cleared.");
+// End-to-end formatting roundtrip changes only allowed note/link leaves plus audit fields.
+for (const note of ["First line\nSecond line", "First line\r\nSecond line\tindented", "First line\rSecond line"]) {
+  const multilineBefore=structuredClone(linkFixture), multilineAudit=rows.workspace_activity.length;
+  const multilineReply=await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,operation:{...statement,note}});
+  assert.equal(multilineReply.status,200);
+  const multilineProof=(await multilineReply.json()).proof;
+  assert.equal(multilineProof.operation.note,note);
+  assert.deepEqual(multilineProof.performanceLink,linkInput.performanceLink);
+  const multilineExpected=structuredClone(multilineBefore);
+  multilineExpected.metadata.bundle.placementProof.performanceLink=linkInput.performanceLink;
+  multilineExpected.metadata.bundle.placementProof.operation={...statement,note};
+  multilineExpected.updated_at=linkFixture.updated_at;
+  multilineExpected.updated_by="fixture@example.com";
+  assert.equal(JSON.stringify(linkFixture),JSON.stringify(multilineExpected));
+  assert.equal(rows.workspace_activity.length,multilineAudit+1);
+}
+for (const note of ["bad\u0000memo", "bad\u000bmemo", "bad\u000cmemo", "bad\u001bmemo", "bad\u007fmemo", "bad\u0085memo", "bad\u009fmemo", "x".repeat(1000)+"\n"]) {
+  const untouched=stable();
+  assert.equal((await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,operation:{...statement,note}})).status,400);
+  assert.equal(stable(),untouched);
+}
+console.log("Operation textarea Edge checks passed: multiline memo plus link saves roundtrip without unrelated changes; unsupported controls and overlong notes cause no writes.");

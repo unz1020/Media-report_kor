@@ -108,6 +108,10 @@ function placementKey(media: string, placement: string): string {
   ].includes(normalized)) return PACKAGE_KEY;
   return normalized;
 }
+/** Shared audited inventory identity. Keeps device, site and flight qualifiers. */
+export function showroomPlacementIdentity(media: string, placement: string): string {
+  return placementKey(canonicalMedia(media), placement);
+}
 function isService(row: ClassificationInput & { service?: unknown }): boolean {
   return (canonicalMedia(row.platform || row.media || '') === PACKAGE_MEDIA && compact(row.placement || '') === '미디어믿아파트엘리베이터') || row.service === true || /서비스|보너스|무상|\bservice\b|\bbonus\b/i.test(row.serviceType || '') || /서비스지면|\(서비스\)|\(보너스\)|^(?:서비스|보너스|무상)\s/.test(`${row.placement || ''} ${row.product || ''}`);
 }

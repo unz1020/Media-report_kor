@@ -46,7 +46,7 @@ export function normalizeCreativeLinkInput(value: unknown) {
       }
       operation = { status: status as "예정" | "집행 중" | "중단" | "종료", asOf };
       if (Object.prototype.hasOwnProperty.call(statement, "note")) {
-        if (typeof statement.note !== "string" || statement.note.length > 1000 || /[\u0000-\u001f\u007f-\u009f]/.test(statement.note)) {
+        if (typeof statement.note !== "string" || statement.note.length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(statement.note)) {
           throw new Error("INVALID_CREATIVE_LINK_OPERATION_NOTE");
         }
         operation.note = statement.note;

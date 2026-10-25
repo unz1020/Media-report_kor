@@ -43,7 +43,7 @@ assert.equal(normalize({...base,operation:null}).operation,null);
 assert.equal("operation" in normalize(base),false);
 for (const bad of [undefined, [], "집행 중", {}, {...operation,extra:1}, {...operation,status:"active"},
   {...operation,asOf:"2026-02-30"}, {...operation,asOf:"yesterday"}, {...operation,note:"x".repeat(1001)},
-  {...operation,note:"bad\nname"}, {...operation,note:{}}, {...operation,status:{}}, {...operation,asOf:{}}]) {
+  {...operation,note:"bad\u000bname"}, {...operation,note:{}}, {...operation,status:{}}, {...operation,asOf:{}}]) {
   assert.throws(() => normalize({...base,operation:bad}));
 }
 for (const status of ["예정", "집행 중", "중단", "종료"]) assert.equal(normalize({...base,operation:{status,asOf:operation.asOf}}).operation.status,status);
@@ -64,3 +64,16 @@ for (const candidate of [{bundle:{}},{bundle:{placementProof:{month:"2026-09"}}}
   const before=JSON.stringify(candidate);retain(candidate,prior);assert.equal(JSON.stringify(candidate),before);
 }
 console.log("Reimport annotation merge copies only omitted leaves for same-month existing proofs; explicit null and other scopes remain untouched.");
+// Textarea formatting is supported only for report-only note text, never pointer identity fields.
+for (const note of ["first\nsecond", "first\r\nsecond", "first\rsecond", "first\tindented", "x".repeat(999)+"\n"]) {
+  assert.equal(normalize({...base,operation:{...operation,note}}).operation.note,note);
+}
+assert.throws(() => normalize({...base,operation:{...operation,note:"x".repeat(1000)+"\n"}}));
+for (let code=0;code<=0x9f;code++) {
+  if (code>0x1f && code<0x7f || [9,10,13].includes(code)) continue;
+  assert.throws(() => normalize({...base,operation:{...operation,note:"first"+String.fromCharCode(code)+"second"}}),"note control "+code);
+}
+for (const field of Object.keys(base.performanceLink)) {
+  for (const control of ["\n","\r","\t"]) assert.throws(() => normalize({...base,performanceLink:{...base.performanceLink,[field]:"first"+control+"second"}}));
+}
+console.log("Operation textarea checks passed: LF/CR/tab preserved, 1000-character limit enforced, remaining C0/C1 rejected, pointer fields remain control-free.");
