@@ -341,3 +341,11 @@
 
 .rotationSection { margin-top:24px; min-width:0; border-top:1px solid var(--border,#e2e6ee); padding-top:20px; }
 .rotationSection>a { display:inline-block; font-size:12px; color:var(--accent,#5358d5); margin-top:14px; }
+
+/* Separate source-backed exploration from optional proposal-only inventory. */
+.scopeControl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--showroom-line); border-radius: 10px; background: var(--showroom-soft); }
+.scopeControl label { display: flex; align-items: center; gap: 8px; font-weight: 750; cursor: pointer; }
+.scopeControl input { width: 16px; height: 16px; accent-color: var(--showroom-accent); }
+.scopeControl input:focus-visible { outline: 3px solid var(--showroom-accent); outline-offset: 3px; }
+.scopeControl > span, .scopeControl p { color: var(--showroom-muted); font-size: 11px; }
+.scopeControl p { flex-basis: 100%; }

@@ -1,3 +1,5 @@
+import { normalizeCreativeMaterialIdentity } from "./creative-material-input.ts";
+
 // This is only an untrusted pointer into audited inventory, never metric data.
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_CREATIVE_LINK_INPUT");
@@ -15,7 +17,7 @@ function text(value: unknown, max: number) {
 }
 export function normalizeCreativeLinkInput(value: unknown) {
   const input = record(value);
-  keys(input, ["advertiser", "month", "importId", "expectedUpdatedAt", "performanceLink"], ["operation"]);
+  keys(input, ["advertiser", "month", "importId", "expectedUpdatedAt", "performanceLink"], ["operation", "materialIdentity"]);
   const advertiser = text(input.advertiser, 200);
   const month = text(input.month, 7);
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error("INVALID_CREATIVE_LINK_MONTH");
@@ -53,18 +55,20 @@ export function normalizeCreativeLinkInput(value: unknown) {
       }
     }
   }
-  return { advertiser, month, importId, expectedUpdatedAt, performanceLink, ...(operation !== undefined ? { operation } : {}) };
+  const identity = Object.prototype.hasOwnProperty.call(input, "materialIdentity")
+    ? { materialIdentity: normalizeCreativeMaterialIdentity(input.materialIdentity) } : {};
+  return { advertiser, month, importId, expectedUpdatedAt, performanceLink, ...(operation !== undefined ? { operation } : {}), ...identity };
 }
 
 // Reimporting the same source proof may refresh evidence, but omitted AE annotations survive.
-// Only copy the two annotation leaves, never source metrics or the rest of an older proof.
+// Only copy annotation leaves, never source metrics or the rest of an older proof.
 export function retainCreativeAnnotations(metadata: Record<string, any>, previous?: Record<string, any>) {
   const incoming = metadata.bundle?.placementProof;
   const prior = previous?.bundle?.placementProof;
   if (!incoming || typeof incoming !== "object" || Array.isArray(incoming) ||
     !prior || typeof prior !== "object" || Array.isArray(prior) ||
     typeof incoming.month !== "string" || incoming.month !== prior.month) return;
-  for (const key of ["performanceLink", "operation"]) {
+  for (const key of ["performanceLink", "operation", "materialIdentity"]) {
     if (!Object.prototype.hasOwnProperty.call(incoming, key) && Object.prototype.hasOwnProperty.call(prior, key)) {
       incoming[key] = prior[key];
     }

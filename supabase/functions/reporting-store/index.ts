@@ -347,7 +347,8 @@ Deno.serve(async (req: Request) => {
       if (input.expectedUpdatedAt !== existing.updated_at) return json({ error: "PLACEMENT_CHANGED" }, 409);
       // AE operation is report-only; evidence status/dates and platform state remain independent.
       const proof = { ...previous, performanceLink: input.performanceLink,
-        ...("operation" in input ? { operation: input.operation } : {}) };
+        ...("operation" in input ? { operation: input.operation } : {}),
+        ...("materialIdentity" in input ? { materialIdentity: input.materialIdentity } : {}) };
       const updatedAt = new Date(Math.max(Date.now(), Date.parse(existing.updated_at) + 1)).toISOString();
       const { data: updated, error } = await supabase.from("report_imports").update({
         metadata: { ...existing.metadata, bundle: { ...existing.metadata.bundle, placementProof: proof } },

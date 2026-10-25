@@ -1,3 +1,4 @@
+import type { CreativeMaterialIdentity } from './creative-material';
 import type { CreativeDailyFact, MediaPlanFact } from './daily-report-parser';
 import type { PublishedDataset } from './daily-report-store';
 import type { PlacementProof } from './placement-proof';
@@ -19,6 +20,7 @@ export type CreativeRotationRow = {
   sourceIndex: number; selected: boolean; conflict: boolean;
 };
 export type CreativeRotationEntry = {
+  materialIdentity?: CreativeMaterialIdentity | null; identityConflict?: boolean;
   id: string; name: string; proofs: PlacementProof[]; plans: MediaPlanFact[];
   rows: CreativeRotationRow[]; metrics: CreativeRotationMetrics;
   firstPerformanceDate: string | null; lastPerformanceDate: string | null; lastReportDate: string | null;
@@ -74,11 +76,41 @@ function metrics(rows: CreativeRotationRow[]): CreativeRotationMetrics {
     conversions: sum('conversions'), ctr: ratio('clicks', 'impressions', 100), cpc: ratio('spend', 'clicks'),
     cpm: ratio('spend', 'impressions', 1000), cpv: ratio('spend', 'views') };
 }
-function entry(group: CreativeRotationGroup, name: string, registered: boolean, forceUnlinked = false): CreativeRotationEntry {
-  const identity = clean(name);
-  const existing = (forceUnlinked ? group.unlinkedPerformance : [...group.creatives, ...group.unlinkedPerformance]).find(item => clean(item.name) === identity);
-  if (existing) return existing;
-  const item: CreativeRotationEntry = { id: group.id + (registered ? ':creative:' : ':performance:') + encodeURIComponent(identity), name,
+/** Kept dependency-free so legacy frozen model tests retain their pure module boundary.
+ * This read mirrors the strict input contract; malformed declarations remain blocked below. */
+function declaredIdentity(proof: PlacementProof): CreativeMaterialIdentity | null {
+  const value = (proof as PlacementProof & { materialIdentity?: unknown }).materialIdentity;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some(key => !['assetId', 'version', 'displayName', 'format', 'reportedFilename'].includes(key)) ||
+    ['assetId', 'version', 'displayName'].some(key => !Object.prototype.hasOwnProperty.call(input, key))) return null;
+  const validText = (value: unknown, max: number): value is string => typeof value === 'string' && !!value.trim() && value.length <= max && !/[\u0000-\u001f\u007f-\u009f]/.test(value);
+  if (!validText(input.assetId, 64) || !validText(input.version, 16) || !validText(input.displayName, 80)) return null;
+  const assetId = input.assetId.trim().toUpperCase(), rawVersion = input.version.trim();
+  if (!/^[A-Z][A-Z0-9-]{2,31}$/.test(assetId) || !/^v\d{1,4}$/i.test(rawVersion) || Number(rawVersion.slice(1)) < 1) return null;
+  const result: CreativeMaterialIdentity = { assetId, version: 'v' + String(Number(rawVersion.slice(1))).padStart(2, '0'), displayName: input.displayName.trim() };
+  if (Object.prototype.hasOwnProperty.call(input, 'format')) {
+    if (!validText(input.format, 60)) return null;
+    result.format = input.format.trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'reportedFilename')) {
+    if (!validText(input.reportedFilename, 180) || /[\/\\]/.test(input.reportedFilename) || ['.', '..'].includes(input.reportedFilename.trim())) return null;
+    result.reportedFilename = input.reportedFilename.trim();
+  }
+  return result;
+}
+const materialKey = (value: CreativeMaterialIdentity) => JSON.stringify([value.assetId, value.version]);
+const definition = (value: CreativeMaterialIdentity) => JSON.stringify([value.displayName, value.format || '', value.reportedFilename || '']);
+function entry(group: CreativeRotationGroup, name: string, registered: boolean, forceUnlinked = false, materialIdentity?: CreativeMaterialIdentity | null): CreativeRotationEntry {
+  const identity = materialIdentity ? 'material:' + materialKey(materialIdentity) : clean(name);
+  const existing = (forceUnlinked ? group.unlinkedPerformance : [...group.creatives, ...group.unlinkedPerformance]).find(item =>
+    materialIdentity ? !!item.materialIdentity && materialKey(item.materialIdentity) === materialKey(materialIdentity)
+      : !item.materialIdentity && clean(item.name) === identity);
+  if (existing) {
+    if (materialIdentity && existing.materialIdentity && definition(materialIdentity) !== definition(existing.materialIdentity)) existing.identityConflict = true;
+    return existing;
+  }
+  const item: CreativeRotationEntry = { id: group.id + (registered ? ':creative:' : ':performance:') + encodeURIComponent(identity), name, ...(materialIdentity ? { materialIdentity } : {}),
     proofs: [], plans: [], rows: [], metrics: metrics([]), firstPerformanceDate: null, lastPerformanceDate: null,
     lastReportDate: null, reportedDates: [], conflictDates: [] };
   (registered ? group.creatives : group.unlinkedPerformance).push(item);
@@ -138,13 +170,28 @@ export function buildCreativeRotationReport(input: CreativeRotationInput): Creat
     const identity = scope(group.media, group.placement);
     const existing = candidates.get(identity) || []; existing.push(group); candidates.set(identity, existing);
     for (const proof of inventory.proofs) {
-      if (namedCreative(proof.creativeName)) entry(group, proof.creativeName!, true).proofs.push(proof);
-      else group.unnamedProofs.push(proof);
+      const material = declaredIdentity(proof);
+      const hasDeclaration = (proof as PlacementProof & { materialIdentity?: unknown }).materialIdentity != null;
+      if (material || namedCreative(proof.creativeName) || hasDeclaration) {
+        const item = entry(group, proof.creativeName || material?.displayName || '식별정보 확인 필요', true, false, material);
+        item.proofs.push(proof);
+        if (hasDeclaration && !material) item.identityConflict = true;
+      } else group.unnamedProofs.push(proof);
     }
     for (const plan of inventory.plans) {
       if (namedCreative(plan.creativeName)) entry(group, plan.creativeName!, true).plans.push(plan);
       else group.unassignedPlans.push(plan);
     }
+  }
+  // An ID/version definition must agree across all registered placements in this report.
+  const materialEntries = new Map<string, CreativeRotationEntry[]>();
+  for (const group of groups) for (const item of group.creatives) if (item.materialIdentity) {
+    const key = materialKey(item.materialIdentity), entries = materialEntries.get(key) || [];
+    entries.push(item); materialEntries.set(key, entries);
+  }
+  for (const items of materialEntries.values()) if (items.some(item => item.identityConflict) ||
+    new Set(items.map(item => definition(item.materialIdentity!))).size > 1) {
+    for (const item of items) item.identityConflict = true;
   }
   const sourceGroups = new Map<string, CreativeRotationGroup>();
   function target(media: string, placement: string): CreativeRotationGroup {
@@ -179,9 +226,14 @@ export function buildCreativeRotationReport(input: CreativeRotationInput): Creat
         return namedCreative(row.creative) && link && link.sourceFamily === familyKey && scope(link.platform, link.placement) === scope(row.platform, row.placement)
           && clean(link.creative) === clean(row.creative || '');
       }));
-      const collision = links.length > 1;
-      const exact = group.creatives.find(candidate => namedCreative(row.creative) && clean(candidate.name) === clean(row.creative || '') &&
-        (candidate.plans.length > 0 || candidate.proofs.some(proof => !(proof as PlacementProof & { performanceLink?: unknown }).performanceLink)));
+      // A plan-only alias or a same-name legacy proof must not steal a declared version's source.
+      const nameMatches = group.creatives.filter(candidate => namedCreative(row.creative) &&
+        (clean(candidate.name) === clean(row.creative || '') || candidate.proofs.some(proof => clean(proof.creativeName || '') === clean(row.creative || ''))));
+      const exactMatches = nameMatches.filter(candidate => !candidate.materialIdentity &&
+        (candidate.plans.length > 0 || candidate.proofs.some(proof => !proof.performanceLink)));
+      const collision = links.length > 1 || links.some(candidate => candidate.identityConflict) ||
+        (!links.length && (nameMatches.length > 1 || nameMatches.some(candidate => candidate.identityConflict)));
+      const exact = nameMatches.length === 1 ? exactMatches[0] : undefined;
       const linked = !collision ? links[0] || exact : undefined;
       const item = linked || entry(group, row.creative || '', false, true);
       const mapping = collision ? 'mapping_conflict' : links.length === 1 ? 'explicit_link' : linked ? 'exact_name' : 'unlinked';
@@ -203,6 +255,15 @@ function serializeCsv(lines: unknown[][]): string {
   }
   return '\ufeff' + lines.map(line => line.map(cell).join(',')).join('\r\n');
 }
+const materialColumns = ['material_id', 'material_version', 'material_label', 'material_reported_filename', 'material_format', 'material_identity_conflict', 'source_link_status'];
+function materialCells(item?: CreativeRotationEntry): unknown[] {
+  const value = item?.materialIdentity;
+  const links = item?.proofs.filter(proof => proof.performanceLink).length || 0;
+  const status = item?.identityConflict ? 'identity_conflict' : item?.rows.some(owner => owner.mapping === 'mapping_conflict') ? 'mapping_conflict'
+    : links ? (item?.rows.some(owner => owner.mapping === 'explicit_link') ? 'explicit_link' : 'explicit_link_no_matching_rows')
+      : value ? 'requires_explicit_link' : item?.rows.some(owner => owner.mapping === 'exact_name') ? 'legacy_exact_name' : 'unlinked';
+  return [value?.assetId, value?.version, value?.displayName, value?.reportedFilename, value?.format, item?.identityConflict || false, status];
+}
 const list = (values: (string | undefined)[]) => [...new Set(values.filter((value): value is string => !!value))].join(' | ');
 function aeOperationReports(proofs: PlacementProof[]): string {
   return list(proofs.flatMap(proof => {
@@ -222,7 +283,7 @@ export function creativeRotationCsv(report: CreativeRotationReport): string {
     'source_row_count', 'counted_row_count', 'source_files', 'proof_source_status', 'plan_source_status',
     'ae_operation_source_reports', 'proof_report_dates', 'proof_verification_dates', 'source_report_dates', 'source_periods',
     'impressions', 'clicks', 'ctr', 'paid_provided_spend', 'views', 'conversions', 'paid_provided_cpc', 'paid_provided_cpm', 'paid_provided_cpv',
-    'impression_coverage_dates', 'click_coverage_dates', 'paid_spend_coverage_dates', 'view_coverage_dates', 'conversion_coverage_dates'];
+    'impression_coverage_dates', 'click_coverage_dates', 'paid_spend_coverage_dates', 'view_coverage_dates', 'conversion_coverage_dates', ...materialColumns];
   const lines: unknown[][] = [columns];
   for (const group of report.groups) {
     for (const [registration, items] of [['registered', group.creatives], ['unlinked_source_only', group.unlinkedPerformance]] as const) {
@@ -242,7 +303,7 @@ export function creativeRotationCsv(report: CreativeRotationReport): string {
           list(item.rows.map(owner => owner.reportDate)), list([...item.proofs, ...item.plans].map(owner =>
             owner.periodStart || owner.periodEnd ? `${owner.periodStart}~${owner.periodEnd}` : '')),
           m.impressions, m.clicks, m.ctr, m.spend, m.views, m.conversions, m.cpc, m.cpm, m.cpv,
-          coverage('impressions'), coverage('clicks'), coverage('spend'), coverage('views'), coverage('conversions')]);
+          coverage('impressions'), coverage('clicks'), coverage('spend'), coverage('views'), coverage('conversions'), ...materialCells(item)]);
       }
     }
   }
@@ -254,7 +315,7 @@ export function creativeRotationAuditCsv(report: CreativeRotationReport): string
   const lines: unknown[][] = [['scope_advertiser', 'scope_month', 'scope_start', 'scope_end', 'media', 'placement', 'environment', 'surface',
     'ambiguous_scope', 'mapping', 'creative', 'source_type', 'source_status', 'ae_operation_source_report', 'source_report_date',
     'source_period_start', 'source_period_end', 'source_file', 'source_family', 'row_mapping', 'source_index', 'performance_date',
-    'counted', 'conflict', 'reference_cost_excluded', 'raw_impressions', 'raw_clicks', 'raw_ctr', 'raw_spend', 'raw_views', 'raw_conversions']];
+    'counted', 'conflict', 'reference_cost_excluded', 'raw_impressions', 'raw_clicks', 'raw_ctr', 'raw_spend', 'raw_views', 'raw_conversions', ...materialColumns]];
   function emit(group: CreativeRotationGroup, mapping: string, item?: CreativeRotationEntry,
     source?: PlacementProof | MediaPlanFact | CreativeRotationRow | ReportingRow, type = '') {
     const owner = type === 'performance' ? source as CreativeRotationRow : undefined;
@@ -268,7 +329,7 @@ export function creativeRotationAuditCsv(report: CreativeRotationReport): string
       proof?.periodStart || plan?.periodStart, proof?.periodEnd || plan?.periodEnd, owner?.sourceFile || proof?.sourceFile || placement?.sourceFile,
       owner?.sourceFamily, owner?.mapping, owner?.sourceIndex, owner?.row.date, owner?.selected, owner?.conflict,
       owner ? referenceCost(owner) : placement ? isPerformanceReferenceRow(placement) : undefined,
-      raw?.impressions, raw?.clicks, raw?.ctr, raw?.spend, raw?.views, raw?.conversions]);
+      raw?.impressions, raw?.clicks, raw?.ctr, raw?.spend, raw?.views, raw?.conversions, ...materialCells(item)]);
   }
   for (const group of report.groups) {
     for (const [mapping, items] of [['registered', group.creatives], ['unlinked_source_only', group.unlinkedPerformance]] as const) {

@@ -7,7 +7,7 @@ const ts = require('typescript');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const root = path.resolve(__dirname, '..');
-const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts'].map(file => path.join(root, file)));
+const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts', 'lib/creative-material.ts', 'supabase/functions/reporting-store/creative-material-input.ts'].map(file => path.join(root, file)));
 const cssAllowed = new Set(['components/creative-rotation-panel.module.css', 'components/creative-link-editor.module.css'].map(file => path.join(root, file)));
 const cache = new Map();
 let workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready' };

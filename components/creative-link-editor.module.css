@@ -35,3 +35,16 @@
 .operationFields :disabled { color: #667085; background: #f9fafb; }
 .subheading { margin: 20px 0 0; font-size: 13px; color: #344054; }
 @media (max-width: 600px) { .operationFields { grid-template-columns: minmax(0, 1fr); } }
+
+.materialSection { margin-bottom: 24px; padding: 14px; border: 1px solid #e4e7ec; border-radius: 8px; background: #fcfcfd; min-width: 0; }
+.materialSection .subheading { margin-top: 0; }
+.materialMode { display: grid; gap: 5px; margin: 12px 0; min-width: 0; }
+.materialFields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+.materialFields label { display: grid; gap: 5px; min-width: 0; }
+.materialFilename { grid-column: 1 / -1; }
+.materialFields input,.materialMode select { width:100%; min-width:0; max-width:100%; padding:9px; margin:0; border:1px solid #d0d5dd; border-radius:7px; background:#fff; color:#344054; font:inherit; }
+.materialSummary,.filenamePreview { padding:10px; border-radius:6px; background:#f4f3ff; overflow-wrap:anywhere; }
+.filenamePreview { display:grid; gap:4px; }
+.filenamePreview code { white-space:normal; overflow-wrap:anywhere; color:#53389e; }
+.filenamePreview :is(span,small) { color:#667085; font-size:11px; }
+@media(max-width:600px) { .materialFields { grid-template-columns:minmax(0,1fr); } .materialSection { padding:10px; } }

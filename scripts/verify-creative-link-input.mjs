@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
-const context = { exports: {}, Error, Date, Object };
+const materialContext = { exports: {}, Error, Object, Number, String };
+vm.runInNewContext(ts.transpileModule(fs.readFileSync("supabase/functions/reporting-store/creative-material-input.ts", "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText, materialContext);
+const context = { exports: {}, Error, Date, Object, require: name => {
+  assert.equal(name, "./creative-material-input.ts"); return materialContext.exports;
+} };
 vm.runInNewContext(ts.transpileModule(fs.readFileSync("supabase/functions/reporting-store/creative-link-input.ts", "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText, context);
@@ -77,3 +83,17 @@ for (const field of Object.keys(base.performanceLink)) {
   for (const control of ["\n","\r","\t"]) assert.throws(() => normalize({...base,performanceLink:{...base.performanceLink,[field]:"first"+control+"second"}}));
 }
 console.log("Operation textarea checks passed: LF/CR/tab preserved, 1000-character limit enforced, remaining C0/C1 rejected, pointer fields remain control-free.");
+
+const material = { assetId: ' cr001 ', version: 'v1', displayName: '기획전', reportedFilename: 'source.mp4' };
+const withMaterial = normalize({...base, materialIdentity:material});
+assert.equal(withMaterial.materialIdentity.assetId,'CR001');assert.equal(withMaterial.materialIdentity.version,'v01');
+assert.equal('materialIdentity' in normalize(base),false);
+assert.equal(normalize({...base,materialIdentity:null}).materialIdentity,null);
+for(const invalid of [undefined, [], {}, {...material,metric:1}, {...material,reportedFilename:'../source.mp4'}]) assert.throws(()=>normalize({...base,materialIdentity:invalid}));
+const identityPrior={bundle:{placementProof:{month:'2026-10',materialIdentity:material}}};
+const refreshed={bundle:{placementProof:{month:'2026-10',status:'fresh',creativeName:'Original'}}};retain(refreshed,identityPrior);
+assert.equal(refreshed.bundle.placementProof.materialIdentity,material);assert.equal(refreshed.bundle.placementProof.creativeName,'Original');
+const clearIdentity={bundle:{placementProof:{month:'2026-10',materialIdentity:null}}};retain(clearIdentity,identityPrior);assert.equal(clearIdentity.bundle.placementProof.materialIdentity,null);
+const edgeCode=fs.readFileSync('supabase/functions/reporting-store/index.ts','utf8');
+assert.match(edgeCode,/\.eq\("updated_at", existing.updated_at\)/);assert.match(edgeCode,/materialIdentity: input.materialIdentity/);
+console.log('Material metadata update checks passed: optional preservation, canonical declaration, explicit clear, reimport leaves, CAS guard and original-name preservation.');
