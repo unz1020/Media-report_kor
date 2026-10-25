@@ -98,9 +98,9 @@ export function CreativeLinkEditor({ proof, group, onClose }: CreativeLinkEditor
     <form onSubmit={submit}>
       <fieldset disabled={blocked}><legend>보고용 운영정보·성과 연결</legend>
         <div className={styles.operationFields}>
-          <label htmlFor={id + "-operation"}>보고용 운영상태<select id={id + "-operation"} value={operationStatus} onChange={event => { setOperationStatus(event.target.value as typeof operationStatus); setConfirmed(false); }}><option value="">미입력 · 보고용 상태 없음</option>{(["예정", "집행 중", "중단", "종료"] as const).map(status => <option key={status} value={status}>{status}</option>)}</select></label>
-          <label htmlFor={id + "-operation-date"}>운영보고 기준일<input id={id + "-operation-date"} type="date" value={operationDate} required={Boolean(operationStatus)} disabled={!operationStatus} onChange={event => { setOperationDate(event.target.value); setConfirmed(false); }} /></label>
-          <label htmlFor={id + "-operation-note"}>운영보고 메모 (선택)<textarea id={id + "-operation-note"} maxLength={500} rows={2} disabled={!operationStatus} value={operationNote} onChange={event => { setOperationNote(event.target.value); setConfirmed(false); }} /></label>
+          <label htmlFor={id + "-operation"}>보고용 운영상태<select id={id + "-operation"} aria-label="보고용 운영상태" value={operationStatus} onChange={event => { setOperationStatus(event.target.value as typeof operationStatus); setConfirmed(false); }}><option value="">미입력 · 보고용 상태 없음</option>{(["예정", "집행 중", "중단", "종료"] as const).map(status => <option key={status} value={status}>{status}</option>)}</select></label>
+          <label htmlFor={id + "-operation-date"}>운영보고 기준일<input id={id + "-operation-date"} aria-label="운영보고 기준일" type="date" value={operationDate} required={Boolean(operationStatus)} disabled={!operationStatus} onChange={event => { setOperationDate(event.target.value); setConfirmed(false); }} /></label>
+          <label htmlFor={id + "-operation-note"}>운영보고 메모 (선택)<textarea id={id + "-operation-note"} aria-label="운영보고 메모 (선택)" maxLength={500} rows={2} disabled={!operationStatus} value={operationNote} onChange={event => { setOperationNote(event.target.value); setConfirmed(false); }} /></label>
         </div>
         <p className={styles.warning}>이 설정은 보고용 정보만 수정하며 실제 광고를 시작하거나 중단하지 않습니다. 상태는 날짜나 0 성과로 추정하지 않습니다. 미입력으로 저장하면 기존 보고용 운영상태를 해제합니다.</p>
         <h3 className={styles.subheading}>연결할 성과 원본 선택</h3>

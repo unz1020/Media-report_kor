@@ -128,6 +128,13 @@ try {
     assert.match(controlsHtml, /<select[^>]*aria-label="비교할 매체·지면"/);
     assert.match(controlsHtml, /<select[^>]*aria-label="증빙 자료 선택"/);
   });
+  test('operation editor exposes exact labels even with selected options and existing memo text', () => {
+    const noteProof = proof('기획전', { operation: { status: '중단', asOf: '2030-01-19', note: 'Existing multiline\nmemo' } });
+    const editorHtml = renderToStaticMarkup(React.createElement(CreativeLinkEditor, { proof: noteProof, group, onClose: () => {} }));
+    assert.match(editorHtml, /<select[^>]*aria-label="보고용 운영상태"/);
+    assert.match(editorHtml, /<input[^>]*aria-label="운영보고 기준일"/);
+    assert.match(editorHtml, /<textarea[^>]*aria-label="운영보고 메모 \(선택\)"/);
+  });
   test('viewer, loading, missing proof identity and wrong workspace disable writing', () => {
     for (const state of [{ canEdit: false }, { dataSyncState: 'loading' }, { advertiser: 'Other' }]) {
       workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready', ...state };
