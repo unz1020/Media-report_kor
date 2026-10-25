@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "@/components/workspace-context";
-import { publishedDatasetsFor, publishedSnapshotsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
+import { publishedDatasetsFor, publishedSnapshotsFor, publishedInsightsFor, publishedPlacementProofsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
 import { mediaPlansFromDatasets, creativePerformanceFromDatasets, dailyPerformanceFromDatasets, periodRowsFromSnapshots, rowsFromDatasets, type ReportingRow } from "@/lib/reporting-data";
 import { canonicalMedia, inferMediaMentions } from "@/lib/media-normalization";
 import { buildPerformanceReport, isPerformanceReferenceRow, type MediaPerformanceReport } from "@/lib/performance-report";
@@ -13,9 +13,15 @@ import { PerformanceCharts } from "@/components/performance-charts";
 import { comparisonMetrics, placementMetricKey } from "@/lib/performance-visuals";
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
 import { InsightEntry } from "@/components/daily-insight-history";
+import { buildCreativeRotationReport, type CreativeRotationGroup } from "@/lib/creative-rotation";
+import { breakdownRowsFromDatasets } from "@/lib/showroom-breakdown";
+import type { PlacementProof } from "@/lib/placement-proof";
+import { CreativeRotationPanel } from "@/components/creative-rotation-panel";
+import { CreativeLinkEditor } from "@/components/creative-link-editor";
+import { ProofImageLightbox, type ProofLightboxImage } from "@/components/proof-image-lightbox";
 import styles from "./performance.module.css";
 
-type Screen="summary"|"detail"|"source"|"plan";
+type Screen="summary"|"detail"|"source"|"plan"|"rotation";
 type Mode="placement"|"creative";
 type Preset="core"|"cost"|"video"|"all";
 const monthStart=(month:string)=>`${month}-01`;
@@ -56,23 +62,30 @@ function DetailTable({item,preset,complete}:{item:MediaPerformanceReport;preset:
   </section>;
 }
 export default function PerformancePage(){
-  const {advertiser,month,dataSyncState,dataSyncError,sessionLoading,reloadData}=useWorkspace();
+  const {advertiser,month,canEdit,dataSyncState,dataSyncError,sessionLoading,reloadData}=useWorkspace();
   const [datasets,setDatasets]=useState<PublishedDataset[]>([]),[snapshots,setSnapshots]=useState<PublishedDataset[]>([]),[insights,setInsights]=useState<PublishedInsight[]>([]),[mediaPlans,setMediaPlans]=useState<MediaPlanFact[]>([]);
+  const [proofs,setProofs]=useState<PlacementProof[]>([]);
+  const [linkEditor,setLinkEditor]=useState<{proof:PlacementProof;group:CreativeRotationGroup}|null>(null);
+  const [rotationGroupId,setRotationGroupId]=useState('');
+  const [lightboxImage,setLightboxImage]=useState<ProofLightboxImage|null>(null);
   const [loadedScope,setLoadedScope]=useState('');
   const [startDate,setStartDate]=useState(monthStart(month)),[endDate,setEndDate]=useState(monthEnd(month)),[creativeDate,setCreativeDate]=useState(monthEnd(month));
   const [selectedMedia,setSelectedMedia]=useState('전체 매체'),[screen,setScreen]=useState<Screen>('summary'),[viewMode,setViewMode]=useState<Mode>('placement'),[metricPreset,setMetricPreset]=useState<Preset>('core');
   const datesInitialized=useRef(false),scope=`${advertiser}:${month}`;
-  useEffect(()=>{datesInitialized.current=false;setStartDate(monthStart(month));setEndDate(monthEnd(month));setCreativeDate(monthEnd(month));setSelectedMedia('전체 매체');setScreen('summary');setViewMode('placement');setMetricPreset('core');},[advertiser,month]);
+  useEffect(()=>{datesInitialized.current=false;setStartDate(monthStart(month));setEndDate(monthEnd(month));setCreativeDate(monthEnd(month));setSelectedMedia('전체 매체');setScreen('summary');setViewMode('placement');setMetricPreset('core');setLinkEditor(null);setLightboxImage(null);setRotationGroupId('');},[advertiser,month]);
   useEffect(()=>{
-    const load=()=>{const all=publishedDatasetsFor(advertiser,month);const usable=all.filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);const history=publishedSnapshotsFor(advertiser,month).filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);setDatasets(usable);setSnapshots(history);setInsights(publishedInsightsFor(advertiser,month));setMediaPlans(mediaPlansFromDatasets(all));setLoadedScope(`${advertiser}:${month}`);const latest=history.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||usable.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1);if(latest&&!datesInitialized.current){setEndDate(latest);setCreativeDate(latest);datesInitialized.current=true;}};
+    const load=()=>{const all=publishedDatasetsFor(advertiser,month);const usable=all.filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);const history=publishedSnapshotsFor(advertiser,month).filter(item=>item.bundle.placements.length||item.bundle.dailyPerformance?.length||item.bundle.creativeDailyPerformance?.length);setDatasets(usable);setSnapshots(history);setProofs(publishedPlacementProofsFor(advertiser,month));setInsights(publishedInsightsFor(advertiser,month));setMediaPlans(mediaPlansFromDatasets(all));setLoadedScope(`${advertiser}:${month}`);const latest=history.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||usable.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1);if(latest&&!datesInitialized.current){setEndDate(latest);setCreativeDate(latest);datesInitialized.current=true;}};
     load();window.addEventListener('media-report-daily-updated',load);window.addEventListener('storage',load);return()=>{window.removeEventListener('media-report-daily-updated',load);window.removeEventListener('storage',load);};
   },[advertiser,month]);
+  useEffect(()=>{const query=new URLSearchParams(window.location.search);if(query.get('view')==='rotation'){setScreen('rotation');setRotationGroupId(query.get('group')||'');}},[advertiser,month]);
   const latestDataDate=useMemo(()=>snapshots.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||datasets.map(d=>d.bundle.reportDate).filter(Boolean).sort().at(-1)||monthEnd(month),[snapshots,datasets,month]);
   const period=useMemo(()=>snapshots.length?periodRowsFromSnapshots(snapshots,startDate,endDate):{rows:rowsFromDatasets(datasets),baselineComplete:startDate.endsWith('-01')},[snapshots,datasets,startDate,endDate]);
   const placementRows=useMemo(()=>period.rows.map(row=>({...row,media:canonicalMedia(row.platform)})),[period.rows]);
   const allCreativeRows=useMemo(()=>[...new Set(datasets.flatMap(item=>item.bundle.creativeDailyPerformance||[]).map(row=>row.date))].flatMap(date=>creativePerformanceFromDatasets(datasets,date)).map(row=>({...row,media:canonicalMedia(row.platform)})),[datasets]);
   const creativeRows=useMemo(()=>allCreativeRows.filter(row=>row.date===creativeDate),[allCreativeRows,creativeDate]);
   const dailyRows=useMemo(()=>dailyPerformanceFromDatasets(datasets,startDate,endDate),[datasets,startDate,endDate]);
+  const rotationPlacementRows=useMemo(()=>[...rowsFromDatasets(datasets),...breakdownRowsFromDatasets(datasets)],[datasets]);
+  const rotationReport=useMemo(()=>buildCreativeRotationReport({advertiser,month,datasets:snapshots.length?snapshots:datasets,proofs,plans:mediaPlans,placementRows:rotationPlacementRows,startDate,endDate}),[advertiser,month,snapshots,datasets,proofs,mediaPlans,rotationPlacementRows,startDate,endDate]);
   const periodInsights=useMemo(()=>insights.filter(i=>i.reportDate>=startDate&&i.reportDate<=endDate),[insights,startDate,endDate]);
   const report=useMemo(()=>buildPerformanceReport({rows:placementRows,dailyRows,creativeRows:allCreativeRows,plans:mediaPlans,startDate,endDate,baselineComplete:period.baselineComplete}),[placementRows,dailyRows,allCreativeRows,mediaPlans,startDate,endDate,period.baselineComplete]);
   const creativeInventory=useMemo(()=>buildPerformanceReport({rows:[],dailyRows:[],creativeRows:allCreativeRows,plans:[],startDate:monthStart(month),endDate:monthEnd(month),baselineComplete:false}).media,[allCreativeRows,month]);
@@ -88,20 +101,25 @@ export default function PerformancePage(){
   function chooseMedia(name:string){setSelectedMedia(name);const item=report.media.find(m=>m.name===name)||creativeInventory.find(m=>m.name===name);const creativeOnly=!!item?.creativeRows?.length&&!item.rows.length&&!item.dailyRows.length;setViewMode(creativeOnly?'creative':'placement');if(creativeOnly&&item?.creativeThrough)setCreativeDate(item.creativeThrough);setMetricPreset('core');}
   function chooseMode(mode:Mode){if(mode==='creative'&&viewMode!=='creative'&&chosen?.creativeThrough)setCreativeDate(chosen.creativeThrough);setViewMode(mode);}
   function openMedia(name:string){chooseMedia(name);setScreen('detail');viewTop();}
-  function go(next:Screen){if(next!=='summary'&&next!=='plan'&&chosen)setSelectedMedia(chosen.name);setScreen(next);viewTop();}
+  function go(next:Screen){if(next!=='summary'&&next!=='plan'&&next!=='rotation'&&chosen)setSelectedMedia(chosen.name);setScreen(next);const url=new URL(window.location.href);if(next==='rotation')url.searchParams.set('view','rotation');else{url.searchParams.delete('view');url.searchParams.delete('group');}window.history.replaceState(null,'',url);viewTop();}
   function preset(kind:string){const day=(n:number)=>`${month}-${String(n).padStart(2,'0')}`;if(kind==='month'){setStartDate(monthStart(month));setEndDate(latestDataDate);}else{const from=kind==='early'?day(1):kind==='middle'?day(11):day(21);const to=kind==='early'?day(10):kind==='middle'?day(20):latestDataDate;if(from>latestDataDate)return;setStartDate(from);setEndDate(to>latestDataDate?latestDataDate:to);}}
   const creativeMode=(screen==='detail'||screen==='source')&&viewMode==='creative';
   const scopeReady=loadedScope===scope;
-  const hasData=!!(datasets.length||mediaPlans.length);
+  const hasData=!!(datasets.length||mediaPlans.length||proofs.length);
   const bootLoading=!scopeReady||sessionLoading||(!hasData&&(dataSyncState==='idle'||dataSyncState==='loading'));
+  function setPeriodStart(date:string){if(!date)return;const bounded=date<monthStart(month)?monthStart(month):date>latestDataDate?latestDataDate:date;setStartDate(bounded);if(bounded>endDate)setEndDate(bounded);}
+  function setPeriodEnd(date:string){if(!date)return;const bounded=date<monthStart(month)?monthStart(month):date>latestDataDate?latestDataDate:date;setEndDate(bounded);if(bounded<startDate)setStartDate(bounded);}
   return <div className={styles.reportShell}>
+    {linkEditor&&canEdit&&<CreativeLinkEditor key={`${advertiser}:${month}:${linkEditor.proof.importId}`} {...linkEditor} onClose={()=>setLinkEditor(null)}/>}
+    {lightboxImage&&<ProofImageLightbox image={lightboxImage} onClose={()=>setLightboxImage(null)}/>}
     <div className="page-head refined-head"><div><div className="eyebrow">성과 리포트</div><h1 className="page-title">{advertiser} 성과 보고</h1><p className="page-desc">전체 성과와 확인할 내용을 먼저 읽고, 매체를 선택해 상세 지표와 근거를 확인하세요.</p></div></div>
-    <details className={styles.periodControls}><summary><span>조회 기간</span><strong>{creativeMode?`소재 ${creativeDate}`:`${startDate} ~ ${endDate}`}</strong><small aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':'변경'}</small></summary><section className={styles.reportToolbar} aria-label="성과 리포트 조회 조건"><div className={styles.dateFields}><label>{creativeMode?'소재 기준일':'조회 기간'}</label>{!(creativeMode)&&<><input type="date" aria-label="성과 조회 시작일" value={startDate} min={monthStart(month)} max={endDate} onChange={e=>e.target.value&&setStartDate(e.target.value)}/><span>~</span></>}<input type="date" aria-label="성과 조회 종료일" value={creativeMode?creativeDate:endDate} min={creativeMode?monthStart(month):startDate} max={latestDataDate} onChange={e=>{if(e.target.value){if(creativeMode)setCreativeDate(e.target.value);else setEndDate(e.target.value);}}}/><button type="button" onClick={()=>creativeMode?setCreativeDate(latestDataDate):preset('month')}>{creativeMode?'최신 기준일':'월 누적'}</button>{!creativeMode&&<select aria-label="기간 바로가기" value="" onChange={e=>preset(e.target.value)}><option value="" disabled>기간 바로가기</option><option value="early">1~10일</option><option value="middle" disabled={latestDataDate<`${month}-11`}>11~20일</option><option value="late" disabled={latestDataDate<`${month}-21`}>21일~최신</option></select>}</div><span className={styles.syncLabel} aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':dataSyncState==='error'?'자료 동기화 확인 필요':datasets.length?`연결된 성과 자료 ${datasets.length}건`:'실적 자료 연결 대기'}</span></section></details>
+    <details className={styles.periodControls}><summary><span>조회 기간</span><strong>{creativeMode?`소재 ${creativeDate}`:`${startDate} ~ ${endDate}`}</strong><small aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':'변경'}</small></summary><section className={styles.reportToolbar} aria-label="성과 리포트 조회 조건"><div className={styles.dateFields}><label>{creativeMode?'소재 기준일':'조회 기간'}</label>{!(creativeMode)&&<><input type="date" aria-label="성과 조회 시작일" value={startDate} min={monthStart(month)} max={endDate} onChange={e=>setPeriodStart(e.target.value)}/><span>~</span></>}<input type="date" aria-label="성과 조회 종료일" value={creativeMode?creativeDate:endDate} min={creativeMode?monthStart(month):startDate} max={latestDataDate} onChange={e=>{if(e.target.value){if(creativeMode)setCreativeDate(e.target.value);else setPeriodEnd(e.target.value);}}}/><button type="button" onClick={()=>creativeMode?setCreativeDate(latestDataDate):preset('month')}>{creativeMode?'최신 기준일':'월 누적'}</button>{!creativeMode&&<select aria-label="기간 바로가기" value="" onChange={e=>preset(e.target.value)}><option value="" disabled>기간 바로가기</option><option value="early">1~10일</option><option value="middle" disabled={latestDataDate<`${month}-11`}>11~20일</option><option value="late" disabled={latestDataDate<`${month}-21`}>21일~최신</option></select>}</div><span className={styles.syncLabel} aria-live="polite">{dataSyncState==='loading'?'자료 갱신 중':dataSyncState==='error'?'자료 동기화 확인 필요':datasets.length?`연결된 성과 자료 ${datasets.length}건`:'실적 자료 연결 대기'}</span></section></details>
     {dataSyncState==='error'&&<div className={styles.syncError} role="alert"><strong>최신 자료를 불러오지 못했습니다.</strong><span>{hasData?'아래 내용은 마지막으로 불러온 자료입니다. ':''}{dataSyncError||'동기화 상태를 확인해 주세요.'}</span><button type="button" onClick={()=>void reloadData()}>다시 불러오기</button></div>}
-    <nav className={styles.reportNav} aria-label="성과 리포트 화면">{([['summary','요약 리포트'],['detail','매체 상세'],['source','일별·원본'],['plan','운영안 비교']] as const).map(([key,label])=><button type="button" key={key} aria-current={screen===key?'page':undefined} onClick={()=>go(key)}>{label}</button>)}</nav>
+    <nav className={styles.reportNav} aria-label="성과 리포트 화면">{([['summary','요약 리포트'],['detail','매체 상세'],['rotation','소재 비교'],['source','일별·원본'],['plan','운영안 비교']] as const).map(([key,label])=><button type="button" key={key} aria-current={screen===key?'page':undefined} onClick={()=>go(key)}>{label}</button>)}</nav>
     {bootLoading?<section className={styles.loading} role="status"><h2>성과 자료를 불러오고 있습니다.</h2><p>동기화 중의 빈 화면을 실적 0이나 데이터 없음으로 처리하지 않습니다.</p><div/><div/></section>:!hasData&&dataSyncState==='error'?<section className={styles.empty}><h2>성과 자료를 확인하지 못했습니다.</h2><p>불러오기 실패는 데이터 없음이나 성과 0을 뜻하지 않습니다. 위의 다시 불러오기로 재시도해 주세요.</p></section>:!hasData?<section className={styles.empty}><h2>아직 반영된 성과 데이터가 없습니다.</h2><p>{advertiser}의 {month} 자료가 연결되면 요약과 매체 상세가 표시됩니다.</p></section>:<>
       {!period.baselineComplete&&<aside className={styles.sourceWarning} role="status"><strong>이 기간의 정확한 합계를 확인할 기준선이 부족합니다.</strong><p>일부 매체는 시작일 직전 누적 자료가 없어 기간 합계를 보류했습니다. 월 누적 또는 원본 자료를 확인해 주세요.</p></aside>}
       {screen==='summary'&&<PerformanceReportOverview report={report} insights={periodInsights} startDate={startDate} endDate={endDate} onOpenMedia={openMedia} onOpenPlan={()=>go('plan')}/>}
+      {screen==='rotation'&&<CreativeRotationPanel key={`${advertiser}:${month}`} report={rotationReport} groupId={rotationGroupId||undefined} onOpenImage={setLightboxImage} onEditLink={canEdit?(proof,group)=>setLinkEditor({proof,group}):undefined}/>}
       {(screen==='detail'||screen==='source')&&<>
         <header className={styles.mediaHeader}><div><button type="button" className={styles.back} onClick={()=>go('summary')}>전체 요약으로</button><h2>{chosen?.name||'매체 선택'}</h2><p>{chosen?.reportDate?`매체 보고 기준 ${chosen.reportDate}`:'실적 자료 미연결'}{viewMode==='creative'?(chosen?.creativeThrough?` · 최근 소재 원본 ${chosen.creativeThrough}`:''):(chosen?.dailyThrough?` · 일별 원본 ${chosen.dailyThrough}까지`:'')}</p></div><label>매체<select aria-label="상세 매체 선택" value={activeMedia==='전체 매체'?'':activeMedia} onChange={e=>chooseMedia(e.target.value)}>{mediaNames.map(name=><option key={name} value={name}>{name}</option>)}</select></label></header>
         <div className={styles.detailNavigation} role="group" aria-label="성과 구분"><button type="button" aria-pressed={viewMode==='placement'} onClick={()=>chooseMode('placement')}>광고 지면</button><button type="button" aria-pressed={viewMode==='creative'} onClick={()=>chooseMode('creative')}>소재별</button>{screen==='detail'&&<button type="button" onClick={()=>go('source')}>일별·원본 확인</button>}{screen==='source'&&<button type="button" onClick={()=>go('detail')}>핵심 지표로</button>}</div>

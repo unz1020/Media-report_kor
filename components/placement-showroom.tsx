@@ -5,6 +5,8 @@ import type { PlacementProof } from "@/lib/placement-proof";
 import type { MediaPlanFact } from "@/lib/daily-report-parser";
 import type { ReportingRow } from "@/lib/reporting-data";
 import { buildShowroomItems, showroomEvidenceFor, type ShowroomEnvironment, type ShowroomSurface, type ShowroomItem } from "@/lib/placement-showroom";
+import { CreativeRotationPanel } from "./creative-rotation-panel";
+import type { CreativeRotationReport, CreativeRotationGroup } from "@/lib/creative-rotation";
 import { ViralPlacementBoard } from "./viral-placement-board";
 import { MediaIcon } from "./media-icon";
 import { mediaVisual } from "@/lib/media-icons";
@@ -18,6 +20,8 @@ type Props = {
   plans: MediaPlanFact[];
   rows: ReportingRow[];
   onOpenImage: (image: ProofLightboxImage) => void;
+  creativeReport?: CreativeRotationReport;
+  onEditCreative?: (proof:PlacementProof,group:CreativeRotationGroup)=>void;
 };
 type PhotoMetadata = { type?: string; layout?: string; sourcePage?: number[]; sourcePhotos?: { page: number; site: string; photoDate?: string }[] };
 type ExtraMetrics = ReportingRow & { footTraffic?: number | null; metricLabel?: string; spendLabel?: string };
@@ -88,7 +92,7 @@ function EvidenceImage({ proof, page, title }: { proof: PlacementProof; page?: n
 function EmptyScreen({ selected }: { selected?: ShowroomItem }) {
   return <div className={styles.noImage}><span className={styles.screenLabel}>{selected?.media || "PLACEMENT SHOWROOM"}</span><strong>{selected?.title || "지면을 선택하세요"}</strong><small>게재 이미지·영상 연결 대기<br/>현재 송출 화면이 아닙니다.</small></div>;
 }
-export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
+export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeReport, onEditCreative }: Props) {
   const items = useMemo(() => buildShowroomItems(proofs, plans, rows), [proofs, plans, rows]);
   const [spatialView, setSpatialView] = useState<"evidence" | "context">("evidence");
   const [environment, setEnvironment] = useState<ShowroomEnvironment>("ooh");
@@ -177,13 +181,14 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage }: Props) {
             {selected.proofs.length > 0 && <div className={styles.creativeSelector}><strong>소재·증빙 선택</strong><div>{selected.proofs.map((proof,index) => <button type="button" key={proof.key || proof.manualImagePath || index} aria-pressed={proof === selectedProof} onClick={() => {setProofIndex(index);setPhotoPage(undefined);}}>{proof.creativeName || `증빙 ${index + 1}`}</button>)}</div></div>}
             {availablePages.length > 1 && <div className={styles.pageSelector} aria-label="증빙 페이지 선택">{availablePages.map(page => <button type="button" key={page} aria-pressed={activePage === page} onClick={() => setPhotoPage(page)}>원본 {page}쪽</button>)}</div>}
             {selectedProof && imageUrl(selectedProof) && <button type="button" className={styles.openOriginal} onClick={openProof}>게재 증빙 원본 크게 보기 <span aria-hidden="true">↗</span></button>}
-            <section className={styles.metrics}><div className={styles.metricsHead}><h4>연결된 성과</h4><span>지면 기준 · 임의 배분 없음</span></div>{selected.metrics.length ? selected.metrics.map((raw,index) => {const row=raw as ExtraMetrics;return <div className={styles.metricRecord} key={`${row.sourceFile}:${row.placement}:${index}`}><p>{row.placement}<span>{row.reportDate} 기준</span></p><dl><div><dt>{row.spendLabel || (selected.service ? "원본 서비스 비용 참고값" : "집행액")}</dt><dd>{valueText(row.spend,true)}</dd></div><div><dt>{row.metricLabel || (environment === "ooh" ? "원본 Impression" : "노출")}</dt><dd>{valueText(row.impressions)}</dd></div>{environment !== "ooh" && <div><dt>클릭</dt><dd>{valueText(row.clicks)}</dd></div>}{row.footTraffic !== undefined && <div><dt>유동인구</dt><dd>{valueText(row.footTraffic)}</dd></div>}</dl></div>;}) : <div className={styles.metricsMissing}>이 지면의 개별 성과는 아직 연결되지 않았습니다.<br/>패키지·매체 합계를 이 지면의 성과로 대신 표시하지 않습니다.</div>}{environment === "ooh" && <p className={styles.metricNote}>원본 Impression·송출 횟수·유동인구는 서로 다른 지표입니다. 서비스 지면은 유료 지면의 집행액과 중복 가산하지 않습니다.</p>}</section>
+            <section className={styles.metrics}><div className={styles.metricsHead}><h4>연결된 성과</h4><span>지면 전체 · 선택 소재 실적 아님</span></div>{selected.metrics.length ? selected.metrics.map((raw,index) => {const row=raw as ExtraMetrics;return <div className={styles.metricRecord} key={`${row.sourceFile}:${row.placement}:${index}`}><p>{row.placement}<span>{row.reportDate} 기준</span></p><dl><div><dt>{row.spendLabel || (selected.service ? "원본 서비스 비용 참고값" : "집행액")}</dt><dd>{valueText(row.spend,true)}</dd></div><div><dt>{row.metricLabel || (environment === "ooh" ? "원본 Impression" : "노출")}</dt><dd>{valueText(row.impressions)}</dd></div>{environment !== "ooh" && <div><dt>클릭</dt><dd>{valueText(row.clicks)}</dd></div>}{row.footTraffic !== undefined && <div><dt>유동인구</dt><dd>{valueText(row.footTraffic)}</dd></div>}</dl></div>;}) : <div className={styles.metricsMissing}>이 지면의 개별 성과는 아직 연결되지 않았습니다.<br/>패키지·매체 합계를 이 지면의 성과로 대신 표시하지 않습니다.</div>}{environment === "ooh" && <p className={styles.metricNote}>원본 Impression·송출 횟수·유동인구는 서로 다른 지표입니다. 서비스 지면은 유료 지면의 집행액과 중복 가산하지 않습니다.</p>}</section>
             {selectedProof?.previewUrl && <CreativeUrlPreview compact url={selectedProof.previewUrl} label="등록 매체 미리보기"/>}{selected.plans.map((plan,index) => safeUrl(plan.creativeUrl || plan.previewUrl) ? <CreativeUrlPreview key={`${plan.rowId || index}:${plan.creativeUrl || plan.previewUrl}`} compact url={plan.creativeUrl || plan.previewUrl} label={plan.creativeName || "등록 소재"}/> : null)}
             {selectedProof?.sourceSummary && <details className={styles.evidenceNotes}><summary>증빙 기준·검수 메모</summary><p>{selectedProof.sourceSummary}</p></details>}
             <p className={styles.historicalNote}>게재 상태와 확인일은 원본 자료에 기록된 기준입니다. 현재 실게재 재확인이나 실시간 송출을 뜻하지 않습니다.</p>
           </> : <div className={styles.empty}>지면을 선택하면 소재, 증빙, 연결된 성과를 확인할 수 있습니다.</div>}
         </aside>
       </div>
+      {selected && !(environment === "digital" && !appOpen) && creativeReport && <div className={styles.rotationSection}><CreativeRotationPanel key={selected.id} report={creativeReport} groupId={selected.id} compact selectedCreativeName={selectedProof?.creativeName} onOpenImage={onOpenImage} onSelectProof={proof=>{const index=selected.proofs.indexOf(proof);if(index>=0){setProofIndex(index);setPhotoPage(undefined);}}} onEditLink={onEditCreative}/><a href={`/performance?view=rotation&group=${encodeURIComponent(selected.id)}`}>소재별 성과 리포트에서 기간 비교 →</a></div>}
       </>}
     </div>
     {unclassified.length > 0 && <details className={styles.unclassified}><summary>환경 분류 확인이 필요한 항목 {unclassified.length}개</summary><ul>{unclassified.map(item => <li key={item.id}>{item.media} · {item.title}</li>)}</ul><p>알 수 없는 지면을 디지털·TV로 임의 분류하지 않습니다. 원본 자료는 하단에서 계속 확인할 수 있습니다.</p></details>}

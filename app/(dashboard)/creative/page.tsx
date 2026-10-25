@@ -7,10 +7,13 @@ import {
   hydratePublishedDailyState,
   publishedDatasetsFor,
   publishedPlacementProofsFor,
+  publishedSnapshotsFor,
   type PublishedDataset,
 } from "@/lib/daily-report-store";
 import type { PlacementProof, PlacementProofAttachment } from "@/lib/placement-proof";
 import { mediaPlansFromDatasets, rowsFromDatasets } from "@/lib/reporting-data";
+import { buildCreativeRotationReport, type CreativeRotationGroup } from "@/lib/creative-rotation";
+import { CreativeLinkEditor } from "@/components/creative-link-editor";
 import { PlacementShowroom } from "@/components/placement-showroom";
 import { ShowroomBreakdownUpload } from "@/components/showroom-breakdown-upload";
 import { breakdownRowsFromDatasets } from "@/lib/showroom-breakdown";
@@ -62,6 +65,9 @@ export default function CreativePage() {
   const [editor, setEditor] = useState<{ proof?: ProofRecord; initialFile?: File; selectionId?: string; initial?: { media?: string; placement?: string; creativeName?: string; periodStart?: string; periodEnd?: string } } | null>(null);
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [proofs, setProofs] = useState<ProofRecord[]>([]);
+  const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
+  const [loadedScope,setLoadedScope]=useState("");
+  const [linkEditor, setLinkEditor] = useState<{proof:PlacementProof;group:CreativeRotationGroup}|null>(null);
   const [selectedMedia, setSelectedMedia] = useState("전체");
   const [uploadingKey, setUploadingKey] = useState("");
   const [uploadError, setUploadError] = useState("");
@@ -70,6 +76,8 @@ export default function CreativePage() {
   useEffect(() => {
     const load = () => {
       setDatasets(publishedDatasetsFor(advertiser, month));
+      setSnapshots(publishedSnapshotsFor(advertiser, month));
+      setLoadedScope(`${advertiser}:${month}`);
       setProofs(publishedPlacementProofsFor(advertiser, month) as ProofRecord[]);
     };
     load();
@@ -83,11 +91,13 @@ export default function CreativePage() {
 
   useEffect(() => {
     setSelectedMedia("전체");
-    setEditor(null); setUploadError(""); setLightboxImage(null);
+    setEditor(null); setUploadError(""); setLightboxImage(null); setLinkEditor(null);
   }, [advertiser, month]);
 
   const plans = useMemo(() => mediaPlansFromDatasets(datasets), [datasets]);
   const showroomRows = useMemo(() => [...rowsFromDatasets(datasets), ...breakdownRowsFromDatasets(datasets)], [datasets]);
+  const rotationEnd = useMemo(()=>datasets.map(d=>d.bundle.reportDate).filter(date=>date.startsWith(month)).sort().at(-1)||`${month}-01`,[datasets,month]);
+  const rotationReport = useMemo(()=>buildCreativeRotationReport({advertiser,month,datasets:snapshots.length?snapshots:datasets,proofs,plans,placementRows:showroomRows,startDate:`${month}-01`,endDate:rotationEnd}),[advertiser,month,snapshots,datasets,proofs,plans,showroomRows,rotationEnd]);
   const placementCount = useMemo(() => new Set(proofs.map((proof) => `${proof.media}::${proof.placement}`)).size, [proofs]);
   const creativeCount = useMemo(() => proofs.filter((proof) => Boolean(proof.creativeName?.trim())).length, [proofs]);
 
@@ -246,8 +256,9 @@ export default function CreativePage() {
 
 
     {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
+    {linkEditor && canEdit && <CreativeLinkEditor key={`${advertiser}:${month}:${linkEditor.proof.importId}`} {...linkEditor} onClose={()=>setLinkEditor(null)}/> }
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
-<PlacementShowroom key={`${advertiser}:${month}`} proofs={proofs} plans={plans} rows={showroomRows} onOpenImage={setLightboxImage} />
+<PlacementShowroom key={`${advertiser}:${month}`} proofs={proofs} plans={plans} rows={showroomRows} creativeReport={dataSyncState==="ready"&&loadedScope===`${advertiser}:${month}`?rotationReport:undefined} onEditCreative={canEdit?(proof,group)=>setLinkEditor({proof,group}):undefined} onOpenImage={setLightboxImage} />
     {canEdit && <ShowroomBreakdownUpload key={`breakdown:${advertiser}:${month}`} advertiser={advertiser} month={month} datasets={datasets} disabled={dataSyncState === "loading" || dataSyncState === "saving"} />}
     <details className={styles.management} open><summary><span>관리·원본 자료</span><small>운영안 URL · 등록 지면 · 자료 연결 · 수동 세팅</small></summary>
 <LayoutCanvas page="creative">
