@@ -149,5 +149,21 @@ try {
     const css = fs.readFileSync(path.join(root, 'components/creative-rotation-panel.module.css'), 'utf8');
     assert.match(css, /overflow-x: auto/); assert.match(css, /minmax\(0, 1fr\)/); assert.match(css, /focus-visible/);
   });
+  test('merged material aliases select the matching entry and original proof, never unrelated metrics', () => {
+    const materialIdentity = { assetId: 'CR777', version: 'v01', displayName: 'Declared alias material' };
+    const aliases = entry('A', { id: 'aliased-material', materialIdentity, proofs: [proof('A', { reportDate: '2030-01-21', manualImagePath: 'synthetic/canonical-A.png' }), proof('Alias', { reportDate: '2030-01-20', manualImagePath: 'synthetic/selected-alias.png' })] });
+    const unrelated = entry('B', { id: 'unrelated-material', proofs: [proof('B', { manualImagePath: 'synthetic/unrelated-B.png' })], metrics: { ...metrics, impressions: 500 } });
+    const aliasGroup = { ...group, id: 'alias-group', creatives: [aliases, unrelated], unlinkedPerformance: [] };
+    const aliasHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [aliasGroup] }, groupId: aliasGroup.id, compact: true, selectedCreativeName: 'Alias', onEditLink: () => {} }));
+    assert.match(aliasHtml, /<h3>A<\/h3>/);assert.match(aliasHtml,/selected-alias.png/);assert.doesNotMatch(aliasHtml,/unrelated-B.png|canonical-A.png/);
+    assert.match(aliasHtml,/선택 증빙 원본 소재명/);
+  });
+  test('unknown or ambiguous external names never default to another material detail', () => {
+    const ambiguousGroup = { ...group, id: 'ambiguous-external', creatives: [entry('A', { id:'one', proofs:[proof('Alias')] }), entry('B', { id:'two', proofs:[proof('Alias')], metrics:{...metrics,impressions:500} })], unlinkedPerformance: [] };
+    for(const selectedCreativeName of ['Unknown external name','Alias']) {
+      const output=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[ambiguousGroup]},groupId:ambiguousGroup.id,compact:true,selectedCreativeName}));
+      assert.doesNotMatch(output,/class="detail"|<img /);
+    }
+  });
   console.log(`Creative rotation render checks passed (${count} synthetic cases).`);
 } finally { globalThis.fetch = originalFetch; }

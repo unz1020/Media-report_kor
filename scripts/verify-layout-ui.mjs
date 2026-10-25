@@ -47,8 +47,8 @@ try {
   await edit();
   const original = await panelIds();
   assert.equal(original.length, 9);
-  const budget = page.getByRole("button", { name: "월 예산 이동", exact: true });
-  const spend = page.getByRole("button", { name: "집행액 이동", exact: true });
+  const budget = page.getByRole("button", { name: "등록 운영안 금액 이동", exact: true });
+  const spend = page.getByRole("button", { name: "보고 행 합산 집행액 이동", exact: true });
   const a = await budget.boundingBox(), b = await spend.boundingBox();
   await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down();
   await page.mouse.move(b.x + 8, b.y + b.height / 2, { steps: 12 }); await page.mouse.up();

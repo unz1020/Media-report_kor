@@ -56,7 +56,7 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
   const [onlyRolling, setOnlyRolling] = useState(true);
   const [chosenGroupId, setChosenGroupId] = useState("");
   const [selection, setSelection] = useState<{ groupId: string; entryId: string; externalName?: string } | null>(null);
-  const [proofSelection, setProofSelection] = useState<{ entryId: string; index: number } | null>(null);
+  const [proofSelection, setProofSelection] = useState<{ entryId: string; index: number; externalName?: string } | null>(null);
   const [downloadError, setDownloadError] = useState("");
   const filtered = report.groups.filter(group => (!onlyRolling || rolling(group) || group.id === groupId) && normalize(`${group.media} ${group.placement} ${[...group.creatives,...group.unlinkedPerformance].map(entry => [entry.name, entry.materialIdentity?.assetId, entry.materialIdentity?.version, entry.materialIdentity?.displayName, entry.materialIdentity?.reportedFilename].filter(Boolean).join(" ")).join(" ")}`).includes(normalize(query))).sort((a, b) => {
     const score = (group: CreativeRotationGroup) => [...group.creatives, ...group.unlinkedPerformance].some(hasMetrics) ? 2 : group.creatives.length ? 1 : 0;
@@ -68,11 +68,13 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
   const selectable = group && !filtered.some(item => item.id === group.id) ? [group, ...filtered] : filtered;
   const entries = group ? [...group.creatives, ...group.unlinkedPerformance] : [];
   const explicit = selection && selection.groupId === group?.id && selection.externalName === selectedCreativeName ? entries.find(entry => entry.id === selection.entryId) : undefined;
-  const externalMatches = selectedCreativeName ? entries.filter(entry => normalize(entry.name) === normalize(selectedCreativeName)) : [];
+  const externalMatches = selectedCreativeName ? entries.filter(entry => [entry.name, ...entry.proofs.map(item => item.creativeName || "")].some(name => normalize(name) === normalize(selectedCreativeName))) : [];
   const ambiguousExternal = !explicit && externalMatches.length > 1;
-  const selected = ambiguousExternal ? undefined : explicit || externalMatches[0] || group?.creatives.find(hasMetrics) || group?.creatives[0] || group?.unlinkedPerformance[0];
+  const missingExternal = Boolean(selectedCreativeName && !explicit && !externalMatches.length);
+  const selected = ambiguousExternal || missingExternal ? undefined : explicit || externalMatches[0] || group?.creatives.find(hasMetrics) || group?.creatives[0] || group?.unlinkedPerformance[0];
   const proofs = selected ? [...selected.proofs].sort((a, b) => b.reportDate.localeCompare(a.reportDate)) : [];
-  const proofIndex = proofSelection && proofSelection.entryId === selected?.id ? proofSelection.index : 0;
+  const aliasProofIndex = selectedCreativeName ? proofs.findIndex(item => normalize(item.creativeName || "") === normalize(selectedCreativeName)) : -1;
+  const proofIndex = proofSelection && proofSelection.entryId === selected?.id && proofSelection.externalName === selectedCreativeName ? proofSelection.index : Math.max(0, aliasProofIndex);
   const proof = proofs[proofIndex] || proofs[0];
   function select(entry: CreativeRotationEntry) {
     if (!group) return;
@@ -99,6 +101,7 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
       {group.unlinkedPerformance.length > 0 && <div className={styles.notice}><strong>성과 원본명 연결 확인 필요</strong><p>등록 소재명과 성과 원본명을 별도로 표시합니다. A/B 표기나 유사한 이름만으로 같은 소재라고 판단하지 않습니다.</p></div>}
       {group.ambiguousScope && <p className={styles.warningText}>지면 또는 소재 연결 범위가 모호합니다. 원본을 확인하기 전에는 자료를 합치지 않습니다.</p>}
       {group.creatives.some(entry => entry.proofs.length > 0 && !entry.materialIdentity) && <p className={styles.identityPending}>소재ID·버전 미등록 항목은 원본명으로 표시합니다. 새 ID를 임의 발급하거나 A/B를 자동 대응하지 않습니다. 상세의 ‘운영정보·성과 연결’에서 확인 후 등록할 수 있습니다.</p>}
+      {missingExternal && <p className={styles.warningText}>선택한 원본 소재명을 현재 지면에서 찾지 못했습니다. 다른 소재의 상세로 대신 표시하지 않습니다. 비교표에서 직접 선택해주세요.</p>}
       {ambiguousExternal && <p className={styles.warningText}>같은 원본명이 여러 소재 또는 버전에 있습니다. ID·버전을 확인하고 비교표에서 직접 선택해주세요.</p>}
       <EntryTable entries={group.creatives} title="등록 소재" selectedId={selected?.id} onSelect={select} />
       {group.unlinkedPerformance.length > 0 && <EntryTable entries={group.unlinkedPerformance} title="미연결 성과 원본명" selectedId={selected?.id} onSelect={select} />}
@@ -106,8 +109,8 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
       {selected?.identityConflict && <p className={styles.warningText}>같은 식별자의 정의가 서로 다르거나 식별정보 형식이 유효하지 않아 성과 연결을 보류했습니다. AE가 원본 소재와 버전을 확인해야 합니다.</p>}
       {selected && <section className={styles.detail} aria-label="선택 소재 상세"><header className={styles.detailHeader}><h3>{selected.name || "소재명 미입력"}</h3><span>{group.creatives.includes(selected) ? "등록 소재" : "성과 원본명 · 미연결"}</span></header>
         <div className={styles.detailGrid}><div>
-          {proofs.length > 1 && <label className={styles.proofSelect}>증빙 자료 선택<select aria-label="증빙 자료 선택" value={Math.max(0, proofs.indexOf(proof))} onChange={event => { const index = Number(event.target.value); setProofSelection({ entryId: selected.id, index }); onSelectProof?.(proofs[index]); }}>{proofs.map((item, index) => <option key={index} value={index}>{date(item.reportDate)} · {item.status} · {item.sourceFile}</option>)}</select></label>}
-          {proof ? <><OriginalImage key={`${selected.id}:${proof.importId || proof.messageId}:${proof.reportDate}:${proof.manualImagePath || ""}`} proof={proof} onOpenImage={onOpenImage} /><dl className={styles.sourceDates}><div><dt>선택 증빙의 AE 보고용 운영상태</dt><dd>{proof.operation?.status || "미입력"}</dd></div>{proof.operation && <><div><dt>운영보고 기준일</dt><dd>{date(proof.operation.asOf)}</dd></div>{proof.operation.note && <div><dt>운영보고 메모</dt><dd>{proof.operation.note}</dd></div>}</>}<div><dt>증빙 자료상 상태</dt><dd>{proof.status}</dd></div><div><dt>자료상 확인일</dt><dd>{date(proof.verificationDate)}</dd></div><div><dt>증빙 보고서 기준일</dt><dd>{date(proof.reportDate)}</dd></div></dl>{onEditLink && <button type="button" className={styles.secondaryButton} disabled={!proof.importId || !proof.publishedAt || !proof.creativeName} onClick={() => onEditLink(proof, group)}>운영정보·성과 연결</button>}</> : <p className={styles.empty}>이 소재명에 연결된 게재 증빙이 없습니다.</p>}
+          {proofs.length > 1 && <label className={styles.proofSelect}>증빙 자료 선택<select aria-label="증빙 자료 선택" value={Math.max(0, proofs.indexOf(proof))} onChange={event => { const index = Number(event.target.value); setProofSelection({ entryId: selected.id, index, externalName: onSelectProof ? proofs[index]?.creativeName : selectedCreativeName }); onSelectProof?.(proofs[index]); }}>{proofs.map((item, index) => <option key={index} value={index}>{date(item.reportDate)} · {item.status} · {item.sourceFile}</option>)}</select></label>}
+          {proof ? <><OriginalImage key={`${selected.id}:${proof.importId || proof.messageId}:${proof.reportDate}:${proof.manualImagePath || ""}`} proof={proof} onOpenImage={onOpenImage} /><dl className={styles.sourceDates}><div><dt>선택 증빙 원본 소재명</dt><dd>{proof.creativeName || "미입력"}</dd></div><div><dt>선택 증빙의 AE 보고용 운영상태</dt><dd>{proof.operation?.status || "미입력"}</dd></div>{proof.operation && <><div><dt>운영보고 기준일</dt><dd>{date(proof.operation.asOf)}</dd></div>{proof.operation.note && <div><dt>운영보고 메모</dt><dd>{proof.operation.note}</dd></div>}</>}<div><dt>증빙 자료상 상태</dt><dd>{proof.status}</dd></div><div><dt>자료상 확인일</dt><dd>{date(proof.verificationDate)}</dd></div><div><dt>증빙 보고서 기준일</dt><dd>{date(proof.reportDate)}</dd></div></dl>{onEditLink && <button type="button" className={styles.secondaryButton} disabled={!proof.importId || !proof.publishedAt || !proof.creativeName} onClick={() => onEditLink(proof, group)}>운영정보·성과 연결</button>}</> : <p className={styles.empty}>이 소재명에 연결된 게재 증빙이 없습니다.</p>}
         </div><div><dl className={styles.sourceDates}><div><dt>최근 보고된 성과일</dt><dd>{date(selected.lastPerformanceDate)}</dd></div><div><dt>성과 보고서 최신 기준일</dt><dd>{date(selected.lastReportDate)}</dd></div><div><dt>성과 자료 제공일</dt><dd>{selected.reportedDates.length}일 · {date(selected.firstPerformanceDate)} ~ {date(selected.lastPerformanceDate)}</dd></div></dl><MetricDetails metrics={selected.metrics} />
         {selected.conflictDates.length > 0 && <p className={styles.warningText}>충돌로 합계에서 제외한 날짜: {selected.conflictDates.join(", ")}</p>}
         {selected.plans.map((plan, index) => <p className={styles.plan} key={index}><strong>계획 원본상 상태: {plan.operationStatus || plan.proposalStatus || "미제공"}</strong><br />계획 기간 {date(plan.periodStart)} ~ {date(plan.periodEnd)} · 원본 시트 {plan.sourceSheet || "미제공"}</p>)}
