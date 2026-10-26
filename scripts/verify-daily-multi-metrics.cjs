@@ -72,7 +72,7 @@ const input = (extra = {}) => ({ rows: [], dailyRows: [], plans: [], startDate: 
   endDate: '2030-01-25', baselineComplete: true, ...extra });
 const metrics = ['spend', 'impressions', 'clicks', 'ctr', 'views', 'conversions', 'cpc', 'cpm', 'cpv'];
 
-const { buildReportDailySeries, PerformanceReportTrend, PerformanceReportOverview } = load('components/performance-report.tsx');
+const { buildReportDailySeries, buildReportDailyTable, DailyMetricTable, PerformanceReportTrend, PerformanceReportOverview } = load('components/performance-report.tsx');
 const { buildPerformanceReport } = load('lib/performance-report.ts');
 const dailyRows = [daily({date:'2030-01-10', impressions:100, clicks:10, spend:20, views:4}),daily({date:'2030-01-10',placement:'Synthetic (서비스)',impressions:50,clicks:null,spend:999}),daily({date:'2030-01-12',impressions:0,clicks:0,spend:0}),daily({date:'2030-01-13',impressions:null,clicks:2,spend:null}),daily({date:'2030-02-30',impressions:999}),daily({date:'2029-01-01',impressions:999})];
 const report=buildPerformanceReport(input({dailyRows}));
@@ -89,4 +89,32 @@ assert.match(html,/공통 비교일/);assert.match(html,/미제공/);assert.matc
 const empty=renderToStaticMarkup(React.createElement(PerformanceReportTrend,{media:{...media,dailyRows:[daily({impressions:null,clicks:null,spend:null})]},startDate:'2030-01-10',endDate:'2030-01-25'}));assert.equal((empty.match(/<svg /g)||[]).length,0);assert.match(empty,/disabled=""/);
 const overflow=buildReportDailySeries({...media,dailyRows:[daily({impressions:Number.MAX_VALUE}),daily({impressions:Number.MAX_VALUE})]},'2030-01-10','2030-01-25');assert.equal(overflow[0].impressions,null);
 const overview=renderToStaticMarkup(React.createElement(PerformanceReportOverview,{report,insights:[],startDate:'2030-01-10',endDate:'2030-01-25',onOpenMedia:()=>{},onOpenPlan:()=>{}}));assert.match(overview,/data-daily-multi-metrics/);
-console.log('Daily multi-metric checks passed: 3 defaults, independent charts, date/null gaps, zero, service exclusion, invalid dates, overflow, source immutability, empty states and overview/detail parity (synthetic only).');
+// The default table uses the same series and preserves absent days separately from null metrics.
+const table = buildReportDailyTable([{media,series}], '2030-01-10','2030-01-25');
+assert.equal(table.calendarComplete,true);assert.equal(table.groups.length,16);
+assert.equal(table.groups[0].date,'2030-01-25');assert.equal(table.groups.at(-1).date,'2030-01-10');
+assert.equal(table.groups.find(g=>g.date==='2030-01-11').rows[0].point,null);
+assert.equal(table.groups.find(g=>g.date==='2030-01-13').rows[0].point.impressions,null);
+assert.equal(table.groups.find(g=>g.date==='2030-01-12').rows[0].point.spend,0);
+const tableHtml=html.match(/<table[\s\S]*?<\/table>/)?.[0];assert.ok(tableHtml,'Single table is present by default');
+assert.equal((html.match(/data-daily-table=/g)||[]).length,1);
+assert.equal((tableHtml.match(/scope="col"/g)||[]).length,5,'Date, media and three metrics in the same table');
+const tableRow = date => tableHtml.match(new RegExp('<tr data-daily-table-date="'+date+'" data-daily-table-media="네이버">([\\s\\S]*?)<\\/tr>'))?.[1];
+assert.match(tableRow('2030-01-11'),/원본 없음/);assert.doesNotMatch(tableRow('2030-01-11'),/>0(?:원)?</);
+assert.match(tableRow('2030-01-13'),/미제공/);assert.match(tableRow('2030-01-12'),/>0원</);
+assert.match(tableRow('2030-01-10'),/>150</);assert.match(tableRow('2030-01-10'),/>20원</);assert.doesNotMatch(tableRow('2030-01-10'),/>1,019원</);
+assert.match(html,/<details class="dailyGraphDisclosure"><summary>일별 그래프 펼치기/);assert.doesNotMatch(html,/<details[^>]*open/);
+assert.match(html,/선택일만 보기/);assert.match(html,/tabindex="0"/);
+const rawMedia={...media,name:'합성 방송',kind:'broadcast'};
+const otherMedia={...media,name:'합성 동영상',kind:'video'};
+const multi=buildReportDailyTable([{media,series},{media:rawMedia,series},{media:otherMedia,series}], '2030-01-10','2030-01-13');
+const multiHtml=renderToStaticMarkup(React.createElement(DailyMetricTable,{groups:multi.groups,metrics:['impressions','clicks','spend','views'],date:'2030-01-12'}));
+assert.equal((multiHtml.match(/data-daily-table-date=/g)||[]).length,12,'Four dates x three separate media rows');
+assert.equal((multiHtml.match(/rowSpan="3"/gi)||[]).length,4);
+assert.match(multiHtml,/해당 없음/);assert.match(multiHtml,/원본 지표 · 접촉 인원 아님/);assert.doesNotMatch(multiHtml,/<tfoot|NaN|Infinity|undefined/);
+assert.equal(buildReportDailyTable([{media,series}],'2030-02-30','2030-03-03').groups.length,0);
+assert.equal(buildReportDailyTable([{media,series}],'2030-01-25','2030-01-10').groups.length,0);
+assert.equal(buildReportDailyTable([{media,series}],'2028-01-01','2028-12-31').groups.length,366,'Leap calendar remains complete');
+const long=buildReportDailyTable([{media,series}],'2020-01-01','2040-01-01');assert.equal(long.calendarComplete,false);assert.equal(long.groups.length,3,'Long ranges remain bounded to source dates');
+assert.equal(JSON.stringify(media),before,'Table rendering never mutates source data');
+console.log('Daily table + multi-metric checks passed: one default table, 3/4 metric columns, separate media rows, descending complete dates, missing-day vs null vs zero, raw definitions, reference cost exclusion, collapsed charts, leap days, bounded long ranges and source immutability (synthetic only).');

@@ -88,7 +88,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
     </dl>
     <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
     <section className={styles.section} aria-labelledby={`${id}-trend`}>
-      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>여러 지표, 같은 날의 흐름</h3></div></div>
+      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>일별 지표를 한 표에서</h3></div></div>
       {trendOptions.length ? <DailyMetricExplorer mediaOptions={trendOptions} startDate={startDate} endDate={endDate} /> : <p className={styles.empty}>선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다.</p>}
     </section>
     <div className={composition.length ? styles.contextGrid : styles.contextSingle}>
@@ -197,23 +197,55 @@ export function PerformanceReportTrend({ media, startDate, endDate }: { media: M
   return <DailyMetricExplorer mediaOptions={[media]} startDate={startDate} endDate={endDate} />;
 }
 
+// Reuse the exact chart series; never synthesize a missing value or combine media.
+export function buildReportDailyTable(items: { media: MediaPerformanceReport; series: DailyPoint[] }[], startDate: string, endDate: string) {
+  const first = Date.parse(startDate + "T00:00:00Z"), last = Date.parse(endDate + "T00:00:00Z");
+  const valid = Number.isFinite(first) && Number.isFinite(last) && first <= last && new Date(first).toISOString().slice(0, 10) === startDate && new Date(last).toISOString().slice(0, 10) === endDate;
+  const days = valid ? Math.round((last - first) / 86400000) + 1 : 0;
+  const calendarComplete = valid && days <= 366;
+  const dates = !valid ? [] : calendarComplete ? Array.from({ length: days }, (_, index) => new Date(first + index * 86400000).toISOString().slice(0, 10)) : [...new Set(items.flatMap(item => item.series.map(point => point.date)))].filter(date => date >= startDate && date <= endDate).sort();
+  const lookups = items.map(item => ({ media: item.media, points: new Map(item.series.map(point => [point.date, point])) }));
+  return { calendarComplete, groups: dates.reverse().map(date => ({ date, rows: lookups.map(item => ({ media: item.media, point: item.points.get(date) ?? null })) })) };
+}
+
+export function DailyMetricTable({ groups, metrics, date }: { groups: ReturnType<typeof buildReportDailyTable>["groups"]; metrics: Metric[]; date: string }) {
+  const hasRaw = groups.some(group => group.rows.some(row => raw(row.media)));
+  return <div className={styles.dailyTableScroll} role="region" aria-label="일별 통합표 스크롤 영역" tabIndex={0}>
+    <table className={styles.dailyTable} data-daily-table aria-label="일별 지표 통합표">
+      <caption>날짜별 · 매체별 제공 지표를 한 표에서 비교합니다. 최신 날짜순 · 매체 간 합산 없음</caption>
+      <thead><tr><th scope="col">날짜</th><th scope="col">매체</th>{metrics.map(metric => <th scope="col" key={metric}>{metric === "impressions" ? hasRaw ? "노출수 / 원본값" : "노출수" : metric === "clicks" ? "클릭수" : metric === "spend" ? "집행액 (원)" : hasRaw ? "조회수 / 원본값" : "조회수"}</th>)}</tr></thead>
+      {groups.map(group => <tbody key={group.date} data-selected-date={group.date === date ? "true" : undefined}>{group.rows.map(({media, point}, index) => <tr key={media.name} data-daily-table-date={group.date} data-daily-table-media={media.name}>
+        {index === 0 && <th scope="rowgroup" rowSpan={group.rows.length} className={styles.dailyDate}><time dateTime={group.date}>{group.date}</time>{group.date === date && <small>비교일</small>}</th>}
+        <th scope="row" className={styles.dailyMedia}><MediaLabel media={media.name}>{media.name}</MediaLabel>{raw(media) && <small>원본 지표 · 접촉 인원 아님</small>}</th>
+        {metrics.map(metric => { const allowed = metricAllowed(media, metric), value = allowed ? point?.[metric] : null;
+          const missing = !allowed ? "해당 없음" : !point ? "원본 없음" : "미제공";
+          return <td key={metric} data-daily-table-metric={metric} className={!finite(value) ? styles.dailyMissing : value === 0 ? styles.dailyZero : undefined} title={raw(media) && (metric === "impressions" || metric === "views") ? "원본 표기 단위이며 디지털 노출·실제 접촉 인원과 동일하지 않습니다." : undefined}>{finite(value) ? dailyFormat(value, metric) : missing}</td>;
+        })}
+      </tr>)}</tbody>)}
+    </table>
+  </div>;
+}
+
 function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOptions: MediaPerformanceReport[]; startDate: string; endDate: string }) {
   const id = useId();
   const [search, setSearch] = useState("");
   const [selectedNames, setSelectedNames] = useState<string[]>([mediaOptions[0]?.name].filter(Boolean));
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[] | null>(null);
   const [activeDate, setActiveDate] = useState("");
+  const [onlyDate, setOnlyDate] = useState(false);
   const all = useMemo(() => mediaOptions.map(media => ({ media, series: buildReportDailySeries(media, startDate, endDate) })), [mediaOptions, startDate, endDate]);
   const names = selectedNames.filter(name => all.some(item => item.media.name === name));
   const selected = all.filter(item => (names.length ? names : [all[0]?.media.name]).includes(item.media.name));
   const available = DAILY_METRICS.filter(metric => selected.some(({media, series}) => metricAllowed(media, metric) && series.some(point => finite(point[metric]))));
   const metrics = (selectedMetrics ?? available.slice(0, 3)).filter(metric => available.includes(metric));
   const dates = [...new Set(selected.flatMap(item => item.series.map(point => point.date)))].sort();
-  const date = dates.includes(activeDate) ? activeDate : dates.at(-1) ?? "";
+  const dailyTable = buildReportDailyTable(selected, startDate, endDate);
+  const dateChoices = dailyTable.groups.map(group => group.date).reverse();
+  const date = dateChoices.includes(activeDate) ? activeDate : dates.at(-1) ?? dateChoices.at(-1) ?? "";
   const minTime = Date.parse(startDate + "T00:00:00Z"), maxTime = Date.parse(endDate + "T00:00:00Z");
   const toggleMetric = (metric: Metric) => setSelectedMetrics(metrics.includes(metric) ? metrics.filter(key => key !== metric) : [...metrics, metric].slice(0, 4));
   return <div className={styles.trend} data-daily-multi-metrics>
-    <p className={styles.meta}>{startDate} ~ {endDate} · 매체 최대 3개 · 지표 최대 4개 · 차트마다 독립 축</p>
+    <p className={styles.meta}>{startDate} ~ {endDate} · 매체 최대 3개 · 지표 최대 4개 · 날짜 × 매체 행 · 선택 지표를 한 표에 표시</p>
     {mediaOptions.length > 1 && <fieldset className={styles.metricChoices}><legend>비교 매체 (최대 3개)</legend>
       <label className={styles.mediaSearch}>매체 찾기<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="매체명 검색" /></label>
       <div className={styles.choiceList}>{all.filter(({media}) => media.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).map(({media}) => {
@@ -226,11 +258,13 @@ function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOption
       const provided = available.includes(metric), checked = metrics.includes(metric);
       return <label key={metric}><input type="checkbox" checked={checked} disabled={!provided || (!checked && metrics.length >= 4)} onChange={() => toggleMetric(metric)} />{labelFor(selected[0]?.media ?? mediaOptions[0], metric)}{!provided && <small>미제공</small>}</label>;
     })}</div></fieldset>
-    {dates.length > 0 && <div className={styles.sharedDate}><label htmlFor={id + "-date"}>공통 비교일</label><select id={id + "-date"} value={date} onChange={event => setActiveDate(event.target.value)}>{dates.map(value => <option key={value} value={value}>{value}</option>)}</select><span className={styles.meta}>점을 선택하거나 Tab·←·→로 같은 날의 값을 함께 확인하세요.</span></div>}
+    {dateChoices.length > 0 && <div className={styles.sharedDate}><label htmlFor={id + "-date"}>공통 비교일</label><select id={id + "-date"} value={date} onChange={event => setActiveDate(event.target.value)}>{dateChoices.map(value => <option key={value} value={value}>{value}</option>)}</select><label className={styles.onlyDate}><input type="checkbox" checked={onlyDate} onChange={event => setOnlyDate(event.target.checked)} />선택일만 보기</label></div>}
     <p className={styles.dateStatus} aria-live="polite">{date && date + " · "}{selected.map(item => item.media.name).join(" / ")} · {metrics.length}개 지표 선택</p>
-    <div className={styles.multiChartGrid}>{selected.flatMap(({media, series}) => metrics.map(metric => <DailyMetricChart key={media.name + metric} media={media} series={series} metric={metric} date={date} minTime={minTime} maxTime={maxTime} onDate={setActiveDate} />))}</div>
+    {metrics.length > 0 && <><DailyMetricTable groups={onlyDate ? dailyTable.groups.filter(group => group.date === date) : dailyTable.groups} metrics={metrics} date={date} />
+      <p className={styles.tableHint}>표 안에서 위아래·좌우로 이동할 수 있습니다. ‘미제공’은 지표 누락, ‘원본 없음’은 해당 날짜의 일별 자료 없음입니다. 실제 0은 0으로 표시하며, 합계는 만들지 않습니다. 방송·옥외의 원본값은 디지털 노출과 직접 비교하지 않습니다.{!dailyTable.calendarComplete && " 1년 초과 기간은 원본이 있는 날짜만 표시합니다."}</p>
+      <details className={styles.dailyGraphDisclosure}><summary>일별 그래프 펼치기</summary><div className={styles.multiChartGrid}>{selected.flatMap(({media, series}) => metrics.map(metric => <DailyMetricChart key={media.name + metric} media={media} series={series} metric={metric} date={date} minTime={minTime} maxTime={maxTime} onDate={setActiveDate} />))}</div></details></>}
     {!metrics.length && <p className={styles.empty}>{available.length ? "함께 볼 일별 지표를 선택하세요." : "선택 기간에 표시할 수 있는 일별 원본 지표가 없습니다. 누적·계획 수치로 대체하지 않습니다."}</p>}
-    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 일별 원본 제공분만 표시합니다. 미제공 날짜·값은 0이 아니며 선을 연결하지 않습니다. 실제 0은 ‘0’으로 표시합니다. 집행액은 서비스·참고 비용을 제외합니다. 각 차트의 축 범위가 달라 선 높이를 매체 간 규모로 비교할 수 없습니다. 방송·옥외의 원본 지표는 실제 접촉 인원·순도달을 뜻하지 않습니다.</p>
+    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 일별 원본 제공분만 표시합니다. 표의 값은 제공 지면만 집계한 수치이며 일부 지면은 미제공일 수 있습니다. 미제공 날짜·값은 0이 아니며 그래프에서는 선을 연결하지 않습니다. 실제 0은 ‘0’으로 표시합니다. 집행액은 서비스·참고 비용을 제외합니다. 각 차트의 축 범위가 달라 선 높이를 매체 간 규모로 비교할 수 없습니다. 방송·옥외의 원본 지표는 실제 접촉 인원·순도달을 뜻하지 않습니다.</p>
   </div>;
 }
 

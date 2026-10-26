@@ -128,7 +128,9 @@ try {
   const html = overview(report);
 
   test('summary is editorial, scoped and navigable without raw tables', () => {
-    assert.doesNotMatch(html, /<(?:table|thead|tbody)\b/);
+    assert.equal((html.match(/<table\b/g) || []).length, 1, "Only the requested unified daily table belongs in the overview");
+    assert.match(html, /data-daily-table=/);
+    assert.doesNotMatch(html.replace(/<table[\s\S]*?<\/table>/g, ""), /<(?:table|thead|tbody)\b/, "No raw ledger tables outside the one daily summary table");
     for (const phrase of ['비용 제공분', '전체 예산 아님', '디지털·동영상', '방송·옥외 제외', '미제공분 제외', '성과 순위가 아닙니다']) assert.ok(html.includes(phrase), phrase);
     assert.match(html, /type="search"/);
     assert.match(html, /aria-label="매체 유형 필터"/);
@@ -252,7 +254,10 @@ try {
     validSvg(output);
     assert.equal((output.match(/<path\b/g) || []).length, 3);
     assert.ok(output.includes('2030-01-11 노출수 0'));
-    assert.ok(!output.includes('2030-01-12') && !output.includes('2030-01-14 노출수 0'));
+    const graphs = (output.match(/<svg[\s\S]*?<\/svg>/g) || []).join('');
+    assert.ok(!graphs.includes('2030-01-12') && !graphs.includes('2030-01-14 노출수 0'), 'Only the calendar table includes missing days, never synthetic chart points');
+    assert.match(output, /data-daily-table-date="2030-01-12"/);
+    assert.match(output, /원본 없음/);
     assert.equal((output.match(/class="chartTarget"/g) || []).length, 3);
   });
   test('fractional unit costs do not round into false zero', () => {
