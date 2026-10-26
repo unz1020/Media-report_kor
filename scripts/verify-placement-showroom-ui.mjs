@@ -59,7 +59,7 @@ try{
  await showroom().getByRole('button',{name:'게재 증빙',exact:true}).click();await originalStage.waitFor();
  await showroom().getByRole('button',{name:'게재 증빙 원본 크게 보기',exact:true}).click();await page.locator('dialog[open]').waitFor();await page.keyboard.press('Escape');await page.locator('dialog').waitFor({state:'hidden'});
  await showroom().getByRole('button',{name:/^옥외 LED/}).click();await showroom().getByRole('button',{name:'원본 6쪽',exact:true}).click();assert.ok((await selectedDetail().textContent()).includes('2030-01-13'));
- await environmentTab('TV·OTT').click();assert.equal(await showroom().getByRole('button',{name:'SBS-TV',exact:true}).count(),1);assert.ok((await showroom().textContent()).includes('실시간 방송이나 현재 광고 송출이 아닙니다.'));
+ await environmentTab('TV·OTT').click();assert.equal(await showroom().getByRole('button',{name:'SBS-TV',exact:true}).count(),0,'Unconfirmed plan-only TV is not in the default source view');await showroom().getByRole('checkbox',{name:'운영안 포함',exact:true}).check();assert.equal(await showroom().getByRole('button',{name:'SBS-TV',exact:true}).count(),1);assert.ok((await showroom().textContent()).includes('실시간 방송이나 현재 광고 송출이 아닙니다.'));await showroom().getByRole('checkbox',{name:'운영안 포함',exact:true}).uncheck();
  await environmentTab('디지털 앱·웹').click();
  const device=()=>showroom().getByRole('button',{name:'홈',exact:true}).locator('..').locator('..');
  const platformPanel=()=>showroom().getByText('웹·광고 플랫폼',{exact:true}).locator('..');
@@ -90,7 +90,7 @@ try{
  await environmentTab('디지털 앱·웹').focus();await page.keyboard.press('End');await viralBoard().waitFor();
  assert.equal(await environmentTab('바이럴').getAttribute('aria-selected'),'true');assert.equal(await environmentTab('바이럴').evaluate(element=>element===document.activeElement),true);
  await page.keyboard.press('ArrowRight');await originalStage.waitFor();assert.equal(await environmentTab('OOH·공간매체').getAttribute('aria-selected'),'true');assert.equal(await environmentTab('OOH·공간매체').evaluate(element=>element===document.activeElement),true);
- await environmentTab('바이럴').click();await viralBoard().waitFor();assert.equal(await viralCards().count(),3,'Only explicit viral posts enter the board');
+ await environmentTab('바이럴').click();await showroom().getByRole('checkbox',{name:'운영안 포함',exact:true}).check();await viralBoard().waitFor();assert.equal(await viralCards().count(),3,'Only explicit viral posts enter the board');
  const pendingViral=viralBoard().getByRole('region',{name:'바이럴 증빙 미연결 항목',exact:true});
  assert.equal(await pendingViral.locator('article[data-viral-pending-id]').count(),2,'Plan/metric-only viral records remain accessible separately from posts');
  const pendingPlan=pendingViral.locator('article').filter({has:page.getByRole('heading',{name:'합성 증빙 없는 운영안',exact:true})});
@@ -141,10 +141,10 @@ try{
  await page.getByText('애드부스트 지면별 성과 연결',{exact:false}).first().click();await page.getByLabel('애드부스트 지면별 성과 원본',{exact:true}).setInputFiles({name:'inventory_20300116.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:workbook()});await page.getByRole('button',{name:'검수한 세부 성과 저장',exact:true}).waitFor();assert.deepEqual(writes,[],'File inspection is not publication');await page.getByRole('button',{name:'검수한 세부 성과 저장',exact:true}).click();await page.getByText('세부 성과를 연결했습니다.',{exact:false}).waitFor();assert.equal(JSON.stringify(imports[0]),originalBase,'Original facts/plans remain byte-for-byte unchanged');assert.equal(imports.length,originalImportCount+1,'Exactly one new augmentation bundle');assert.equal(JSON.stringify(imports.slice(0,originalImportCount)),originalImports,'All original proof/fact/plan bundles remain unchanged');assert.equal(imports.at(-1).metadata.bundle.sourceKind,'showroom_breakdown');
  await showroom().getByRole('button',{name:/^영화관/}).click();await showroom().getByText('100원',{exact:true}).waitFor();await showroom().getByRole('button',{name:/^엘리베이터·생활공간/}).click();assert.ok((await showroom().textContent()).includes('서비스 지면'));assert.ok((await showroom().textContent()).includes('원본 서비스 비용 참고값'));
  assert.deepEqual(writes,['publish_bundle']);
- await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-02');await showroom().getByText('이 환경에 연결된 지면이 없습니다.',{exact:false}).waitFor();assert.equal(await showroom().getByRole('heading',{name:/CGV/}).count(),0,'Scope change clears selection');
- await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-03');await environmentTab('바이럴').click();await viralBoard().getByText('등록된 게시글 증빙이 없습니다',{exact:true}).waitFor();
+ await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-02');await showroom().getByText('현재 필터에 증빙·성과 자료가 연결된 지면이 없습니다.',{exact:false}).waitFor();assert.equal(await showroom().getByRole('heading',{name:/CGV/}).count(),0,'Scope change clears selection');
+ await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-03');await environmentTab('바이럴').click();await showroom().getByRole('checkbox',{name:'운영안 포함',exact:true}).check();await viralBoard().getByText('등록된 게시글 증빙이 없습니다',{exact:true}).waitFor();
  assert.equal(await viralCards().count(),0);assert.equal(await viralBoard().getByRole('region',{name:'바이럴 증빙 미연결 항목',exact:true}).locator('article').count(),2,'A proof-less scope still exposes its plan and performance rows');
- assert.ok((await environmentTab('바이럴').textContent()).includes('2 미연결'));
+ assert.ok((await environmentTab('바이럴').textContent()).includes('운영안만 1개'));assert.ok((await environmentTab('바이럴').textContent()).includes('자료 연결 항목'));
  access='viewer';await page.reload();await showroom().waitFor({state:'visible',timeout:30000});assert.equal(await page.getByLabel('애드부스트 지면별 성과 원본',{exact:true}).count(),0,'Viewer cannot publish augmentation');assert.deepEqual(errors,[]);
  console.log('Showroom UI passed: four environments and keyboard wrap, source-first OOH/context isolation, cinema/LED crop and dates, official app icons/platform-device separation, per-proof viral cards/filters/safe links/unknown dates, shared lightbox, read-only desktop/mobile exploration, one reviewed augmentation only, unchanged original bundles, service separation, scope and viewer permissions.');
 }finally{await browser.close();}

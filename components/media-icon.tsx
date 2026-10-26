@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react';
 import { mediaVisual } from '@/lib/media-icons';
 
-export function MediaIcon({ media, className }: { media: string; className?: string }) {
-  const asset=mediaVisual(media);
+export function MediaIcon({ media, placement, className }: { media: string; placement?: string; className?: string }) {
+  const asset=mediaVisual(media, placement);
   const [failed,setFailed]=useState(false);
   useEffect(()=>setFailed(false),[asset?.src]);
   return <span className={className} aria-hidden="true" data-media-icon={asset?.key || 'web'}>{asset&&!failed

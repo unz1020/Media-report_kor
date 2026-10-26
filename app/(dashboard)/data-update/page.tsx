@@ -26,8 +26,8 @@ export default function DataUpdatePage() {
       <LayoutPanel id="data-update:게재 보고 자료:3" title="게재 보고 자료"><PlacementReportIntake /></LayoutPanel>
 
       <LayoutPanel id="data-update:운영 자료는 원본 성격에 맞춰 분리 관리:4" title="운영 자료는 원본 성격에 맞춰 분리 관리"><section className={styles.secondarySources}>
-        <article><div className="eyebrow">월간 · 소재 자료</div><h3>운영 자료는 원본 성격에 맞춰 분리 관리</h3><p>미디어 믹스는 최초/변경 시 반영하고, 게재 보고 메일은 실제 노출 확인 자료로 저장합니다. 소재 원본은 Google Drive 폴더 동기화 또는 일괄 업로드를 함께 사용합니다.</p></article>
-        <div><span>미디어 믹스</span><strong>최초 + 변경 시</strong></div><div><span>게재 확인</span><strong>Gmail 게재보고</strong></div><div><span>소재 원본</span><strong>Drive 자동수집</strong></div>
+        <article><div className="eyebrow">월간 · 소재 자료</div><h3>운영 자료는 원본 성격에 맞춰 분리 관리</h3><p>미디어 믹스는 최초/변경 시 반영하고, 게재 보고 메일은 실제 노출 확인 자료로 저장합니다. 소재 이미지는 소재 · 게재지면에서 파일 선택·드롭·붙여넣기로 직접 등록하며, 기존 게재 증빙과 구분해 보관합니다.</p></article>
+        <div><span>미디어 믹스</span><strong>최초 + 변경 시</strong></div><div><span>게재 확인</span><strong>Gmail 게재보고</strong></div><div><span>소재 원본</span><strong>내 이미지 직접 등록</strong></div>
       </section></LayoutPanel>
     </LayoutCanvas>
 </>

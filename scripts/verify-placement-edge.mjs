@@ -16,8 +16,10 @@ const layoutValidation = { exports: {} };
 vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/layout-input.ts", "utf8")), { exports: layoutValidation.exports, Date, Error, Set, Object });
 const mediaValidation = { exports: {} };
 vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/media-plan-input.ts", "utf8")), { exports: mediaValidation.exports, Date, Error, Number, URL });
+const materialValidation={exports:{}};
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/creative-material-input.ts","utf8")),{exports:materialValidation.exports,Date,Error,Object});
 const creativeLinkValidation = { exports: {} };
-vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/creative-link-input.ts", "utf8")), { exports: creativeLinkValidation.exports, Date, Error, Object });
+vm.runInNewContext(compile(fs.readFileSync("supabase/functions/reporting-store/creative-link-input.ts", "utf8")), { exports: creativeLinkValidation.exports, Date, Error, Object, require:name=>{assert.equal(name,"./creative-material-input.ts");return materialValidation.exports;} });
 let access = "editor", verified = true, active = true, concurrent = false, knownUser = true;
 const writes = [];
 let handler;
@@ -395,3 +397,17 @@ for (const note of ["bad\u0000memo", "bad\u000bmemo", "bad\u000cmemo", "bad\u001
   assert.equal(stable(),untouched);
 }
 console.log("Operation textarea Edge checks passed: multiline memo plus link saves roundtrip without unrelated changes; unsupported controls and overlong notes cause no writes.");
+
+// Identity metadata alone follows the same authorization and optimistic concurrency guards.
+const materialStatement={assetId:'CR001',version:'v01',displayName:'Confirmed fixture asset',format:'30초',reportedFilename:'original.mp4'};
+const materialBefore=structuredClone(linkFixture);const materialResponse=await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,materialIdentity:materialStatement});
+assert.equal(materialResponse.status,200);assert.deepEqual((await materialResponse.json()).proof.materialIdentity,materialStatement);
+const materialExpected=structuredClone(materialBefore);materialExpected.metadata.bundle.placementProof.materialIdentity=materialStatement;materialExpected.updated_at=linkFixture.updated_at;materialExpected.updated_by='fixture@example.com';assert.equal(JSON.stringify(linkFixture),JSON.stringify(materialExpected));
+access='viewer';rows.workspace_user_advertisers[0].access_level='viewer';let materialStable=stable();assert.equal((await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,materialIdentity:null})).status,403);assert.equal(stable(),materialStable);access='editor';rows.workspace_user_advertisers[0].access_level='editor';
+for(const materialIdentity of [{...materialStatement,reportedFilename:'../private.mp4'},{...materialStatement,assetId:'AB'},{...materialStatement,extra:1}]){materialStable=stable();assert.equal((await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,materialIdentity})).status,400);assert.equal(stable(),materialStable);}
+materialStable=stable();assert.equal((await linkCall({...linkInput,expectedUpdatedAt:materialBefore.updated_at,materialIdentity:null})).status,409);assert.equal(stable(),materialStable);
+const preservingIdentity=await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at});assert.equal(preservingIdentity.status,200);assert.deepEqual((await preservingIdentity.json()).proof.materialIdentity,materialStatement);
+assert.equal((await publish({action:'publish_bundle',bundle:withoutAnnotations})).status,200);assert.equal(JSON.stringify(linkFixture.metadata.bundle.placementProof.materialIdentity),JSON.stringify(materialStatement));
+const identityClearResponse=await linkCall({...linkInput,expectedUpdatedAt:linkFixture.updated_at,materialIdentity:null});assert.equal(identityClearResponse.status,200);assert.equal((await identityClearResponse.json()).proof.materialIdentity,null);
+assert.equal((await publish({action:'publish_bundle',bundle:withoutAnnotations})).status,200);assert.equal(linkFixture.metadata.bundle.placementProof.materialIdentity,null);
+console.log('Material identity Edge checks passed: metadata-only changes, source preservation, role/schema/CAS denial, omitted retention, explicit null and reimport preservation.');

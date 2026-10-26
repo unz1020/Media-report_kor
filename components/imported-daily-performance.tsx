@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MediaLabel } from './media-label';
 import { publishedDatasetsFor, publishedInsightsFor, type PublishedDataset } from "@/lib/daily-report-store";
 import styles from "./imported-daily-performance.module.css";
 
@@ -51,7 +52,7 @@ export function ImportedDailyPerformance({ advertiser = "자코모", month = "20
       <div className={styles.sources}>{datasets.map((dataset) => <span key={dataset.key}>{dataset.sourceFile}</span>)}</div>
       <div className={styles.tableWrap}>
         <table><thead><tr><th>매체</th><th>지면</th><th>IMP</th><th>Click</th><th>CTR</th><th>Source</th></tr></thead><tbody>
-          {summary.rows.slice(0, 30).map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}><td>{row.platform}</td><td>{row.placement}</td><td>{row.impressions.toLocaleString()}</td><td>{row.clicks === null ? "-" : row.clicks.toLocaleString()}</td><td>{row.ctr === null ? "-" : `${row.ctr.toFixed(2)}%`}</td><td>{row.sourceFile}</td></tr>)}
+          {summary.rows.slice(0, 30).map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}><td><MediaLabel media={row.platform}/></td><td>{row.placement}</td><td>{row.impressions.toLocaleString()}</td><td>{row.clicks === null ? "-" : row.clicks.toLocaleString()}</td><td>{row.ctr === null ? "-" : `${row.ctr.toFixed(2)}%`}</td><td>{row.sourceFile}</td></tr>)}
         </tbody></table>
       </div>
       <div className={styles.foot}>마지막 반영 {summary.latest ? new Date(summary.latest).toLocaleString("ko-KR") : "-"}</div>

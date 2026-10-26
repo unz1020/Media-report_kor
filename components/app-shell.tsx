@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { seoulReportingMonth, shiftWorkspaceMonth } from "@/lib/workspace-months";
 import { useEffect, useState, type ReactNode } from "react";
 import { ADVERTISERS, WorkspaceProvider, useWorkspace, type AdvertiserKey } from "@/components/workspace-context";
 
@@ -36,6 +37,8 @@ function Icon({ name }: { name: string }) {
 function AppShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [callbackError, setCallbackError] = useState("");
+  const [customMonthOpen, setCustomMonthOpen] = useState(false);
+  const preparingMonth = shiftWorkspaceMonth(seoulReportingMonth());
   useEffect(() => {
     // Read only after hydration; no useSearchParams/Suspense requirement at build time.
     const params = new URLSearchParams(window.location.search);
@@ -82,15 +85,18 @@ function AppShellInner({ children }: { children: ReactNode }) {
       <main className="main">
         <header className="topbar">
           <div className="selector-group">
-            <select className="selector" aria-label="광고주 선택" value={advertiserKey} onChange={(event) => setAdvertiserKey(event.target.value as AdvertiserKey)}>
+            <select className="selector" aria-label="광고주 선택" disabled={dataSyncState === "saving"} value={advertiserKey} onChange={(event) => setAdvertiserKey(event.target.value as AdvertiserKey)}>
               {allowedAdvertiserKeys.map(key => <option key={key} value={key}>{ADVERTISERS[key].label}</option>)}
             </select>
-            <select className="selector" aria-label="조회 월 선택" value={month} onChange={(event) => setMonth(event.target.value)}>
+            <select className="selector" aria-label="조회 월 선택" disabled={dataSyncState === "saving"} value={month} onChange={(event) => setMonth(event.target.value)}>
               {months.map(value => <option key={value} value={value}>{value.slice(0,4)}년 {Number(value.slice(5))}월</option>)}
             </select>
+            <button type="button" className="btn month-direct-toggle" aria-expanded={customMonthOpen} aria-controls="workspace-custom-month" disabled={dataSyncState === "saving"} onClick={() => setCustomMonthOpen(open => !open)}>다른 월</button>
+            {customMonthOpen && <label className="workspace-month-field" id="workspace-custom-month">조회·정리할 월<input type="month" aria-label="직접 조회 월 선택" min="1970-01" max="9999-12" value={month} disabled={dataSyncState === "saving"} onChange={event => { if (event.target.value) setMonth(event.target.value); }}/><small>선택한 월만 조회하며 과거 자료를 복사하지 않습니다.</small></label>}
           </div>
           <div className="top-actions">
             <span className="sync-label" title={dataSyncError || "보고서 데이터는 Supabase에서 광고주별로 동기화됩니다."}>{syncText}</span>
+            {canEdit && <Link href="/data-update#monthly-media" className="btn month-prepare-link" aria-disabled={dataSyncState === "saving"} onClick={event => { if (dataSyncState === "saving") { event.preventDefault(); return; } setMonth(preparingMonth); }}>{Number(preparingMonth.slice(5))}월 매체 정리</Link>}
             <Link href="/reports" className="btn"><span>리포트</span></Link>
             <button className="btn" onClick={() => void reloadData()}>새로고침</button>
             {canEdit && <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>}

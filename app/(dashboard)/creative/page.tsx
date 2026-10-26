@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { creativeImageUrl } from "@/lib/creative-image";
+import { MediaLabel } from '@/components/media-label';
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import {
-  hydratePublishedDailyState,
   publishedDatasetsFor,
   publishedPlacementProofsFor,
   publishedSnapshotsFor,
@@ -62,14 +63,15 @@ export default function CreativePage() {
   const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
   const scope = useRef(advertiser + month);
   scope.current = advertiser + month;
-  const [editor, setEditor] = useState<{ proof?: ProofRecord; initialFile?: File; selectionId?: string; initial?: { media?: string; placement?: string; creativeName?: string; periodStart?: string; periodEnd?: string } } | null>(null);
+  const [editor, setEditor] = useState<{ proof?: ProofRecord; imageOnly?: boolean; initialFile?: File; selectionId?: string; initial?: { media?: string; placement?: string; creativeName?: string; periodStart?: string; periodEnd?: string } } | null>(null);
   const [datasets, setDatasets] = useState<PublishedDataset[]>([]);
   const [proofs, setProofs] = useState<ProofRecord[]>([]);
   const [snapshots, setSnapshots] = useState<PublishedDataset[]>([]);
   const [loadedScope,setLoadedScope]=useState("");
   const [linkEditor, setLinkEditor] = useState<{proof:PlacementProof;group:CreativeRotationGroup}|null>(null);
   const [selectedMedia, setSelectedMedia] = useState("전체");
-  const [uploadingKey, setUploadingKey] = useState("");
+  const [imageEntry, setImageEntry] = useState(false);
+  const [imageTarget, setImageTarget] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [lightboxImage, setLightboxImage] = useState<ProofLightboxImage | null>(null);
 
@@ -90,6 +92,7 @@ export default function CreativePage() {
   }, [advertiser, month]);
 
   useEffect(() => {
+    setImageEntry(false); setImageTarget("");
     setSelectedMedia("전체");
     setEditor(null); setUploadError(""); setLightboxImage(null); setLinkEditor(null);
   }, [advertiser, month]);
@@ -154,51 +157,26 @@ export default function CreativePage() {
     [plans, proofs, selectedMedia],
   );
 
-  async function replaceProofImage(proof: ProofRecord, file?: File) {
-    if (!file || !canEdit) return;
-    const uploadScope = advertiser + month;
-    const key = proof.key || proof.proofId || `${proof.messageId}-${proof.placement}-${proof.creativeName || "default"}`;
-    setUploadingKey(key);
-    setUploadError("");
-    try {
-      const form = new FormData();
-      form.set("file", file);
-      form.set("advertiser", proof.advertiser);
-      form.set("reportDate", proof.reportDate);
-      form.set("sourceFile", proof.sourceFile);
-      if (proof.importId) form.set("importId", proof.importId);
-      if (proof.publishedAt) form.set("expectedUpdatedAt", proof.publishedAt);
-      const response = await fetch("/api/reporting/proof-image", { method: "POST", body: form });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || "이미지 교체에 실패했습니다.");
-      if (scope.current === uploadScope) await hydratePublishedDailyState(advertiser, month);
-    } catch (error) {
-      if (scope.current === uploadScope) setUploadError(error instanceof Error ? error.message : "이미지 교체에 실패했습니다.");
-    } finally {
-      if (scope.current === uploadScope) setUploadingKey("");
-    }
-  }
-
   function proofCard(proof: ProofRecord) {
     const proofKey = proof.key || proof.proofId || `${proof.messageId}-${proof.placement}-${proof.creativeName || "default"}`;
     const image = proof.attachments.find((item) => item.kind === "image");
     const reports = proof.attachments.filter((item) => item.kind === "report");
-    const visualUrl = manualImageUrl(proof) || (image ? attachmentUrl(proof, image) : "");
-    const uploading = uploadingKey === proofKey;
+    const visualUrl = creativeImageUrl(proof) || manualImageUrl(proof) || (image ? attachmentUrl(proof, image) : "");
+    const uploading = false;
     const landing = finalLanding(proof);
     const preview = displayUrl(proof.previewUrl);
 
     return <article className={styles.proofCard} style={creativeStyle(proof.creativeName)} key={proofKey}>
-      <div className={styles.visual} tabIndex={canEdit?0:undefined} aria-label={`${proof.creativeName || proof.placement} 이미지 드롭 또는 붙여넣기`} onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(file)setEditor({proof,initialFile:file,selectionId:crypto.randomUUID()});}} onPaste={event=>{if(!canEdit || dataSyncState==='loading')return;const file=[...event.clipboardData.items].find(item=>item.kind==='file' && item.type.startsWith('image/'))?.getAsFile();if(file){event.preventDefault();setEditor({proof,initialFile:file,selectionId:crypto.randomUUID()});}}}>
+      <div className={styles.visual} tabIndex={canEdit?0:undefined} aria-label={`${proof.creativeName || proof.placement} 이미지 드롭 또는 붙여넣기`} onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(event.dataTransfer.files.length!==1){setUploadError("한 번에 한 파일을 넣어주세요.");return;}if(file)setEditor({proof,imageOnly:true,initialFile:file,selectionId:crypto.randomUUID()});}} onPaste={event=>{if(!canEdit || dataSyncState==='loading')return;const images=[...event.clipboardData.items].filter(item=>item.kind==='file' && item.type.startsWith('image/'));if(images.length>1){event.preventDefault();setUploadError('한 번에 한 파일을 넣어주세요.');return;}const file=images[0]?.getAsFile();if(file){event.preventDefault();setEditor({proof,imageOnly:true,initialFile:file,selectionId:crypto.randomUUID()});}}}>
         {visualUrl
           ? <button type="button" className={styles.imageOpenButton}
               aria-label={`${proof.media} ${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 이미지 크게 보기`}
-              onClick={() => setLightboxImage({ src: visualUrl, title: [proof.media, proof.placement, proof.creativeName].filter(Boolean).join(" · "), description: `${proof.status}${proof.verificationDate ? ` · ${proof.verificationDate} 확인` : ""}` })}>
-              <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} 게재 확인 이미지`} />
+              onClick={() => setLightboxImage({ src: visualUrl, title: [proof.media, proof.placement, proof.creativeName].filter(Boolean).join(" · "), description: `${proof.creativeImagePath ? "사용자 등록 소재 · 게재 증빙 아님" : proof.status}${proof.verificationDate ? ` · ${proof.verificationDate} 확인` : ""}` })}>
+              <img src={visualUrl} alt={`${proof.placement}${proof.creativeName ? ` ${proof.creativeName}` : ""} ${proof.creativeImagePath ? "사용자 등록 소재 · 게재 증빙 아님" : "게재 확인 이미지"}`} />
               <span className={styles.imageOpenHint}>크게 보기</span>
             </button>
           : <div className={styles.visualFallback}>이미지·PDF·PPTX를 놓거나 클릭 후 이미지를 붙여넣으세요.</div>}
-        <span className={styles.visualBadge}>{proof.status}</span>
+        <span className={styles.visualBadge}>{proof.creativeImagePath ? "사용자 등록 소재 · 게재 증빙 아님" : proof.status}</span>
         {canEdit && <label className={styles.replaceImageButton}>
           <input
             type="file"
@@ -206,11 +184,11 @@ export default function CreativePage() {
             disabled={uploading || dataSyncState === "loading"}
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if(file && (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size>4*1024*1024))setEditor({proof,initialFile:file,selectionId:crypto.randomUUID()});else void replaceProofImage(proof, file);
+              if(file)setEditor({proof,imageOnly:true,initialFile:file,selectionId:crypto.randomUUID()});
               event.currentTarget.value = "";
             }}
           />
-          {uploading ? "업로드 중…" : proof.manualImagePath ? "이미지 다시 교체" : "이미지 등록"}
+          {uploading ? "업로드 중…" : proof.creativeImagePath ? "소재 이미지 변경" : "소재 이미지 넣기"}
         </label>}
       </div>
       <div className={styles.proofBody}>
@@ -238,6 +216,7 @@ export default function CreativePage() {
         </div>}
         {canEdit && <div className={styles.editActions}><button type="button" className="btn" disabled={uploading || dataSyncState === "loading"} onClick={() => setEditor({ proof })}>지면 · 랜딩 · UTM 수정</button></div>}
         <div className={styles.fileLinks}>
+          {(manualImageUrl(proof) || image) && <button type="button" className="btn" onClick={() => setLightboxImage({src: manualImageUrl(proof) || attachmentUrl(proof, image!), title: "게재 증빙 원본", description: "기존 원본 자료 · 사용자 등록 소재와 별도"})}>기존 게재 증빙 보기</button>}
           {reports.map((file) => <a key={file.attachmentId} href={attachmentUrl(proof, file, true)}>{file.filename.replace(/^JBR_자코모_/, "")} ↓</a>)}
         </div>
       </div>
@@ -251,19 +230,20 @@ export default function CreativePage() {
         <h1 className="page-title">{advertiser} 소재 · 게재지면</h1>
         <p className="page-desc">공간·채널·앱에서 광고 지면을 탐색하고, 소재·게재 증빙·연결된 성과를 함께 확인합니다.</p>
       </div>
-      <div className="page-meta"><span className="view-pill">{month}</span>{canEdit && <button type="button" className="btn primary" disabled={dataSyncState === "loading"} onClick={() => setEditor({})}>지면 수동 등록</button>}</div>
+      <div className="page-meta">{canEdit && <button type="button" className="btn primary" onClick={() => {setImageEntry(true);setEditor(null);setImageTarget("");}}>소재 이미지 넣기</button>}<span className="view-pill">{month}</span>{canEdit && <button type="button" className="btn primary" disabled={dataSyncState === "loading"} onClick={() => setEditor({})}>지면 수동 등록</button>}</div>
     </div>
 
 
-    {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => setEditor(null)} />}
+    {imageEntry && canEdit && <section className={styles.imageEntry} aria-label="소재 이미지 등록 대상 선택"><h2>소재 이미지 넣기</h2><p>기존 매체·지면·소재를 직접 선택하거나 새 지면을 등록하세요. 이름이나 이미지로 원본·성과를 자동 매칭하지 않습니다.</p><label>기존 매체 / 지면 / 소재<select value={imageTarget} onChange={event=>{const value=event.target.value;setImageTarget(value);setEditor(value ? {proof:proofs[Number(value)-1],imageOnly:true,selectionId:crypto.randomUUID()} : null);}}><option value="">등록 대상을 선택하세요</option>{proofs.map((proof,index)=><option key={proof.importId || index} value={index+1}>{proof.media} / {proof.placement} / {proof.creativeName || "소재명 미입력"}</option>)}</select></label><button type="button" className="btn" onClick={()=>{setImageTarget("");setEditor({});}}>새 지면 등록 후 이미지 넣기</button><button type="button" className="btn" onClick={()=>{setImageEntry(false);setEditor(null);}}>닫기</button></section>}
+    {editor && canEdit && <PlacementSetupForm key={advertiser + month + (editor.proof?.importId || "new") + (editor.initial?.media || "") + (editor.initial?.placement || "") + (editor.initial?.creativeName || "") + (editor.selectionId || "")} {...editor} onClose={() => {setEditor(null);setImageTarget("");}} />}
     {linkEditor && canEdit && <CreativeLinkEditor key={`${advertiser}:${month}:${linkEditor.proof.importId}`} {...linkEditor} onClose={()=>setLinkEditor(null)}/> }
     {uploadError && <div className={styles.uploadError} role="alert">{uploadError}</div>}
-<PlacementShowroom key={`${advertiser}:${month}`} proofs={proofs} plans={plans} rows={showroomRows} creativeReport={dataSyncState==="ready"&&loadedScope===`${advertiser}:${month}`?rotationReport:undefined} onEditCreative={canEdit?(proof,group)=>setLinkEditor({proof,group}):undefined} onOpenImage={setLightboxImage} />
+<PlacementShowroom key={`${advertiser}:${month}`} proofs={proofs} plans={plans} rows={showroomRows} creativeReport={dataSyncState==="ready"&&loadedScope===`${advertiser}:${month}`?rotationReport:undefined} onEditCreative={canEdit?(proof,group)=>setLinkEditor({proof,group}):undefined} onOpenImage={setLightboxImage} onAddImage={canEdit ? (proof,initialFile)=>setEditor({proof,imageOnly:true,initialFile,selectionId:crypto.randomUUID()}) : undefined} />
     {canEdit && <ShowroomBreakdownUpload key={`breakdown:${advertiser}:${month}`} advertiser={advertiser} month={month} datasets={datasets} disabled={dataSyncState === "loading" || dataSyncState === "saving"} />}
     <details className={styles.management} open><summary><span>관리·원본 자료</span><small>운영안 URL · 등록 지면 · 자료 연결 · 수동 세팅</small></summary>
 <LayoutCanvas page="creative">
     {plans.length > 0 && <LayoutPanel id="creative:plan-urls" title="운영안 소재 URL"><section className="card card-pad"><div className="report-panel-head"><div><h2>운영안 소재 URL</h2><p>운영안별 매체 지면 미리보기와 소재 원본 링크를 등록하고 확인합니다. 일정 화면과 함께 반영됩니다.</p></div></div>
-      <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media}</button>)}</div>
+      <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media==="전체"?media:<MediaLabel media={media}/>}</button>)}</div>
       <CreativeLegend names={plans.map(plan=>plan.creativeName)} /><div className={styles.planUrlGrid}>{plans.filter(plan=>selectedMedia==='전체' || (mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform))===selectedMedia || plan.platform===selectedMedia).map((plan,index)=><article className={styles.planUrlCard} style={creativeStyle(plan.creativeName)} key={`${advertiser}:${month}:${plan.rowId || index}`}><small>{mediaPath(plan)} › {plan.product}</small><h3><CreativeMarker name={plan.creativeName} />{plan.creativeName || plan.placement || '소재명 미입력'}</h3><p>{plan.periodStart || '일정 미입력'} ~ {plan.periodEnd || '일정 미입력'}</p><MediaPlanLinks plan={plan} datasets={datasets} /></article>)}</div>
     </section></LayoutPanel>}
     {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
@@ -289,7 +269,7 @@ export default function CreativePage() {
             className={selectedMedia === item.media ? styles.mediaTabActive : styles.mediaTab}
             onClick={() => setSelectedMedia(item.media)}
           >
-            <strong>{item.media}</strong>
+            <strong><MediaLabel media={item.media}/></strong>
             <span>{item.placementKeys.size}개 지면{item.creativeCount ? ` · ${item.creativeCount}개 소재` : ""}</span>
           </button>)}
         </div>
@@ -301,7 +281,7 @@ export default function CreativePage() {
           const groupCreativeCount = group.placements.reduce((sum, placement) => sum + placement.proofs.filter((proof) => Boolean(proof.creativeName?.trim())).length, 0);
           return <section className={styles.mediaGroup} key={group.media}>
             <div className={styles.mediaGroupHead}>
-              <div><span>매체</span><h3>{group.media}</h3></div>
+              <div><span>매체</span><h3><MediaLabel media={group.media} size="md"/></h3></div>
               <div className={styles.mediaGroupStats}>
                 <span>{group.placements.length}개 지면</span>
                 {groupCreativeCount > 0 && <span>{groupCreativeCount}개 소재</span>}
@@ -337,7 +317,7 @@ export default function CreativePage() {
 
     <LayoutPanel id="creative:운영안 기준 연결 대기 지면:6" title="운영안 기준 연결 대기 지면"><section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>운영안 기준 연결 대기 지면</h2><p>{selectedMedia === "전체" ? "운영안에서 확인됐지만 아직 별도 게재 보고 자료가 연결되지 않은 상품을 관리합니다. 이미지 등록에 이미지·PDF·PPTX를 넣거나, 세팅 추가에서 화면을 붙여넣고 저장하세요." : `${selectedMedia} 운영안에서 아직 게재 보고 자료가 연결되지 않은 상품입니다.`}</p></div><span className="view-pill">{visiblePlans.length}개</span></div>
-      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재명</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeName || "미입력"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(file)setEditor({initialFile:file,selectionId:crypto.randomUUID(),initial:{media:plan.platform,placement:plan.placement || plan.product,creativeName:plan.creativeName || '',periodStart:plan.periodStart || '',periodEnd:plan.periodEnd || ''}});}}>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept={PROOF_IMAGE_ACCEPT} disabled={dataSyncState === "loading"} onChange={event => {
+      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재명</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong><MediaLabel media={plan.platform}/></strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeName || "미입력"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(event.dataTransfer.files.length!==1){setUploadError('한 번에 한 파일을 넣어주세요.');return;}if(file)setEditor({initialFile:file,selectionId:crypto.randomUUID(),initial:{media:plan.platform,placement:plan.placement || plan.product,creativeName:plan.creativeName || '',periodStart:plan.periodStart || '',periodEnd:plan.periodEnd || ''}});}}>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept={PROOF_IMAGE_ACCEPT} disabled={dataSyncState === "loading"} onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";
         if (!file) return;

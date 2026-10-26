@@ -16,7 +16,7 @@ export function ProofImagePicker({ initialFile, disabled = false, onChange, onPe
   const objectUrl = (file: Blob) => { const url = URL.createObjectURL(file); urls.current.push(url); return url; };
   const receive = useCallback(async (file?: File) => {
     if (!file || disabled) return;
-    const token = ++sequence.current; clearResources(); setError(''); setNotice(''); setBusy(true); onPendingChange(true); setPdf(undefined); setCandidates([]); setSource(''); setCrop(fullCrop); setSourceName(file.name);
+    const token = ++sequence.current; onChange(undefined); clearResources(); setError(''); setNotice(''); setBusy(true); onPendingChange(true); setPdf(undefined); setCandidates([]); setSource(''); setCrop(fullCrop); setSourceName(file.name);
     try {
       const kind = proofSourceKind(file);
       if (kind === 'image') {
@@ -35,14 +35,16 @@ export function ProofImagePicker({ initialFile, disabled = false, onChange, onPe
       }
     } catch (failure) {
       if (sequence.current !== token) return;
-      setError(failure instanceof Error ? failure.message : '자료를 읽을 수 없습니다. 화면을 복사해 붙여넣어주세요.'); onPendingChange(false);
+      setError(failure instanceof Error ? failure.message : '자료를 읽을 수 없습니다. 파일을 다시 선택해 재시도해주세요.'); onChange(undefined); onPendingChange(false);
     } finally { if (sequence.current === token) setBusy(false); }
   }, [disabled, clearResources, onChange, onPendingChange]);
   // The open editor owns this paste handler; plain text and URL pastes keep normal behavior.
   useEffect(() => {
     if (disabled) return;
     const paste = (event: ClipboardEvent) => {
-      const file = [...(event.clipboardData?.items || [])].find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+      const images = [...(event.clipboardData?.items || [])].filter(item => item.kind === 'file' && item.type.startsWith('image/'));
+      if (images.length > 1) { event.preventDefault(); setError('한 번에 한 파일을 넣어주세요.'); return; }
+      const file = images[0]?.getAsFile();
       if (file) { event.preventDefault(); void receive(file); }
     };
     document.addEventListener('paste', paste); return () => document.removeEventListener('paste', paste);
@@ -68,10 +70,10 @@ export function ProofImagePicker({ initialFile, disabled = false, onChange, onPe
     const end = point(event); setCrop({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width: Math.abs(start.x - end.x), height: Math.abs(start.y - end.y) }); onPendingChange(true); setNotice('');
   }
   function reset() { sequence.current++; clearResources(); setSource(''); setCandidates([]); setPdf(undefined); setError(''); setNotice(''); setBusy(false); setCrop(fullCrop); onChange(undefined); onPendingChange(false); }
-  return <section className={styles.picker} aria-label="게재 이미지 입력">
+  return <section className={styles.picker} aria-label="소재 이미지 입력">
     <div className={`${styles.drop} ${dragging ? styles.dragging : ''}`} onDragOver={event => { if (disabled) return; event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (disabled) return; const files = [...event.dataTransfer.files]; if (files.length > 1) { setError('한 번에 한 파일을 넣어주세요.'); return; } void receive(files[0]); }}>
       <strong>이미지·PDF·PPTX를 여기에 놓으세요</strong><p>화면을 복사한 뒤 Ctrl+V / ⌘V로 바로 붙여넣을 수 있습니다.</p>
-      <label>미리보기 / 게재 이미지<input type="file" aria-label="미리보기 / 게재 이미지" accept={PROOF_IMAGE_ACCEPT} disabled={disabled || busy} onChange={event => { void receive(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
+      <label>소재 이미지 · 게재 증빙 아님<input type="file" aria-label="소재 이미지 · 게재 증빙 아님" accept={PROOF_IMAGE_ACCEPT} disabled={disabled || busy} onChange={event => { void receive(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
       <small>원본 최대 30MB · PDF 페이지 선택 · PPTX에 포함된 이미지 선택 · 이미지 자동 크기 조정</small>
     </div>
     {busy && <p role="status">자료를 읽고 이미지를 준비하고 있습니다…</p>}

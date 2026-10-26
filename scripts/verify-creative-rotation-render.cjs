@@ -7,14 +7,16 @@ const ts = require('typescript');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
 const root = path.resolve(__dirname, '..');
-const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts'].map(file => path.join(root, file)));
+const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts', 'lib/creative-material.ts', 'supabase/functions/reporting-store/creative-material-input.ts'].map(file => path.join(root, file)));
 const cssAllowed = new Set(['components/creative-rotation-panel.module.css', 'components/creative-link-editor.module.css'].map(file => path.join(root, file)));
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 let workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready' };
 function load(file) {
   const name = path.resolve(root, file);
   assert.ok(allowed.has(name), `Unexpected dependency ${name}`);
   if (cache.has(name)) return cache.get(name).exports;
+  if(name.endsWith(".json")) return JSON.parse(fs.readFileSync(name,"utf8"));
   const module = { exports: {} }; cache.set(name, module);
   const result = ts.transpileModule(fs.readFileSync(name, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } });
   new Function('require', 'exports', 'module', result.outputText)(specifier => {
@@ -23,7 +25,7 @@ function load(file) {
     if (specifier === '@/lib/daily-report-store') return { hydratePublishedDailyState: () => { throw new Error('Store unavailable in synthetic test'); } };
     assert.ok(specifier.startsWith('.') || specifier.startsWith('@/'), `Forbidden dependency ${specifier}`);
     const base = specifier.startsWith('@/') ? path.join(root, specifier.slice(2)) : path.resolve(path.dirname(name), specifier);
-    if (base.endsWith('.css')) { assert.ok(cssAllowed.has(base)); return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) }; }
+    if (base.endsWith('.css')) { assert.ok(cssAllowed.has(base) || base === path.resolve(root,'components/media-label.module.css')); return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) }; }
     const resolved = [...allowed].find(candidate => candidate === base || candidate === `${base}.ts` || candidate === `${base}.tsx`);
     assert.ok(resolved, `Forbidden module ${specifier}`); return load(resolved);
   }, module.exports, module);
@@ -58,7 +60,7 @@ try {
   });
   test('full-mode deep links include singleton targets and never silently replace missing targets', () => {
     const singleton = render({ groupId: other.id });
-    assert.match(singleton, /<h3>Other media/); assert.match(singleton, /Other asset/);
+    assert.match(singleton, /<h3><span[^>]*data-media-label="Other media"/); assert.match(singleton, /Other asset/);
     const unnamed = { ...other, id: 'unnamed-inventory', creatives: [], unnamedProofs: [proof('')] };
     const unnamedHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [group, unnamed] }, groupId: unnamed.id }));
     assert.match(unnamedHtml, /소재명 없는 증빙 1건/);
@@ -148,6 +150,22 @@ try {
     assert.equal(JSON.stringify(report), before);
     const css = fs.readFileSync(path.join(root, 'components/creative-rotation-panel.module.css'), 'utf8');
     assert.match(css, /overflow-x: auto/); assert.match(css, /minmax\(0, 1fr\)/); assert.match(css, /focus-visible/);
+  });
+  test('merged material aliases select the matching entry and original proof, never unrelated metrics', () => {
+    const materialIdentity = { assetId: 'CR777', version: 'v01', displayName: 'Declared alias material' };
+    const aliases = entry('A', { id: 'aliased-material', materialIdentity, proofs: [proof('A', { reportDate: '2030-01-21', manualImagePath: 'synthetic/canonical-A.png' }), proof('Alias', { reportDate: '2030-01-20', manualImagePath: 'synthetic/selected-alias.png' })] });
+    const unrelated = entry('B', { id: 'unrelated-material', proofs: [proof('B', { manualImagePath: 'synthetic/unrelated-B.png' })], metrics: { ...metrics, impressions: 500 } });
+    const aliasGroup = { ...group, id: 'alias-group', creatives: [aliases, unrelated], unlinkedPerformance: [] };
+    const aliasHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [aliasGroup] }, groupId: aliasGroup.id, compact: true, selectedCreativeName: 'Alias', onEditLink: () => {} }));
+    assert.match(aliasHtml, /<h3>A<\/h3>/);assert.match(aliasHtml,/selected-alias.png/);assert.doesNotMatch(aliasHtml,/unrelated-B.png|canonical-A.png/);
+    assert.match(aliasHtml,/선택 증빙 원본 소재명/);
+  });
+  test('unknown or ambiguous external names never default to another material detail', () => {
+    const ambiguousGroup = { ...group, id: 'ambiguous-external', creatives: [entry('A', { id:'one', proofs:[proof('Alias')] }), entry('B', { id:'two', proofs:[proof('Alias')], metrics:{...metrics,impressions:500} })], unlinkedPerformance: [] };
+    for(const selectedCreativeName of ['Unknown external name','Alias']) {
+      const output=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[ambiguousGroup]},groupId:ambiguousGroup.id,compact:true,selectedCreativeName}));
+      assert.doesNotMatch(output,/class="detail"|<img /);
+    }
   });
   console.log(`Creative rotation render checks passed (${count} synthetic cases).`);
 } finally { globalThis.fetch = originalFetch; }

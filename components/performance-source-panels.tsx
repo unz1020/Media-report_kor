@@ -1,5 +1,6 @@
 "use client";
 import { Fragment } from "react";
+import { MediaLabel } from "./media-label";
 import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { InsightEntry } from "@/components/daily-insight-history";
 import { MetricsMatrix } from "@/components/placement-performance-matrix";
@@ -132,8 +133,8 @@ function SourcePlacementMatrix({ media, rows, dailyRows, summaryLabel }: { media
   const cells = (items: SourceMetrics[]) => <><td>{formatBareCount(sourceSum(items, "impressions"))}</td><td>{formatBareCount(sourceSum(items, "clicks"))}</td><td>{formatRate(sourceRate(items, "clicks", "impressions", 100))}</td></>;
   return <div className={matrixStyles.matrixWrap} tabIndex={0} role="region" aria-label={`${media} 지면별 성과`}>
     <table className={matrixStyles.matrix} data-performance-matrix>
-      <caption>{media} 지면별 성과<span>{rows.length ? "주말은 날짜에 표시 · -: 데이터 미제공" : "일별 성과 제공 · 누적 성과 미제공 · -: 데이터 미제공"}</span></caption>
-      <thead><tr><th rowSpan={2} scope="col" className={matrixStyles.dateCell}>일자</th>{[...columns].map(([key, label]) => <th key={key} colSpan={3} scope="colgroup" className={matrixStyles.placementHead}>{label}</th>)}</tr>
+      <caption><MediaLabel media={media}>{media}</MediaLabel> 지면별 성과<span>{rows.length ? "주말은 날짜에 표시 · -: 데이터 미제공" : "일별 성과 제공 · 누적 성과 미제공 · -: 데이터 미제공"}</span></caption>
+      <thead><tr><th rowSpan={2} scope="col" className={matrixStyles.dateCell}>일자</th>{[...columns].map(([key, label]) => <th key={key} colSpan={3} scope="colgroup" className={matrixStyles.placementHead}><MediaLabel media={media} placement={label}>{label}</MediaLabel></th>)}</tr>
         <tr>{[...columns.keys()].map(key => <Fragment key={key}>{["Impression", "Clicks", "CTR"].map(label => <th key={label} scope="col">{label}</th>)}</Fragment>)}</tr></thead>
       <tbody>{rows.length > 0 && <tr className={matrixStyles.matrixTotal} data-matrix-total><th scope="row" className={matrixStyles.dateCell}>{summaryLabel}</th>{[...columns.keys()].map(key => <Fragment key={key}>{cells(rows.filter(row => placementMetricKey(row) === key))}</Fragment>)}</tr>}
         {dates.map(date => {
@@ -159,7 +160,7 @@ export function PerformanceSourcePanels({advertiser,month,startDate,endDate,view
 
             return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
               <header className={styles.summaryHeader}>
-                <div><span>매체</span><h2>{group.media}</h2></div>
+                <div><span>매체</span><h2><MediaLabel media={group.media} size="lg">{group.media}</MediaLabel></h2></div>
                 <div className={styles.summaryMeta}><span>성과 기간 {startDate} ~ {endDate}</span><span>{group.rows.length ? `${group.rows.length}개 광고 지면` : mediaDaily.length ? "일별 성과 제공 · 누적 성과 미제공" : "누적 성과 미제공"}</span></div>
               </header>
 
@@ -185,8 +186,8 @@ export function PerformanceSourcePanels({advertiser,month,startDate,endDate,view
                   </tr></thead>
                   <tbody>
                     {group.rows.map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}>
-                      {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}>{group.media}</td>}
-                      <td className={styles.placementCell}>{row.placement}</td>
+                      {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}><MediaLabel media={group.media}>{group.media}</MediaLabel></td>}
+                      <td className={styles.placementCell}><MediaLabel media={group.media} placement={row.placement}>{row.placement}</MediaLabel></td>
                       {presence.achievement && <td className={styles.numCell}>{formatAchievement(row.achievement)}</td>}
                       {presence.guaranteed && <td className={styles.numCell}>{formatGuaranteed(row.guaranteed)}</td>}
                       {presence.spend && <td className={styles.numCell}>{formatWon(row.spend)}{isPerformanceReferenceRow(row) && <small> · 원본 참고 금액</small>}</td>}
@@ -240,10 +241,10 @@ export function PerformanceSourcePanels({advertiser,month,startDate,endDate,view
             const mediaInsights = relevantInsights(group.media);
             return <LayoutPanel key={group.media} id={`performance-media:${group.media}:${viewMode}`} title={`${group.media} 성과`}><article key={group.media} className={styles.summaryCard}>
               <header className={styles.summaryHeader}>
-                <div><span>매체</span><h2>{group.media}</h2></div>
+                <div><span>매체</span><h2><MediaLabel media={group.media} size="lg">{group.media}</MediaLabel></h2></div>
                 <div className={styles.summaryMeta}><span>기준일 1일 성과 · {endDate}</span><span>{group.rows.length}개 소재</span></div>
               </header>
-              <MetricsMatrix columns={columns} caption={`${group.media} 소재별 성과`} summaryLabel={`${endDate} 성과`} emptyNote="선택한 기준일의 소재별 하루 성과입니다." />
+              <MetricsMatrix columns={columns} caption={`${group.media} 소재별 성과`} media={group.media} summaryLabel={`${endDate} 성과`} emptyNote="선택한 기준일의 소재별 하루 성과입니다." />
               {mediaInsights.length > 0 && <div className={styles.insightPanel}>
                 <div className={styles.insightTitle}><strong>데일리 인사이트</strong><span>{endDate} 기준 · 메일 성과 요약</span></div>
                 <div className={styles.insightList}>{mediaInsights.map((item) => <InsightEntry key={advertiser + month + item.key} item={item} displayNotes={item.notes.filter(note => inferMediaMentions(note).includes(group.media))} />)}</div>

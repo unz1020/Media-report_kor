@@ -39,16 +39,17 @@ await page.route("**/api/reporting/store", route => {
 });
 const panelIds = () => page.locator('[data-layout-page="overview"] > [data-layout-panel]').evaluateAll(nodes => nodes.map(node => node.dataset.layoutPanel));
 async function visible(locator) { await locator.waitFor({ state: "visible", timeout: 15000 }); }
-async function edit() { const button = page.getByRole("button", { name: "화면 편집", exact: true }); await visible(button); await button.click(); await visible(page.getByRole("button", { name: "배치 저장", exact: true })); }
+async function overviewReady() { await page.getByText("DB 동기화 완료", { exact: true }).waitFor({ state: "attached", timeout: 15000 }); await visible(page.locator('[data-layout-page="overview"] > [data-layout-panel="overview:집행액:3"]')); }
+async function edit() { if (new URL(page.url()).pathname === "/overview") await overviewReady(); const button = page.getByRole("button", { name: "화면 편집", exact: true }); await visible(button); await button.click(); await visible(page.getByRole("button", { name: "배치 저장", exact: true })); }
 async function save() { await page.getByRole("button", { name: "배치 저장", exact: true }).click(); await visible(page.getByRole("button", { name: "화면 편집", exact: true })); }
 try {
   await page.goto(rootUrl + "/overview");
-  await visible(page.getByText("DB 동기화 완료", { exact: true }));
+  await overviewReady();
   await edit();
   const original = await panelIds();
   assert.equal(original.length, 9);
-  const budget = page.getByRole("button", { name: "월 예산 이동", exact: true });
-  const spend = page.getByRole("button", { name: "집행액 이동", exact: true });
+  const budget = page.getByRole("button", { name: "등록 운영안 금액 이동", exact: true });
+  const spend = page.getByRole("button", { name: "보고 행 합산 집행액 이동", exact: true });
   const a = await budget.boundingBox(), b = await spend.boundingBox();
   await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down();
   await page.mouse.move(b.x + 8, b.y + b.height / 2, { steps: 12 }); await page.mouse.up();
@@ -76,10 +77,11 @@ try {
   await visible(page.getByRole("button", { name: "화면 편집", exact: true }));
   assert.deepEqual(await panelIds(), ids); assert.equal(saveCount, 1);
   await page.getByLabel("조회 월 선택").selectOption("2026-09");
-  await visible(page.getByText("DB 동기화 완료", { exact: true }));
+  await overviewReady();
   assert.deepEqual(await panelIds(), ids);
   await edit(); await page.getByLabel("광고주 선택").selectOption("kyowon");
   await visible(page.getByRole("button", { name: "화면 편집", exact: true }));
+  await overviewReady();
   assert.deepEqual(await panelIds(), original);
   assert.equal(await page.getByRole("button", { name: "배치 저장", exact: true }).count(), 0);
   await page.getByLabel("광고주 선택").selectOption("jacomo");
@@ -97,7 +99,7 @@ try {
     await page.getByRole("button", { name: "배치 취소", exact: true }).click();
   }
   access = "viewer"; await page.goto(rootUrl + "/overview");
-  await visible(page.getByText("DB 동기화 완료", { exact: true }));
+  await overviewReady();
   assert.equal(await page.getByRole("button", { name: "화면 편집", exact: true }).count(), 0);
   assert.deepEqual(await panelIds(), ids);
   await page.setViewportSize({ width: 390, height: 844 });

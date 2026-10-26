@@ -70,7 +70,7 @@
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
 }
 
-.summaryHeader > div:first-child span {
+.summaryHeader > div:first-child > span:not([data-media-label]) {
   display: block;
   margin-bottom: 4px;
   color: #7c8492;

@@ -313,7 +313,7 @@ try {
   await showroom().getByRole('button', { name: '직방', exact: true }).click();
   await assertSeparate(); await noOverflow('Compact showroom');
   await page.getByLabel('조회 월 선택', { exact: true }).selectOption('2030-02');
-  await visible(showroom().getByText('이 환경에 연결된 지면이 없습니다.', { exact: false }));
+  await visible(showroom().getByText('현재 필터에 증빙·성과 자료가 연결된 지면이 없습니다.', { exact: false }));
   assert.equal(await panel().count(), 0, 'Month switch removes stale compact facts and preview');
   await page.goto(root + '/reports'); await visible(panel());
   await page.getByLabel('조회 월 선택', { exact: true }).selectOption(month);

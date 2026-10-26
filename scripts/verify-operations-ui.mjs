@@ -58,9 +58,13 @@ await page.route("**/api/reporting/store", async route => {
   assert.equal(access, "editor");
   saveCount++;
   savedProof = {
+    manualImagePath: "fixture-advertiser/original-evidence.png",
+    materialIdentity: { assetId: "FIXTURE-001", version: "v1", displayName: "원본 소재" },
+    performanceLink: { sourceFamily: "fixture", platform: "네이버 GFA", placement: "모바일 피드", creative: "원본 소재" },
+    operation: { status: "집행 중", asOf: "2026-10-01" },
     ...savedProof, ...body.input, advertiser: "자코모", importId: "fixture-proof",
     reportDate: body.input.month + "-01", sourceFile: "[manual-placement] fixture",
-    publishedAt: new Date().toISOString(), attachments: [], serviceType: "디지털 사전 세팅",
+    publishedAt: new Date().toISOString(), attachments: [{ filename: "원본 게재보고.pdf", attachmentId: "original-report", mimeType: "application/pdf", kind: "report" }], serviceType: "디지털 사전 세팅",
     location: "", airingTime: "", dailyFrequency: null, durationSec: null, budgetReference: null,
   };
   return json(route, { ok: true, proof: savedProof });
@@ -69,13 +73,24 @@ const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
 await page.route("**/api/reporting/proof-image**", async route => {
   if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "image/png", body: pixel });
   imageCount++;
-  const raw = route.request().postDataBuffer().toString();
-  assert.ok(raw.includes('name="importId"'));
-  assert.ok(raw.includes("fixture-proof"));
-  if (failImage) return json(route, { error: "IMAGE_TEST_FAILURE" }, 500);
-  savedProof.manualImagePath = "fixture-advertiser/image.png";
-  savedProof.publishedAt = new Date().toISOString();
-  return json(route, { ok: true, path: savedProof.manualImagePath, updatedAt: savedProof.publishedAt });
+  const request = route.request();
+  const form = await new Request("https://fixture.invalid", { method: "POST", headers: { "content-type": request.headers()["content-type"] }, body: request.postDataBuffer() }).formData();
+  const before = structuredClone(savedProof), file = form.get("file");
+  assert.equal(form.get("purpose"), "creative_reference");
+  assert.equal(form.get("importId"), savedProof.importId);
+  assert.equal(form.get("advertiser"), savedProof.advertiser);
+  assert.equal(form.get("reportDate"), savedProof.reportDate);
+  assert.equal(form.get("sourceFile"), savedProof.sourceFile);
+  assert.equal(form.get("expectedUpdatedAt"), savedProof.publishedAt);
+  assert.ok(/^image\/(png|jpeg|webp)$/.test(file.type));
+  assert.ok(file.size > 0 && file.size <= 4 * 1024 * 1024);
+  if (failImage) { assert.deepEqual(savedProof, before); return json(route, { error: "IMAGE_TEST_FAILURE" }, 500); }
+  savedProof = { ...savedProof, creativeImagePath: "fixture-advertiser/image.png", creativeImageFilename: file.name, publishedAt: new Date().toISOString() };
+  const { creativeImagePath, creativeImageFilename, publishedAt, ...preserved } = savedProof;
+  const { creativeImagePath: oldPath, creativeImageFilename: oldFilename, publishedAt: oldUpdatedAt, ...original } = before;
+  assert.deepEqual(preserved, original);
+  assert.equal(creativeImageFilename, file.name);
+  return json(route, { ok: true, path: savedProof.creativeImagePath, updatedAt: savedProof.publishedAt });
 });
 async function visible(locator) { await locator.waitFor({ state: "visible", timeout: 15000 }); }
 async function chooseOctober() {
@@ -115,14 +130,16 @@ try {
   await page.goto("http://localhost:3000/creative");
   await chooseOctober();
   await page.getByLabel("카카오 카카오 피드 이미지 등록", { exact: true }).setInputFiles({ name: "pending.png", mimeType: "image/png", buffer: pixel });
-  await visible(page.getByAltText("등록할 지면 이미지 미리보기"));
+  await visible(page.getByAltText("사용자 등록 소재 미리보기 · 게재 증빙 아님"));
   assert.equal(await page.getByLabel("매체", { exact: true }).inputValue(), "카카오");
   assert.equal(await page.getByLabel("상품 / 게재지면", { exact: true }).inputValue(), "카카오 피드");
   await page.getByRole("button", { name: "지면 저장", exact: true }).click();
   await page.getByRole("region", { name: "지면 수동 세팅" }).waitFor({ state: "hidden" });
   assert.equal(imageCount, 1); assert.equal(savedProof.status, "사전 세팅");
+  assert.equal(savedProof.creativeImageFilename, "pending.png");
+  assert.equal(savedProof.manualImagePath, "fixture-advertiser/original-evidence.png");
   assert.equal(await page.getByLabel("카카오 카카오 피드 이미지 등록", { exact: true }).count(), 0);
-  await visible(page.getByAltText("카카오 피드 게재 확인 이미지"));
+  await visible(page.getByAltText("카카오 피드 사용자 등록 소재 · 게재 증빙 아님"));
   savedProof = undefined; saveCount = 0; imageCount = 0;
   await page.reload(); await chooseOctober();
   await page.getByRole("button", { name: "지면 수동 등록", exact: true }).click();
@@ -139,8 +156,8 @@ try {
   assert.equal(url.searchParams.get("utm_source"), "naver");
   assert.equal(url.searchParams.get("utm_campaign"), "10월 캠페인");
   assert.equal(url.hash, "#detail");
-  await page.getByLabel("미리보기 / 게재 이미지", { exact: true }).setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: pixel });
-  await visible(page.getByAltText("등록할 지면 이미지 미리보기"));
+  await page.getByLabel("소재 이미지 · 게재 증빙 아님", { exact: true }).setInputFiles({ name: "preview.png", mimeType: "image/png", buffer: pixel });
+  await visible(page.getByAltText("사용자 등록 소재 미리보기 · 게재 증빙 아님"));
   failImage = true;
   await page.getByRole("button", { name: "지면 저장", exact: true }).click();
   await visible(page.getByText("IMAGE_TEST_FAILURE", { exact: true }));

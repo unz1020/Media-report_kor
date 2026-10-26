@@ -41,15 +41,23 @@ jobs:
       - run: npm ci
       - name: Verify URLs and placement validation
         run: |
+          node scripts/verify-auth-callback.cjs
+          node scripts/verify-workspace-months.cjs
+          node scripts/verify-creative-image.cjs
+          node scripts/verify-creative-image-render.cjs
+          node scripts/verify-daily-multi-metrics.cjs
           node scripts/verify-creative-rotation.cjs
           node scripts/verify-creative-rotation-render.cjs
           node scripts/verify-creative-link-input.mjs
+          node scripts/verify-creative-material.cjs
+          node scripts/verify-monitoring-plan-scope.cjs
           node scripts/verify-performance-report.cjs
           node scripts/verify-performance-brief.cjs
           node scripts/verify-performance-report-render.cjs
           node scripts/verify-performance-source-render.cjs
           node scripts/verify-viral-placement-board.cjs
           node scripts/verify-media-icons.cjs
+          node scripts/verify-media-label.cjs
           node scripts/verify-showroom-breakdown.cjs
           node scripts/verify-placement-showroom.cjs
           node scripts/verify-proof-lightbox.cjs
@@ -71,6 +79,7 @@ jobs:
           npm run start > /tmp/media-report-server.log 2>&1 &
           node -e 'const http=require("http"); let tries=0; function probe(){ http.get("http://127.0.0.1:3000",r=>process.exit(0)).on("error",()=>{if(++tries>60)process.exit(1);setTimeout(probe,1000)})} probe()'
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-creative-rotation-ui.mjs
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-creative-material-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-performance-report-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-placement-showroom-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-tv-preview-ui.mjs
@@ -83,3 +92,4 @@ jobs:
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-auto-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-source-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-performance-visuals-ui.mjs
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-report-upgrade-ui.mjs

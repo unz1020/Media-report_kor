@@ -90,12 +90,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const form = await req.formData();
+    const purpose = form.get("purpose");
+    if (purpose !== null && purpose !== "creative_reference") return json({ error: "INVALID_IMAGE_PURPOSE" }, 400);
     const advertiserName = String(form.get("advertiser") || "");
     const reportDate = String(form.get("reportDate") || "");
     const sourceFile = String(form.get("sourceFile") || "");
     const file = form.get("file");
     const importId = String(form.get("importId") || "");
     const expectedUpdatedAt = String(form.get("expectedUpdatedAt") || "");
+    if (purpose === "creative_reference" && (!importId || !expectedUpdatedAt)) return json({ error: "CREATIVE_IMAGE_TARGET_REQUIRED" }, 400);
     if (!advertiserName || !/^\d{4}-\d{2}-\d{2}$/.test(reportDate) || !sourceFile || !(file instanceof File)) {
       return json({ error: "INVALID_UPLOAD_REQUEST" }, 400);
     }
@@ -132,7 +135,9 @@ Deno.serve(async (req: Request) => {
         ...bundle,
         placementProof: {
           ...proof,
-          manualImagePath: path,
+          ...(purpose === "creative_reference"
+            ? { creativeImagePath: path, creativeImageFilename: file.name.slice(0, 500) }
+            : { manualImagePath: path }),
         },
       },
     };
@@ -140,7 +145,7 @@ Deno.serve(async (req: Request) => {
     const updatedAt = new Date().toISOString();
     const { data: updated, error: updateError } = await supabase.from("report_imports")
       .update({ metadata: nextMetadata, updated_at: updatedAt, updated_by: user.email })
-      .eq("id", reportImport.id).eq("updated_at", reportImport.updated_at).select("id").maybeSingle();
+      .eq("id", reportImport.id).eq("advertiser_id", advertiser.id).eq("updated_at", reportImport.updated_at).select("id").maybeSingle();
     if (updateError || !updated) {
       await supabase.storage.from(BUCKET).remove([path]);
       if (updateError) throw updateError;
@@ -148,7 +153,7 @@ Deno.serve(async (req: Request) => {
     }
     const audit = await supabase.from("workspace_activity").insert({
       actor_email: user.email, advertiser_id: advertiser.id, action: "placement_image_saved",
-      detail: { importId: reportImport.id, reportDate },
+      detail: { importId: reportImport.id, reportDate, purpose: purpose || "proof" },
     });
     if (audit.error) throw audit.error;
     return json({ ok: true, path, updatedAt });

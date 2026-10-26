@@ -19,11 +19,13 @@ const cssFile = path.resolve(root, 'components/performance-report.module.css');
 const css = Object.freeze({ __esModule: true, default: new Proxy(Object.freeze({}), {
   get: (_target, key) => String(key),
 }) });
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 function load(file) {
   const name = path.resolve(root, file);
   assert.ok(allowed.has(name), `Unexpected runtime dependency: ${name}`);
   if (cache.has(name)) return cache.get(name).exports;
+  if(name.endsWith(".json")) return JSON.parse(fs.readFileSync(name,"utf8"));
   const module = { exports: {} }; cache.set(name, module);
   const result = ts.transpileModule(fs.readFileSync(name, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
@@ -37,7 +39,7 @@ function load(file) {
     assert.ok(specifier.startsWith('.') || specifier.startsWith('@/'), `Forbidden runtime dependency: ${specifier}`);
     const base = specifier.startsWith('@/') ? path.resolve(root, specifier.slice(2)) : path.resolve(path.dirname(name), specifier);
     if (base.endsWith('.css')) {
-      assert.equal(base, cssFile, 'Only the component CSS stub is allowed');
+      assert.ok([cssFile,path.resolve(root,'components/media-label.module.css')].includes(base),'Only allowlisted component CSS stubs');
       return css;
     }
     const resolved = path.extname(base) ? base : [...allowed].find(candidate => candidate === `${base}.ts` || candidate === `${base}.tsx`);
@@ -161,7 +163,7 @@ try {
   test('plan-only media remain accessible separately without fabricated actuals', () => {
     assert.equal(report.planOnlyCount, 1);
     assert.ok(html.includes('계획 등록 · 성과 원본 대기'));
-    assert.match(html, /<button[^>]*><span>계획 전용 테스트<\/span><small>[^<]*계획 상세/);
+    assert.match(html, /<button[^>]*><span><span[^>]*data-media-label="계획 전용 테스트"[\s\S]*?<\/span><\/span><small>[^<]*계획 상세/);
     assert.ok(html.includes('집행 여부나 성과를 판단하지 않습니다'));
     assert.doesNotMatch(html, /(?:999,999,999|888,888,888|777,777,777|비활성|집행 실패)/);
   });
@@ -194,7 +196,7 @@ try {
     const output = overview(report, [insight({ notes: ['네이버 원본 불일치: 원본 표의 날짜 확인 필요'] })]);
     assert.ok(output.includes('보고 당시 원본 대조 메모'));
     assert.ok(output.includes('현재 해결 여부는 별도 기록 전까지 판단하지 않습니다'));
-    assert.ok(output.includes('네이버 근거 확인'));
+    assert.ok(text(output).includes('네이버 근거 확인'));
     assert.doesNotMatch(output, /(?:오늘 확인 완료|오늘 최적화|실시간 모니터링|해결 완료)/);
   });
   test('incomplete baseline holds cumulative metrics but retains daily evidence', () => {

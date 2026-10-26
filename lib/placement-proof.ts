@@ -1,3 +1,5 @@
+import type { CreativeMaterialIdentity } from "./creative-material";
+
 export type PlacementProofAttachment = {
   filename: string;
   attachmentId: string;
@@ -33,6 +35,8 @@ export type PlacementProof = {
   status: "게재 확인" | "확인 필요" | "사전 세팅";
   creativeName?: string;
   performanceLink?: CreativePerformanceLink | null;
+  /** AE-declared material key, not a file hash or automatic performance match. Original names remain unchanged. */
+  materialIdentity?: CreativeMaterialIdentity | null;
   /** Report-only AE statement. Never pauses or activates an advertising platform. */
   operation?: { status: "예정" | "집행 중" | "중단" | "종료"; asOf: string; note?: string } | null;
   importId?: string;
@@ -47,6 +51,9 @@ export type PlacementProof = {
   sourceSummary: string;
   attachments: PlacementProofAttachment[];
   manualImagePath?: string;
+  /** User-registered reference only. Never evidence of delivery or an inferred performance match. */
+  creativeImagePath?: string;
+  creativeImageFilename?: string;
   publishedAt?: string;
 };
 
