@@ -15,7 +15,7 @@ import styles from './media-mix-editor.module.css';
 function emptyRow(month: string): MediaPlanFact {
   const end = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).toISOString().slice(0, 10);
   return { rowId: crypto.randomUUID(), platform: '', product: '', placement: '', creativeName: '', creativeType: '', device: '', periodStart: month + '-01', periodEnd: end,
-    budget: null, expectedImpressions: null, expectedClicks: null, target: '', sourceSheet: '직접 입력', operationStatus: '예정' };
+    budget: null, expectedImpressions: null, expectedClicks: null, target: '', sourceSheet: '직접 입력', proposalStatus: '제안', operationStatus: '예정' };
 }
 const withIds = (rows: MediaPlanFact[]) => rows.map(row => ({ ...row, rowId: row.rowId || crypto.randomUUID() }));
 const meaningful = (row: MediaPlanFact) => Boolean(row.platform || row.product || row.placement || row.creativeName || row.device || row.creativeType || row.target || row.budget != null || row.expectedImpressions != null || row.expectedClicks != null);
@@ -106,15 +106,16 @@ function Editor() {
       if (!response.ok) throw new Error(result.error === 'MEDIA_MIX_CHANGED' ? '다른 사용자가 미디어믹스를 변경했습니다. 입력 내용을 보관하고 취소 후 다시 불러와주세요.' : result.error || '미디어믹스 저장 실패');
       if (!mounted.current) return;
       setDraft(null); setAnalysis(null); setMergeWarnings([]); setChangeMemo(''); setNotice(`${month} 미디어믹스를 저장했습니다. 개요·일정·연결 대기 지면에 반영됩니다.`);
-      try { await hydratePublishedDailyState(advertiser, month); await refreshSession(); }
+      try { await hydratePublishedDailyState(advertiser, month, { afterMutation: true }); await refreshSession(); }
       catch { if (mounted.current) setError('저장은 완료됐습니다. 새로고침해 반영 내용을 확인해주세요.'); }
     } catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : '저장 실패'); }
     finally { if (mounted.current) setBusy(false); }
   }
-  return <section className={`card card-pad ${styles.editor}`} aria-label="월 미디어믹스 업데이트">
-    <div className={styles.head}><div><h2>{month} 미디어믹스</h2><p>{advertiser} · {plans.length}개 운영안 · 계획 예산 {formatKrw(plans.some(row => row.budget != null) ? plans.reduce((sum, row) => sum + (row.budget || 0), 0) : null)}</p></div>
+  return <section id="monthly-media" className={`card card-pad ${styles.editor}`} aria-label="월 미디어믹스 업데이트">
+    <div className={styles.head}><div><h2>{month} 미디어믹스 · 매체 관리</h2><p>{advertiser} · {plans.length}개 운영안 · 계획 예산 {formatKrw(plans.some(row => row.budget != null) ? plans.reduce((sum, row) => sum + (row.budget || 0), 0) : null)}</p></div>
       {!draft && !pending && canEdit && <div className={styles.actions}><button type="button" className="btn" disabled={dataSyncState !== 'ready' || busy} onClick={() => begin()}>미디어믹스 업데이트</button><button type="button" className="btn primary" disabled={dataSyncState !== 'ready' || busy || plans.length >= 500} onClick={() => begin(true)}>운영안 추가</button></div>}
     </div>
+    {!plans.length && <div className={styles.monthStart} role="status"><strong>{Number(month.slice(5))}월 매체 구성을 새로 정리하세요</strong><p>새 미디어믹스를 넣거나 운영안을 추가해 매체·상품·소재·기간을 정리합니다. 다른 월의 예산·실적·소재·증빙은 자동 복사하지 않습니다.</p><small>제안/협의/확정과 보고용 집행상태를 각각 관리하며, 저장만으로 광고 송출이 바뀌지 않습니다.</small></div>}
     <p>Excel·CSV를 최대 30MB까지 분석해 {Number(month.slice(5))}월 매체·상품·소재·기간·예산을 자동 정리합니다. 운영안 추가 또는 기존 행 편집으로 변경 내용을 이어서 관리하세요.</p>
     {saved && <small>마지막 반영: {new Date(saved.publishedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}</small>}
     {canEdit && !pending && <div className={styles.importBox}>

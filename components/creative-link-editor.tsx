@@ -99,7 +99,7 @@ export function CreativeLinkEditor({ proof, group, onClose }: CreativeLinkEditor
       setSaved(true);
       // The shared store guards in-flight hydration generations; never start it for an old scope.
       if (!current()) return;
-      try { await hydratePublishedDailyState(advertiser, month); }
+      try { await hydratePublishedDailyState(advertiser, month, { afterMutation: true }); }
       catch { if (current()) setError("연결은 저장됐지만 최신 자료를 불러오지 못했습니다. 창을 닫고 자료를 새로고침해주세요."); return; }
       if (current()) onClose();
     } catch (cause) {

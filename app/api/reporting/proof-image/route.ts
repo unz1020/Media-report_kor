@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
   if (request.headers.get("origin") !== request.nextUrl.origin) return NextResponse.json({ error: "ORIGIN_DENIED" }, { status: 403 });
   try {
     const incoming = await request.formData();
+    const purpose = incoming.get("purpose");
+    if (purpose !== null && purpose !== "creative_reference") return NextResponse.json({ error: "INVALID_IMAGE_PURPOSE" }, { status: 400 });
     const file = incoming.get("file");
     const advertiser = String(incoming.get("advertiser") || "");
     const reportDate = String(incoming.get("reportDate") || "");
@@ -71,6 +73,7 @@ export async function POST(request: NextRequest) {
     const { token, refreshed } = await authenticatedToken(request);
     const form = new FormData();
     form.set("file", file, file.name);
+    if (purpose === "creative_reference") form.set("purpose", purpose);
     form.set("advertiser", advertiser);
     form.set("reportDate", reportDate);
     form.set("sourceFile", sourceFile);

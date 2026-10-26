@@ -15,9 +15,12 @@ import { CreativeUrlPreview } from "./creative-url-preview";
 import type { ProofLightboxImage } from "./proof-image-lightbox";
 import { safeHttpUrl } from "@/lib/placement-urls";
 import { hasMonitoringSource, monitoringPlanScope, monitoringSelection } from "@/lib/monitoring-plan-scope";
+import { creativeImageUrl } from "@/lib/creative-image";
+import { PROOF_IMAGE_ACCEPT } from "@/lib/proof-image-input";
 import styles from "./placement-showroom.module.css";
 
 type Props = {
+  onAddImage?: (proof: PlacementProof, file?: File) => void;
   proofs: PlacementProof[];
   plans: MediaPlanFact[];
   rows: ReportingRow[];
@@ -94,7 +97,7 @@ function EvidenceImage({ proof, page, title }: { proof: PlacementProof; page?: n
 function EmptyScreen({ selected }: { selected?: ShowroomItem }) {
   return <div className={styles.noImage}><span className={styles.screenLabel}>{selected?.media || "PLACEMENT SHOWROOM"}</span><strong>{selected?.title || "지면을 선택하세요"}</strong><small>{selected && !hasMonitoringSource(selected) ? "운영안만 · 증빙/성과 미연결" : "게재 이미지·영상 연결 대기"}<br/>현재 송출 화면이 아닙니다.</small></div>;
 }
-export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeReport, onEditCreative }: Props) {
+export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeReport, onEditCreative, onAddImage }: Props) {
   const items = useMemo(() => buildShowroomItems(proofs, plans, rows), [proofs, plans, rows]);
   const [includePlans, setIncludePlans] = useState(false);
   const scope = useMemo(() => monitoringPlanScope(items, includePlans), [items, includePlans]);
@@ -103,6 +106,7 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeRe
   const [surface, setSurface] = useState<ShowroomSurface | "all">("all");
   const [media, setMedia] = useState("전체");
   const [selectedId, setSelectedId] = useState("");
+  const [imageError, setImageError] = useState("");
   const [proofIndex, setProofIndex] = useState(0);
   const [photoPage, setPhotoPage] = useState<number | undefined>();
   const [appOpen, setAppOpen] = useState(false);
@@ -141,11 +145,12 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeRe
   const visual = selectedProof && imageUrl(selectedProof) ? <EvidenceImage key={`${selected?.id}:${selectedProof.key || selectedProof.manualImagePath}:${activePage || "full"}`} proof={selectedProof} page={activePage} title={selected?.title || ""} /> : <EmptyScreen selected={selected} />;
   const screen = <button type="button" className={styles.screenButton} onClick={openProof} disabled={!selectedProof || !imageUrl(selectedProof)} aria-label={`${selected?.title || "지면"} 증빙 원본 크게 보기`}>{visual}{selectedProof && imageUrl(selectedProof) && <span className={styles.zoomHint}>원본 확대</span>}</button>;
 
-  const inventory = <div className={`${styles.inventoryList} ${environment === "ooh" ? styles.spatialInventory : ""}`} aria-label="지면 선택"><div className={styles.inventoryHead}><strong>지면 선택</strong><span>{visible.length}개 탐색 항목 · 캠페인 수 아님</span></div>{visible.length ? visible.map(item => <button type="button" key={item.id} aria-pressed={selected?.id === item.id} onClick={() => { chooseItem(item); if(environment === "digital")setAppOpen(true); }}><span className={styles.inventoryIcon} aria-hidden="true"><SurfaceGlyph surface={item.surface}/></span><span><small>{item.media}{item.service ? " · 서비스" : ""}</small><strong>{environment === "ooh" ? spatialItemLabel(item,scope.visible) : item.title}</strong></span><b>{item.proofs.length ? "증빙 자료" : item.metrics.length ? "성과 자료" : "운영안만"}</b></button>) : <div className={styles.empty}>현재 필터에 증빙·성과 자료가 연결된 지면이 없습니다.<br/>{!includePlans ? "계획만 있는 항목은 ‘운영안 포함’을 체크해 별도로 확인하세요." : "등록 운영안도 포함한 결과입니다."} 원본 자료는 보존됩니다.</div>}</div>;
-  const contextScreen = <div className={styles.contextPlaceholder}><SurfaceGlyph surface={selected?.surface}/><strong>실제 소재 연결 대기</strong><small>소재가 준비되면 지면에 맞춘 목업을 연결합니다.</small></div>;
+  const inventory = <div className={`${styles.inventoryList} ${environment === "ooh" ? styles.spatialInventory : ""}`} aria-label="지면 선택"><div className={styles.inventoryHead}><strong>지면 선택</strong><span>{visible.length}개 탐색 항목 · 캠페인 수 아님</span></div>{visible.length ? visible.map(item => <button type="button" key={item.id} aria-pressed={selected?.id === item.id} onClick={() => { chooseItem(item); if(environment === "digital")setAppOpen(true); }}><span className={styles.inventoryIcon} aria-hidden="true"><SurfaceGlyph surface={item.surface}/></span><span><small>{item.media}{item.service ? " · 서비스" : ""}</small><strong>{environment === "ooh" ? spatialItemLabel(item,scope.visible) : item.title}</strong></span><b>{item.proofs.length ? "등록 자료" : item.metrics.length ? "성과 자료" : "운영안만"}</b></button>) : <div className={styles.empty}>현재 필터에 증빙·성과 자료가 연결된 지면이 없습니다.<br/>{!includePlans ? "계획만 있는 항목은 ‘운영안 포함’을 체크해 별도로 확인하세요." : "등록 운영안도 포함한 결과입니다."} 원본 자료는 보존됩니다.</div>}</div>;
+  const registeredImage = creativeImageUrl(selectedProof);
+  const contextScreen = registeredImage ? <div className={styles.referenceMockup}><img src={registeredImage} alt="사용자 등록 소재 · 실게재 아님"/><small>사용자 소재 · 실측·실게재 아님</small></div> : <div className={styles.contextPlaceholder}><SurfaceGlyph surface={selected?.surface}/><strong>실제 소재 연결 대기</strong><small>소재가 준비되면 지면에 맞춘 목업을 연결합니다.</small></div>;
 
   return <section className={styles.showroom} aria-label="게재지면 쇼룸">
-    <header className={styles.heading}><div><span className={styles.eyebrow}>PLACEMENT SHOWROOM</span><h2>매체·지면 탐색</h2><p>기본 목록은 증빙 또는 성과 자료가 연결된 항목입니다. 자료의 존재가 현재 집행 중임을 뜻하지 않습니다.</p></div><div className={styles.sourceCount}><strong>{proofs.length}</strong><span>등록 게재 증빙<br/>탐색 항목 수와 별도</span></div></header>
+    <header className={styles.heading}><div><span className={styles.eyebrow}>PLACEMENT SHOWROOM</span><h2>매체·지면 탐색</h2><p>기본 목록은 증빙 또는 성과 자료가 연결된 항목입니다. 자료의 존재가 현재 집행 중임을 뜻하지 않습니다.</p></div><div className={styles.sourceCount}><strong>{proofs.length}</strong><span>등록 지면·자료<br/>게재 확인 수와 별도</span></div></header>
     <div className={styles.environmentTabs} role="tablist" aria-label="게재 환경">
       {environments.map((tab, index) => { const count = monitoringPlanScope(items.filter(item => item.environment === tab.id)); return <button key={tab.id} id={`showroom-tab-${tab.id}`} type="button" role="tab" aria-selected={environment === tab.id} aria-controls="showroom-panel" tabIndex={environment === tab.id ? 0 : -1} className={environment === tab.id ? styles.environmentActive : styles.environmentTab} onClick={() => chooseEnvironment(tab.id)} onKeyDown={event => tabsKey(event, index)}><span>{tab.number}</span><div><strong>{tab.label}</strong><small>{tab.sub}</small></div><b>{count.sourced.length}<small>자료 연결 항목</small><small>운영안만 {count.planOnly.length}개</small></b></button>; })}
     </div>
@@ -167,7 +172,7 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeRe
             {selected?.surface === "elevator" && <div className={styles.elevator}><div className={styles.sceneKicker}>LIVING SPACE · 엘리베이터·생활공간</div><div className={styles.elevatorDoors}><span>엘리베이터</span><div className={styles.floorNumber}>12</div></div><div className={styles.elevatorScreen}>{contextScreen}</div></div>}
             {selected?.surface === "transit" && <div className={styles.transit}><div className={styles.sceneKicker}>TRANSIT · 교통 매체</div><div className={styles.busWindows}><i/><i/><i/></div><div className={styles.transitScreen}>{contextScreen}</div><div className={styles.transitSeats} aria-hidden="true"><i/><i/><i/></div></div>}
           </div>
-            <div className={styles.contextNote}><strong>공간 안내용 도식</strong><span>실측 위치·커버리지를 표시하지 않습니다. 실제 소재가 제공되면 별도의 소재 적용 목업으로 연결합니다.</span></div>
+            <div className={styles.contextNote}><strong>공간 안내용 도식</strong><span>실측 위치·커버리지를 표시하지 않습니다. 사용자 등록 소재가 있으면 안내 도식에 표시합니다. 실측 비율·실게재 화면이 아닙니다.</span></div>
             </>}
           </>}
           {environment === "tv" && !selected && <div className={styles.empty} role="status">{surface === "broadcast" ? "TV 방송" : "TV·OTT"} 자료 연결 항목 0개. 현재 필터에 표시할 지면이 없습니다. 운영안은 ‘운영안 포함’에서 별도로 확인할 수 있으며 원본은 보존됩니다.</div>}
@@ -182,9 +187,15 @@ export function PlacementShowroom({ proofs, plans, rows, onOpenImage, creativeRe
 
         </div>
         <aside className={styles.detail} aria-label="선택 지면 상세" aria-live="polite">
-          {selected && !(environment === "digital" && !effectiveAppOpen) ? <><div className={styles.detailEyebrow}>{hasMonitoringSource(selected) ? "자료 연결 · 현재 집행 확인 아님" : "운영안만 · 제안/예정"} · {surfaceLabels[selected.surface]}{selected.service && <span className={styles.serviceBadge}>서비스 지면</span>}</div><h3>{environment === "ooh" ? spatialItemLabel(selected,scope.visible) : selected.title}</h3><p className={styles.mediaName}><MediaLabel media={selected.media} size="md"/></p>{packageSelected && <div className={styles.packageNote}><strong>{selected.packageName}</strong><p>하나의 구매 패키지에 속한 지면입니다. 장소·증빙 페이지를 별도 캠페인으로 합산하지 않습니다.</p></div>}
+          {selected && !(environment === "digital" && !effectiveAppOpen) ? <><div className={styles.detailEyebrow}>{hasMonitoringSource(selected) ? "자료 연결 · 현재 집행 확인 아님" : "운영안만 · 제안/예정"} · {surfaceLabels[selected.surface]}{selected.service && <span className={styles.serviceBadge}>서비스 지면</span>}</div><h3>{environment === "ooh" ? spatialItemLabel(selected,scope.visible) : selected.title}</h3><p className={styles.mediaName}><MediaLabel media={selected.media} placement={selectedProof?.placement || selected.title} size="md"/></p>{packageSelected && <div className={styles.packageNote}><strong>{selected.packageName}</strong><p>하나의 구매 패키지에 속한 지면입니다. 장소·증빙 페이지를 별도 캠페인으로 합산하지 않습니다.</p></div>}
             <dl className={styles.facts}><div><dt>게재 증빙</dt><dd>{selectedProof?.status || "증빙 미연결"}</dd></div><div><dt>자료상 확인일</dt><dd>{date || "미제공"}</dd></div><div><dt>자료상 기간 · 운영안 포함</dt><dd>{selectedProof?.periodStart || selected.plans[0]?.periodStart || "미제공"} ~ {selectedProof?.periodEnd || selected.plans[0]?.periodEnd || "미제공"}</dd></div><div><dt>{environment === "ooh" ? "원본 위치·지면" : environment === "tv" ? "채널·플랫폼" : "원본 기기 구분"}</dt><dd>{environment === "ooh" ? selected.locationLabel || "상세 위치 미등록" : environment === "tv" ? selected.media : selected.surface === "unknown" ? "기기별 구분 미제공" : surfaceLabels[selected.surface]}</dd></div>{activePage && <div><dt>선택한 증빙</dt><dd>원본 {activePage}쪽{selectedPhoto?.site ? ` · ${selectedPhoto.site}` : ""}</dd></div>}</dl>
             {selected.proofs.length > 0 && <div className={styles.creativeSelector}><strong>소재·증빙 선택</strong><div>{selected.proofs.map((proof,index) => <button type="button" key={proof.key || proof.manualImagePath || index} aria-pressed={proof === selectedProof} onClick={() => {setProofIndex(index);setPhotoPage(undefined);}}>{proof.creativeName || `증빙 ${index + 1}`}</button>)}</div></div>}
+            {selectedProof && <section className={styles.referenceUpload} aria-label="선택 소재 이미지 등록" tabIndex={onAddImage ? 0 : undefined} onDragOver={event=>{if(onAddImage)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!onAddImage)return;if(event.dataTransfer.files.length!==1){setImageError("한 번에 한 파일을 넣어주세요.");return;}setImageError("");onAddImage(selectedProof,event.dataTransfer.files[0]);}} onPaste={event=>{if(!onAddImage)return;const files=[...event.clipboardData.items].filter(item=>item.kind==='file' && item.type.startsWith('image/'));if(files.length!==1){if(files.length>1)setImageError("한 번에 한 파일을 넣어주세요.");return;}const file=files[0].getAsFile();if(file){event.preventDefault();onAddImage(selectedProof,file);}}}>
+              <strong>사용자 등록 소재 · 게재 증빙 아님</strong><p>{selectedProof.media} / {selectedProof.placement} / {selectedProof.creativeName || "소재명 미입력"}</p>
+              {registeredImage && <button type="button" className={styles.referencePreview} onClick={()=>onOpenImage({src:registeredImage,title:selectedProof.creativeImageFilename || "사용자 등록 소재",description:"게재 증빙 아님 · 원본 자료와 별도"})}><img src={registeredImage} alt="사용자 등록 소재 미리보기 · 게재 증빙 아님"/></button>}
+              {onAddImage && <><button type="button" className="btn primary" onClick={()=>onAddImage(selectedProof)}>이 지면·소재에 이미지 넣기</button><label>파일 선택 · 드롭 · 이미지 붙여넣기<input type="file" accept={PROOF_IMAGE_ACCEPT} aria-label={selectedProof.placement + " 소재 이미지 선택"} onChange={event=>{const file=event.target.files?.[0];event.currentTarget.value='';if(file)onAddImage(selectedProof,file);}}/></label><small>미리보기 후 저장합니다. 원본·게재 상태·성과 연결은 유지됩니다.</small></>}
+              {imageError && <p role="alert">{imageError}</p>}
+            </section>}
             {availablePages.length > 1 && <div className={styles.pageSelector} aria-label="증빙 페이지 선택">{availablePages.map(page => <button type="button" key={page} aria-pressed={activePage === page} onClick={() => setPhotoPage(page)}>원본 {page}쪽</button>)}</div>}
             {selectedProof && imageUrl(selectedProof) && <button type="button" className={styles.openOriginal} onClick={openProof}>게재 증빙 원본 크게 보기 <span aria-hidden="true">↗</span></button>}
             <section className={styles.metrics}><div className={styles.metricsHead}><h4>연결된 성과</h4><span>지면 전체 · 선택 소재 실적 아님</span></div>{selected.metrics.length ? selected.metrics.map((raw,index) => {const row=raw as ExtraMetrics;return <div className={styles.metricRecord} key={`${row.sourceFile}:${row.placement}:${index}`}><p>{row.placement}<span>{row.reportDate} 기준</span></p><dl><div><dt>{row.spendLabel || (selected.service ? "원본 서비스 비용 참고값" : "집행액")}</dt><dd>{valueText(row.spend,true)}</dd></div><div><dt>{row.metricLabel || (environment === "ooh" ? "원본 Impression" : "노출")}</dt><dd>{valueText(row.impressions)}</dd></div>{environment !== "ooh" && <div><dt>클릭</dt><dd>{valueText(row.clicks)}</dd></div>}{row.footTraffic !== undefined && <div><dt>유동인구</dt><dd>{valueText(row.footTraffic)}</dd></div>}</dl></div>;}) : <div className={styles.metricsMissing}>이 지면의 개별 성과는 아직 연결되지 않았습니다.<br/>패키지·매체 합계를 이 지면의 성과로 대신 표시하지 않습니다.</div>}{environment === "ooh" && <p className={styles.metricNote}>원본 Impression·송출 횟수·유동인구는 서로 다른 지표입니다. 서비스 지면은 유료 지면의 집행액과 중복 가산하지 않습니다.</p>}</section>

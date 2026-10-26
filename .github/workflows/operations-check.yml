@@ -41,6 +41,11 @@ jobs:
       - run: npm ci
       - name: Verify URLs and placement validation
         run: |
+          node scripts/verify-auth-callback.cjs
+          node scripts/verify-workspace-months.cjs
+          node scripts/verify-creative-image.cjs
+          node scripts/verify-creative-image-render.cjs
+          node scripts/verify-daily-multi-metrics.cjs
           node scripts/verify-creative-rotation.cjs
           node scripts/verify-creative-rotation-render.cjs
           node scripts/verify-creative-link-input.mjs
@@ -87,3 +92,4 @@ jobs:
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-auto-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-media-mix-source-ui.mjs
           REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-performance-visuals-ui.mjs
+          REPORTING_TEST_URL=http://127.0.0.1:3000 node scripts/verify-report-upgrade-ui.mjs

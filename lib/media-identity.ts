@@ -1,5 +1,6 @@
 import existingSources from '../public/media-icons/sources.json';
 import performanceSources from '../public/media-icons/performance-sources.json';
+import executionSources from '../public/media-icons/execution-sources.json';
 
 type IdentityDefinition = { key: string; aliases: string[]; short: string; kind: 'digital'|'video'|'tv'|'ooh'|'cinema'|'other'; color: string; background: string };
 const definitions: IdentityDefinition[] = [
@@ -16,7 +17,10 @@ const definitions: IdentityDefinition[] = [
   {key:'youtube',aliases:['유튜브','YouTube','youtu.be'],short:'YT',kind:'video',color:'#ad1521',background:'#fff0f0'},
   {key:'tving',aliases:['티빙','TVING'],short:'TVG',kind:'video',color:'#9c143d',background:'#ffedf3'},
   {key:'addressable-tv',aliases:['어드레서블TV','Addressable TV','Addr.TV'],short:'ATV',kind:'tv',color:'#304d9c',background:'#ebf0ff'},
-  {key:'adboost-screen',aliases:['애드부스트스크린','애드부스트','애드부스터스크린','애드부스터','애드부스트스크린(DOOH)'],short:'애드',kind:'ooh',color:'#38652c',background:'#eef6e8'},
+  {key:'adboost-screen',aliases:['애드부스트스크린','애드부스트','애드부스터스크린','애드부스터','애드부스트스크린(DOOH)','ADVoost Screen','ADVoost스크린'],short:'애드',kind:'ooh',color:'#38652c',background:'#eef6e8'},
+  {key:'adpacker',aliases:['애드패커','Adpacker','ADpacker'],short:'AP',kind:'digital',color:'#9d244b',background:'#fff0f5'},
+  {key:'lg-uplus',aliases:['LG U+','LGU+','LG유플러스','엘지유플러스','U+tv','어드레서블TV(LG U+)','Addressable TV (LG U+)'],short:'U+',kind:'tv',color:'#ad006c',background:'#fff0fa'},
+  {key:'sk-broadband',aliases:['SKB','SK broadband','SK브로드밴드','B tv','어드레서블TV(SKB)','Addressable TV (SKB)'],short:'SKB',kind:'tv',color:'#a92420',background:'#fff1ed'},
   {key:'tv',aliases:['TV','TV 방송','방송'],short:'TV',kind:'tv',color:'#374b70',background:'#edf0f8'},
   {key:'sbs',aliases:['SBS','SBS-TV'],short:'SBS',kind:'tv',color:'#175894',background:'#eaf4ff'},
   {key:'mbc',aliases:['MBC','MBC-TV'],short:'MBC',kind:'tv',color:'#54505f',background:'#f1eff7'},
@@ -31,14 +35,20 @@ const definitions: IdentityDefinition[] = [
 const keyOf = (value:string) => value.normalize('NFKC').toLocaleLowerCase('en-US').replace(/[\s._()/·&-]/g,'');
 const palette = [['#344d91','#eef2ff'],['#71419a','#f7effc'],['#8c4425','#fff1e9'],['#22606a','#eaf8fa'],['#805e16','#fff8df'],['#395d3b','#edf6ed']] as const;
 /** Presentation only. Exact aliases avoid incorrectly branding combined or unknown sources. */
-export function mediaIdentity(media: string) {
+export function mediaIdentity(media: string, placement?: string) {
   const name = media.trim() || '미확인';
   const normalized = keyOf(name);
-  const definition = definitions.find(item=>item.aliases.some(alias=>keyOf(alias)===normalized));
-  const source = definition && [...existingSources,...performanceSources].find(item=>item.key===definition.key);
+  let definition = definitions.find(item=>item.aliases.some(alias=>keyOf(alias)===normalized));
+  // Addressable TV is a buying method, not a brand. Resolve only an exact single
+  // operator supplied by the caller. Mixed/unknown detail never inherits a logo.
+  if (definition?.key === 'addressable-tv' && placement) {
+    const operator = definitions.find(item => ['lg-uplus','sk-broadband'].includes(item.key) && item.aliases.some(alias => keyOf(alias) === keyOf(placement.trim())));
+    if (operator) definition = operator;
+  }
+  const source = definition && [...existingSources,...performanceSources,...executionSources].find(item=>item.key===definition.key);
   let hash=0;for(const character of name) hash=(Math.imul(hash,31)+character.codePointAt(0)!)>>>0;
   const colors=palette[hash%palette.length];
   const words=name.match(/[A-Za-z0-9]+|[가-힣]/g)||['?'];
   const short=words.length===1?Array.from(words[0]).slice(0,3).join('').toUpperCase():words.slice(0,2).map(word=>Array.from(word)[0]).join('').toUpperCase();
-  return {key:definition?.key||`source-${hash.toString(36)}`,name,short:definition?.short||short,kind:definition?.kind||'other',color:definition?.color||colors[0],background:definition?.background||colors[1],src:source?.src||null};
+  return {key:definition?.key||`source-${hash.toString(36)}`,name,short:definition?.short||short,kind:definition?.kind||'other',color:definition?.color||colors[0],background:definition?.background||colors[1],src:source?.src||null,logoFormat:source && 'logoFormat' in source ? source.logoFormat : 'icon'};
 }

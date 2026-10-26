@@ -19,7 +19,7 @@ const cssFile = path.resolve(root, 'components/performance-report.module.css');
 const css = Object.freeze({ __esModule: true, default: new Proxy(Object.freeze({}), {
   get: (_target, key) => String(key),
 }) });
-for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json"]) allowed.add(path.resolve(root,file));
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 function load(file) {
   const name = path.resolve(root, file);

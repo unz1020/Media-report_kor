@@ -69,8 +69,14 @@ function emptyState(): PublishedDailyState {
 
 let stateCache: PublishedDailyState = emptyState();
 let hydrationGeneration = 0;
+let hydratedScope = "";
+let requestedScope = "";
+let hydrationRequest: { scope: string; generation: number; promise: Promise<boolean> } | null = null;
 export function clearPublishedDailyState() {
   hydrationGeneration++;
+  hydratedScope = "";
+  requestedScope = "";
+  hydrationRequest = null;
   stateCache = emptyState();
   dispatchUpdated();
 }
@@ -229,26 +235,41 @@ export function readPublishedDailyState(): PublishedDailyState {
   return stateCache;
 }
 
-export async function hydratePublishedDailyState(advertiser: string, month: string) {
-  if (typeof window === "undefined") return;
+export function hydratePublishedDailyState(advertiser: string, month: string, options: { background?: boolean; afterMutation?: boolean } = {}): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  const scope = JSON.stringify([advertiser, month]);
+  // A mutation in an unmounted/previous month must not take over the current view.
+  if (options.afterMutation && requestedScope !== scope) return Promise.resolve(false);
+  requestedScope = scope;
+  // Post-mutation reads must never reuse a pre-commit background snapshot.
+  if (!options.afterMutation && hydrationRequest?.scope === scope && hydrationRequest.generation === hydrationGeneration) return hydrationRequest.promise;
   const generation = ++hydrationGeneration;
-  dispatchSync("loading");
-  try {
-    const payload = await requestRemote({ action: "load_state", advertiser, month }) as RemoteStatePayload;
-    if (generation !== hydrationGeneration) return;
-    stateCache = stateFromRemote(payload);
-    for (const insight of Object.values(stateCache.insights)) insight.advertiser ||= advertiser;
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    dispatchUpdated();
-    dispatchSync("ready");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Supabase 동기화 실패";
-    if (generation !== hydrationGeneration) return;
-    stateCache = emptyState();
-    dispatchUpdated();
-    dispatchSync("error", message);
-    throw error;
-  }
+  const background = options.background === true && hydratedScope === scope;
+  if (!background) dispatchSync("loading");
+  const promise = (async () => {
+    try {
+      const payload = await requestRemote({ action: "load_state", advertiser, month }) as RemoteStatePayload;
+      if (generation !== hydrationGeneration) return false;
+      stateCache = stateFromRemote(payload);
+      hydratedScope = scope;
+      for (const insight of Object.values(stateCache.insights)) insight.advertiser ||= advertiser;
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      dispatchUpdated();
+      dispatchSync("ready");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Supabase 동기화 실패";
+      if (generation !== hydrationGeneration) return false;
+      // Keep the last scoped data during a failed background refresh. Never relabel it as fresh.
+      if (!background) { stateCache = emptyState(); hydratedScope = ""; dispatchUpdated(); }
+      dispatchSync("error", message);
+      throw error;
+    } finally {
+      if (hydrationRequest?.generation === generation) hydrationRequest = null;
+    }
+  })();
+  hydrationRequest = { scope, generation, promise };
+  return promise;
 }
 
 export function publishDailyBundle(
@@ -262,32 +283,30 @@ export async function publishDailyBundles(
   items: Array<{ bundle: DailyBundlePreview; mailSubject?: string; mailDate?: string; sourceType?: string }>,
 ) {
   if (typeof window === "undefined" || !items.length) return false;
-  const generation = hydrationGeneration;
-  dispatchSync("saving");
+  const first = items[0].bundle;
+  const month = (first.campaignStart || first.reportDate || "").slice(0,7);
+  const mutationScope = JSON.stringify([first.advertiser, month]);
+  if (requestedScope === mutationScope) dispatchSync("saving");
   try {
     for (const item of items) {
       await requestRemote({ action: "publish_bundle", bundle: item.bundle,
         mailSubject: item.mailSubject || "", mailDate: item.mailDate || "",
         sourceType: item.sourceType || (item.mailSubject === "직접 업로드" ? "manual_excel" : "gmail_excel") });
     }
-    if (generation === hydrationGeneration) {
-      const first = items[0].bundle;
-      const month = (first.campaignStart || first.reportDate || "").slice(0,7);
-      if (month) await hydratePublishedDailyState(first.advertiser, month);
-    }
-    dispatchSync("ready");
+    if (month) await hydratePublishedDailyState(first.advertiser, month, { afterMutation: true });
     return true;
   } catch (error) {
-    dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
+    if (requestedScope === mutationScope) dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
     return false;
   }
 }
 
 export function publishPlacementProof(proof: PlacementProof) {
   if (typeof window === "undefined") return;
+  const mutationScope = JSON.stringify([proof.advertiser, proof.month]);
   stageProof(proof);
   dispatchUpdated();
-  dispatchSync("saving");
+  if (requestedScope === mutationScope) dispatchSync("saving");
 
   const bundle: ProofBundle = {
     advertiser: proof.advertiser,
@@ -317,10 +336,10 @@ export function publishPlacementProof(proof: PlacementProof) {
         mailDate: proof.mailDate,
         sourceType: "placement_proof",
       });
-      await hydratePublishedDailyState(proof.advertiser, proof.month);
+      await hydratePublishedDailyState(proof.advertiser, proof.month, { afterMutation: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "게재 보고 저장 실패";
-      dispatchSync("error", message);
+      if (requestedScope === mutationScope) dispatchSync("error", message);
       console.error("Failed to persist placement proof to Supabase", error);
     }
   })();
@@ -330,15 +349,14 @@ export async function publishMailOnlyInsight(input: {
   advertiser: string; reportDate: string; mailSubject: string; mailDate?: string; notes: string[];
 }) {
   if (typeof window === "undefined") return false;
-  const generation = hydrationGeneration;
-  dispatchSync("saving");
+  const mutationScope = JSON.stringify([input.advertiser, input.reportDate.slice(0,7)]);
+  if (requestedScope === mutationScope) dispatchSync("saving");
   try {
     await requestRemote({ action: "publish_mail_only", input });
-    if (generation === hydrationGeneration) await hydratePublishedDailyState(input.advertiser, input.reportDate.slice(0,7));
-    dispatchSync("ready");
+    await hydratePublishedDailyState(input.advertiser, input.reportDate.slice(0,7), { afterMutation: true });
     return true;
   } catch (error) {
-    dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
+    if (requestedScope === mutationScope) dispatchSync("error", error instanceof Error ? error.message : "DB 저장 실패");
     return false;
   }
 }

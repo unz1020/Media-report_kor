@@ -21,7 +21,7 @@ const childStubs = {
 function load(file) {
   const filename = path.resolve(root, file);
   if (cache.has(filename)) return cache.get(filename).exports;
-  assert.ok(['lib/monitoring-plan-scope.ts', 'lib/placement-showroom.ts', 'lib/media-normalization.ts', 'lib/placement-urls.ts', 'lib/media-icons.ts', 'components/placement-showroom.tsx'].some(p => path.resolve(root, p) === filename), filename);
+  assert.ok(['lib/monitoring-plan-scope.ts', 'lib/placement-showroom.ts', 'lib/media-normalization.ts', 'lib/placement-urls.ts', 'lib/media-icons.ts', 'lib/media-identity.ts', 'lib/creative-image.ts', 'lib/proof-image-input.ts', 'components/placement-showroom.tsx'].some(p => path.resolve(root, p) === filename), filename);
   const module = { exports: {} }; cache.set(filename, module);
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   new Function('require', 'exports', 'module', code)(request => {
@@ -30,7 +30,7 @@ function load(file) {
     if (request.endsWith('.module.css')) return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) };
     const stub = childStubs[path.basename(request)]; if (stub) return stub;
     const resolved = request.startsWith('@/') ? path.resolve(root, request.slice(2)) : path.resolve(path.dirname(filename), request);
-    if (resolved.endsWith('public/media-icons/sources.json')) return JSON.parse(fs.readFileSync(resolved, 'utf8'));
+    if (['sources.json','performance-sources.json','execution-sources.json'].some(name => resolved.endsWith('public/media-icons/'+name))) return JSON.parse(fs.readFileSync(resolved, 'utf8'));
     return load(resolved + '.ts');
   }, module.exports, module);
   return module.exports;
@@ -89,10 +89,10 @@ assert.ok(tv.html.includes('운영안만 1개'));
 const checkbox = nodes(tv.tree, el => el.type === 'input' && el.props.type === 'checkbox')[0];
 assert.equal(checkbox.props.checked, false);
 checkbox.props.onChange({ target: { checked: true } });
-assert.deepEqual(updates, [[0, true], [4, '전체'], [5, ''], [6, 0], [7, undefined], [8, false], [9, null]], 'Scope change clears stale media, selection, proof, page, app and device');
+assert.deepEqual(updates, [[0, true], [4, '전체'], [5, ''], [7, 0], [8, undefined], [9, false], [10, null]], 'Scope change clears stale media, selection, proof, page, app and device');
 const tvPlans = render([true, 'evidence', 'tv', 'broadcast', '전체', '']);
 assert.ok(tvPlans.html.includes('Proposal broadcast')); assert.ok(tvPlans.html.includes('운영안만 · 제안/예정')); assert.ok(tvPlans.html.includes('운영안만 · 증빙/성과 미연결'));
-const digital = render([false, 'evidence', 'digital', 'all', '직방', 'stale', 2, 9, true, 'desktop']);
+const digital = render([false, 'evidence', 'digital', 'all', '직방', 'stale', '', 2, 9, true, 'desktop']);
 assert.ok(digital.html.includes('Source app inventory'));
 assert.equal(digital.html.includes('Proposal app inventory'), false);
 assert.equal(digital.html.includes('직방'), false, 'Proposal-only app absent from icon grid, rails, inventory and detail');

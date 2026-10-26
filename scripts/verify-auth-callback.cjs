@@ -203,6 +203,11 @@ function renderGate(search, sessionError = "") {
   const context = { exports: {}, URLSearchParams, require(name) {
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
     if (name === "react") return { useState: () => [state, value => { state = value; }], useEffect: fn => effects.push(fn) };
+    if (name === "@/lib/workspace-months") {
+      const helper = { exports: {} };
+      vm.runInNewContext(ts.transpileModule(fs.readFileSync("lib/workspace-months.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, helper);
+      return helper.exports;
+    }
     if (name === "next/navigation") return { usePathname: () => "/data-update" };
     if (name === "next/link") return { default: "Link" };
     if (name === "@/components/workspace-context") return {

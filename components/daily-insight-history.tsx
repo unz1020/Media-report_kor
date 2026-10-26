@@ -36,7 +36,7 @@ export function InsightEntry({ item, displayNotes }: { item: PublishedInsight; d
       if (!mounted.current) return;
       setDraft(null);
       setNotice("인사이트 문구를 저장했습니다.");
-      try { await hydratePublishedDailyState(advertiser, month); }
+      try { await hydratePublishedDailyState(advertiser, month, { afterMutation: true }); }
       catch { if (mounted.current) setError("문구는 저장됐습니다. 새로고침해 내용을 확인해주세요."); }
     } catch (error) {
       if (mounted.current) setError(error instanceof Error ? error.message : "저장에 실패했습니다.");

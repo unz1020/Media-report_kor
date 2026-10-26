@@ -68,7 +68,7 @@ export function retainCreativeAnnotations(metadata: Record<string, any>, previou
   if (!incoming || typeof incoming !== "object" || Array.isArray(incoming) ||
     !prior || typeof prior !== "object" || Array.isArray(prior) ||
     typeof incoming.month !== "string" || incoming.month !== prior.month) return;
-  for (const key of ["performanceLink", "operation", "materialIdentity"]) {
+  for (const key of ["performanceLink", "operation", "materialIdentity", "creativeImagePath", "creativeImageFilename"]) {
     if (!Object.prototype.hasOwnProperty.call(incoming, key) && Object.prototype.hasOwnProperty.call(prior, key)) {
       incoming[key] = prior[key];
     }

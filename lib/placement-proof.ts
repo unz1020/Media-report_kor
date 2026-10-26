@@ -51,6 +51,9 @@ export type PlacementProof = {
   sourceSummary: string;
   attachments: PlacementProofAttachment[];
   manualImagePath?: string;
+  /** User-registered reference only. Never evidence of delivery or an inferred performance match. */
+  creativeImagePath?: string;
+  creativeImageFilename?: string;
   publishedAt?: string;
 };
 

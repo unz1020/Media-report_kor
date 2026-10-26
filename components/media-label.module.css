@@ -12,3 +12,7 @@
 @media(forced-colors:active){.label.label>.mark{border:1px solid CanvasText;color:CanvasText;background:Canvas}}
 
 .sm>.mark[data-mark-length="4"]{font-size:8px}
+
+/* Official wordmarks need horizontal room at every size; fallback stays square. */
+.label.label>.mark[data-logo=true][data-logo-format=wordmark]{flex-basis:calc(var(--media-size)*2.5);width:calc(var(--media-size)*2.5);background:#fff}
+.label.label>.mark[data-logo-format=wordmark]>img{padding:3px;box-sizing:border-box}

@@ -41,7 +41,7 @@ function LinksEditor({ plan, datasets, onClose }: { plan: MediaPlanFact; dataset
       const result = await response.json();
       if (!response.ok) throw new Error(result.error === "MEDIA_MIX_CHANGED" ? "다른 사용자가 운영안을 수정했습니다. 입력 내용을 보관하고 취소 후 다시 불러와주세요." : result.error || "URL 저장 실패");
       if (mounted.current) {
-        await hydratePublishedDailyState(advertiser, month);
+        await hydratePublishedDailyState(advertiser, month, { afterMutation: true });
         if (mounted.current) onClose();
       }
     } catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : "URL 저장 실패"); }

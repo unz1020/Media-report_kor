@@ -1,0 +1,92 @@
+'use strict';
+
+// Run: node scripts/verify-performance-report-render.cjs
+// Synthetic SSR only. Reads exactly the allowlisted implementation modules,
+// never fixtures from disk/customer data. No browser, network or storage writes.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const React = require('react');
+const { renderToStaticMarkup } = require('react-dom/server');
+const root = path.resolve(__dirname, '..');
+const allowed = new Set([
+  'components/performance-report.tsx', 'lib/performance-report.ts',
+  'lib/performance-brief.ts', 'lib/media-normalization.ts',
+  'lib/placement-showroom.ts', 'lib/placement-urls.ts',
+].map(file => path.resolve(root, file)));
+const cssFile = path.resolve(root, 'components/performance-report.module.css');
+const css = Object.freeze({ __esModule: true, default: new Proxy(Object.freeze({}), {
+  get: (_target, key) => String(key),
+}) });
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
+const cache = new Map();
+function load(file) {
+  const name = path.resolve(root, file);
+  assert.ok(allowed.has(name), `Unexpected runtime dependency: ${name}`);
+  if (cache.has(name)) return cache.get(name).exports;
+  if(name.endsWith(".json")) return JSON.parse(fs.readFileSync(name,"utf8"));
+  const module = { exports: {} }; cache.set(name, module);
+  const result = ts.transpileModule(fs.readFileSync(name, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }, reportDiagnostics: true,
+  });
+  const errors = (result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error);
+  assert.equal(errors.length, 0, `Transpilation errors: ${name}`);
+  const localRequire = specifier => {
+    if (specifier === 'react') return React;
+    if (specifier === 'react/jsx-runtime') return require('react/jsx-runtime');
+    assert.ok(specifier.startsWith('.') || specifier.startsWith('@/'), `Forbidden runtime dependency: ${specifier}`);
+    const base = specifier.startsWith('@/') ? path.resolve(root, specifier.slice(2)) : path.resolve(path.dirname(name), specifier);
+    if (base.endsWith('.css')) {
+      assert.ok([cssFile,path.resolve(root,'components/media-label.module.css')].includes(base),'Only allowlisted component CSS stubs');
+      return css;
+    }
+    const resolved = path.extname(base) ? base : [...allowed].find(candidate => candidate === `${base}.ts` || candidate === `${base}.tsx`);
+    assert.ok(resolved && allowed.has(resolved), `Forbidden local dependency: ${specifier}`);
+    return load(resolved);
+  };
+  new Function('require', 'exports', 'module', result.outputText)(localRequire, module.exports, module);
+  return module.exports;
+}
+function deepFreeze(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.values(value).forEach(deepFreeze); Object.freeze(value);
+  }
+  return value;
+}
+const row = (extra = {}) => ({ platform: '네이버', placement: 'Synthetic slot', achievement: null,
+  guaranteed: '', spend: null, impressions: null, clicks: null, ctr: null, views: null,
+  conversions: null, cpc: null, cpm: null, cpv: null, sourceSheet: 'Synthetic sheet',
+  sourceFile: 'synthetic-only.xlsx', reportDate: '2030-01-20', ...extra });
+const daily = (extra = {}) => ({ ...row(), date: '2030-01-19', vtr: null, ...extra });
+const plan = (extra = {}) => ({ platform: '계획 전용 테스트', placement: 'Synthetic plan slot',
+  product: '', device: '', creativeType: '', periodStart: '2030-01-01', periodEnd: '2030-01-31',
+  budget: 999999999, expectedImpressions: 888888888, expectedClicks: 777777777,
+  target: '', sourceSheet: 'Synthetic plan', ...extra });
+const insight = (extra = {}) => ({ key: 'memo-latest', advertiser: 'Synthetic advertiser',
+  datasetKey: 'synthetic-dataset', reportDate: '2030-01-20', mailDate: '2030-01-21T03:04:00Z',
+  publishedAt: '2099-12-31T23:59:59Z', mailSubject: 'Synthetic source mail',
+  notes: ['수동 등록 운영 메모: 원본의 확인 범위를 기록했습니다.'], ...extra });
+const input = (extra = {}) => ({ rows: [], dailyRows: [], plans: [], startDate: '2030-01-10',
+  endDate: '2030-01-25', baselineComplete: true, ...extra });
+const metrics = ['spend', 'impressions', 'clicks', 'ctr', 'views', 'conversions', 'cpc', 'cpm', 'cpv'];
+
+const { buildReportDailySeries, PerformanceReportTrend, PerformanceReportOverview } = load('components/performance-report.tsx');
+const { buildPerformanceReport } = load('lib/performance-report.ts');
+const dailyRows = [daily({date:'2030-01-10', impressions:100, clicks:10, spend:20, views:4}),daily({date:'2030-01-10',placement:'Synthetic (서비스)',impressions:50,clicks:null,spend:999}),daily({date:'2030-01-12',impressions:0,clicks:0,spend:0}),daily({date:'2030-01-13',impressions:null,clicks:2,spend:null}),daily({date:'2030-02-30',impressions:999}),daily({date:'2029-01-01',impressions:999})];
+const report=buildPerformanceReport(input({dailyRows}));
+const media=report.media[0];const before=JSON.stringify(media);deepFreeze(media);
+const series=buildReportDailySeries(media,'2030-01-10','2030-01-25');
+assert.equal(JSON.stringify(media),before);
+assert.deepEqual(series.map(p=>p.date),['2030-01-10','2030-01-12','2030-01-13']);
+assert.equal(series[0].impressions,150);assert.equal(series[0].spend,20);assert.equal(series[1].impressions,0);assert.equal(series[1].spend,0);assert.equal(series[2].impressions,null);assert.equal(series[2].views,null);
+const html=renderToStaticMarkup(React.createElement(PerformanceReportTrend,{media,startDate:'2030-01-10',endDate:'2030-01-25'}));
+assert.equal((html.match(/data-daily-metric=/g)||[]).length,3);
+assert.equal((html.match(/<svg /g)||[]).length,3);
+assert.equal((html.match(/<path /g)||[]).length,6,'Missing day and null interrupt each metric independently');
+assert.match(html,/공통 비교일/);assert.match(html,/미제공/);assert.match(html,/독립 축/);assert.match(html,/type="checkbox"/);assert.doesNotMatch(html,/NaN|Infinity|undefined/);
+const empty=renderToStaticMarkup(React.createElement(PerformanceReportTrend,{media:{...media,dailyRows:[daily({impressions:null,clicks:null,spend:null})]},startDate:'2030-01-10',endDate:'2030-01-25'}));assert.equal((empty.match(/<svg /g)||[]).length,0);assert.match(empty,/disabled=""/);
+const overflow=buildReportDailySeries({...media,dailyRows:[daily({impressions:Number.MAX_VALUE}),daily({impressions:Number.MAX_VALUE})]},'2030-01-10','2030-01-25');assert.equal(overflow[0].impressions,null);
+const overview=renderToStaticMarkup(React.createElement(PerformanceReportOverview,{report,insights:[],startDate:'2030-01-10',endDate:'2030-01-25',onOpenMedia:()=>{},onOpenPlan:()=>{}}));assert.match(overview,/data-daily-multi-metrics/);
+console.log('Daily multi-metric checks passed: 3 defaults, independent charts, date/null gaps, zero, service exclusion, invalid dates, overflow, source immutability, empty states and overview/detail parity (synthetic only).');

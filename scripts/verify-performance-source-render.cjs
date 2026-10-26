@@ -14,7 +14,7 @@ const allowed = new Set([
   'lib/placement-showroom.ts', 'lib/placement-urls.ts',
 ].map(file => path.resolve(root, file)));
 const cssAllowed = new Set(['components/performance-source-panels.module.css', 'components/performance-visuals.module.css'].map(file => path.resolve(root, file)));
-for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json"]) allowed.add(path.resolve(root,file));
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 function load(file) {
   const name = path.resolve(root, file);

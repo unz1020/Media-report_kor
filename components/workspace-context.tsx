@@ -1,7 +1,9 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { clearPublishedDailyState, hydratePublishedDailyState } from "@/lib/daily-report-store";
+
+import { seoulReportingMonth, validWorkspaceMonth, workspaceMonthOptions } from "@/lib/workspace-months";
 
 export type AdvertiserKey = "jacomo" | "kyowon";
 export type DataSyncState = "idle" | "loading" | "saving" | "ready" | "error";
@@ -18,14 +20,12 @@ export type WorkspaceSession = {
 type WorkspaceValue = {
   advertiserKey: AdvertiserKey; advertiser: string; month: string; months: string[];
   setAdvertiserKey: (value: AdvertiserKey) => void; setMonth: (value: string) => void;
-  dataSyncState: DataSyncState; dataSyncError: string; reloadData: () => Promise<void>;
+  dataSyncState: DataSyncState; dataSyncError: string; reloadData: (options?: { background?: boolean }) => Promise<void>;
   session: WorkspaceSession | null; sessionLoading: boolean; sessionError: string;
   refreshSession: () => Promise<void>; canEdit: boolean; allowedAdvertiserKeys: AdvertiserKey[];
 };
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
-function currentMonth() {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).format(new Date());
-}
+const currentMonth = seoulReportingMonth;
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [advertiserKey, setAdvertiserKeyState] = useState<AdvertiserKey>("jacomo");
   const [month, setMonthState] = useState(currentMonth);
@@ -38,7 +38,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     session?.advertisers.some(item => item.name === ADVERTISERS[key].label));
   const selectedAccess = session?.advertisers.find(item => item.name === ADVERTISERS[advertiserKey].label)?.accessLevel;
   const canEdit = selectedAccess === "owner" || selectedAccess === "editor";
-  const months = [...new Set([currentMonth(), month, ...(session?.months || [])])].sort().reverse();
+  const months = workspaceMonthOptions(session?.months || [], month, currentMonth());
+  const scopeRef = useRef(""); scopeRef.current = JSON.stringify([advertiserKey, month]);
+  const requestSequence = useRef(0), lastReadyScope = useRef(""), lastRefresh = useRef(0);
   const refreshSession = useCallback(async () => {
     try {
       const response = await fetch("/api/workspace", { cache: "no-store" });
@@ -60,7 +62,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const saved = window.localStorage.getItem(`media-report-advertiser:${session.user.email}`) as AdvertiserKey;
     if (allowed.length) setAdvertiserKeyState(allowed.includes(saved) ? saved : allowed[0]);
     const savedMonth = window.localStorage.getItem(`media-report-month:${session.user.email}`);
-    if (savedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(savedMonth)) setMonthState(savedMonth);
+    if (validWorkspaceMonth(savedMonth)) setMonthState(savedMonth);
   }, [session?.user.email]);
   const setAdvertiserKey = (value: AdvertiserKey) => {
     if (!allowedAdvertiserKeys.includes(value) || value === advertiserKey) return;
@@ -68,24 +70,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(`media-report-advertiser:${session?.user.email}`, value);
   };
   const setMonth = (value: string) => {
-    if (value === month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return;
+    if (value === month || !validWorkspaceMonth(value)) return;
     clearPublishedDailyState(); setMonthState(value);
     window.localStorage.setItem(`media-report-month:${session?.user.email}`, value);
   };
-  const reloadData = useCallback(async () => {
+  const reloadData = useCallback(async (options: { background?: boolean } = {}) => {
     if (!session?.advertisers.some(item => item.name === ADVERTISERS[advertiserKey].label)) return;
-    setDataSyncState("loading"); setDataSyncError("");
+    const scope = JSON.stringify([advertiserKey, month]);
+    const request = ++requestSequence.current;
+    const background = options.background === true && lastReadyScope.current === scope;
+    if (!background) setDataSyncState("loading");
+    setDataSyncError(""); lastRefresh.current = Date.now();
     try {
-      await hydratePublishedDailyState(ADVERTISERS[advertiserKey].label, month);
+      const refreshed = await hydratePublishedDailyState(ADVERTISERS[advertiserKey].label, month, { background });
+      if (!refreshed || scopeRef.current !== scope || requestSequence.current !== request) return;
+      lastReadyScope.current = scope;
       setDataSyncState("ready");
     } catch (error) {
+      if (scopeRef.current !== scope || requestSequence.current !== request) return;
       setDataSyncState("error");
       setDataSyncError(error instanceof Error ? error.message : "DB 동기화 실패");
     }
   }, [advertiserKey, month, session]);
-  useEffect(() => { void reloadData(); }, [reloadData]);
+  useEffect(() => { void reloadData({ background: true }); }, [reloadData]);
   useEffect(() => {
-    const reloadVisible = () => { if (document.visibilityState === "visible") void reloadData(); };
+    const reloadVisible = () => { if (document.visibilityState === "visible" && Date.now() - lastRefresh.current >= 30000) void reloadData({ background: true }); };
     const timer = window.setInterval(reloadVisible, 60000);
     window.addEventListener("focus", reloadVisible);
     return () => { window.clearInterval(timer); window.removeEventListener("focus", reloadVisible); };

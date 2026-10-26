@@ -134,7 +134,7 @@ function SourcePlacementMatrix({ media, rows, dailyRows, summaryLabel }: { media
   return <div className={matrixStyles.matrixWrap} tabIndex={0} role="region" aria-label={`${media} 지면별 성과`}>
     <table className={matrixStyles.matrix} data-performance-matrix>
       <caption><MediaLabel media={media}>{media}</MediaLabel> 지면별 성과<span>{rows.length ? "주말은 날짜에 표시 · -: 데이터 미제공" : "일별 성과 제공 · 누적 성과 미제공 · -: 데이터 미제공"}</span></caption>
-      <thead><tr><th rowSpan={2} scope="col" className={matrixStyles.dateCell}>일자</th>{[...columns].map(([key, label]) => <th key={key} colSpan={3} scope="colgroup" className={matrixStyles.placementHead}>{label}</th>)}</tr>
+      <thead><tr><th rowSpan={2} scope="col" className={matrixStyles.dateCell}>일자</th>{[...columns].map(([key, label]) => <th key={key} colSpan={3} scope="colgroup" className={matrixStyles.placementHead}><MediaLabel media={media} placement={label}>{label}</MediaLabel></th>)}</tr>
         <tr>{[...columns.keys()].map(key => <Fragment key={key}>{["Impression", "Clicks", "CTR"].map(label => <th key={label} scope="col">{label}</th>)}</Fragment>)}</tr></thead>
       <tbody>{rows.length > 0 && <tr className={matrixStyles.matrixTotal} data-matrix-total><th scope="row" className={matrixStyles.dateCell}>{summaryLabel}</th>{[...columns.keys()].map(key => <Fragment key={key}>{cells(rows.filter(row => placementMetricKey(row) === key))}</Fragment>)}</tr>}
         {dates.map(date => {
@@ -187,7 +187,7 @@ export function PerformanceSourcePanels({advertiser,month,startDate,endDate,view
                   <tbody>
                     {group.rows.map((row, index) => <tr key={`${row.sourceFile}-${row.sourceSheet}-${row.placement}-${index}`}>
                       {index === 0 && <td rowSpan={group.rows.length} className={styles.mediaCell}><MediaLabel media={group.media}>{group.media}</MediaLabel></td>}
-                      <td className={styles.placementCell}>{row.placement}</td>
+                      <td className={styles.placementCell}><MediaLabel media={group.media} placement={row.placement}>{row.placement}</MediaLabel></td>
                       {presence.achievement && <td className={styles.numCell}>{formatAchievement(row.achievement)}</td>}
                       {presence.guaranteed && <td className={styles.numCell}>{formatGuaranteed(row.guaranteed)}</td>}
                       {presence.spend && <td className={styles.numCell}>{formatWon(row.spend)}{isPerformanceReferenceRow(row) && <small> · 원본 참고 금액</small>}</td>}

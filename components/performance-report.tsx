@@ -2,14 +2,15 @@
 
 import { useId, useMemo, useState } from "react";
 import type { PublishedInsight } from "@/lib/daily-report-store";
-import type { buildPerformanceReport, MediaPerformanceReport, ReportKind, ReportMetrics } from "@/lib/performance-report";
+import { isPerformanceReferenceRow, type buildPerformanceReport, type MediaPerformanceReport, type ReportKind, type ReportMetrics } from "@/lib/performance-report";
 import { buildPerformanceChanges } from "@/lib/performance-brief";
 import { inferMediaMentions, normalizeInsightText } from "@/lib/media-normalization";
 import { MediaLabel } from "./media-label";
 import styles from "./performance-report.module.css";
 
 type Report = ReturnType<typeof buildPerformanceReport>;
-type Metric = "impressions" | "clicks" | "views";
+type Metric = "impressions" | "clicks" | "spend" | "views";
+const DAILY_METRICS: Metric[] = ["impressions", "clicks", "spend", "views"];
 const KINDS: Record<ReportKind, string> = { digital: "디지털", video: "동영상·OTT", broadcast: "방송", ooh: "옥외·공간", other: "기타" };
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const number = (value: number | null | undefined) => finite(value) ? Math.round(value).toLocaleString("ko-KR") : "—";
@@ -17,7 +18,7 @@ const money = (value: number | null | undefined) => finite(value) ? `${value !==
 const unitCost = (value: number | null | undefined) => !finite(value) ? "—" : `${value!==0&&Math.abs(value)<0.000001?value.toExponential(2):value.toLocaleString("ko-KR",value!==0&&Math.abs(value)<0.01?{maximumSignificantDigits:3}:{maximumFractionDigits:2})}원`;
 const percent = (value: number | null | undefined) => finite(value) ? `${value.toFixed(2)}%` : "—";
 const raw = (media: MediaPerformanceReport) => media.kind === "ooh" || media.kind === "broadcast" || media.kind === "other";
-const labelFor = (media: MediaPerformanceReport, key: Metric) => key === "impressions" ? raw(media) ? "원본 지표 · 노출수" : "노출수" : key === "views" ? "조회수" : "클릭수";
+const labelFor = (media: MediaPerformanceReport, key: Metric) => key === "impressions" ? raw(media) ? "원본 지표 · 노출수" : "노출수" : key === "views" ? "조회수" : key === "spend" ? "집행액" : "클릭수";
 const planOnly = (media: MediaPerformanceReport) => !media.rows.length && !media.dailyRows.length && !media.creativeRows?.length && media.plans.length > 0;
 const shorten = (value: string, length: number) => value.length > length ? `${value.slice(0, length)}…` : value;
 function mailDate(value: string) {
@@ -40,14 +41,11 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
   const [kind, setKind] = useState<ReportKind | "all">("all");
   const [expanded, setExpanded] = useState(false);
   const [pendingExpanded, setPendingExpanded] = useState(false);
-  const [trendSearch, setTrendSearch] = useState("");
-  const [trendName, setTrendName] = useState("");
   const evidence = report.media.filter(item => item.rows.length || item.dailyRows.length || item.creativeRows?.length);
   const matches = (item: MediaPerformanceReport) => (kind === "all" || kind === item.kind) && item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const results = evidence.filter(matches);
   const pending = report.media.filter(item => planOnly(item) && matches(item));
-  const trendOptions = evidence.filter(item => item.dailyRows.length && item.name.toLocaleLowerCase().includes(trendSearch.trim().toLocaleLowerCase()));
-  const trendMedia = trendOptions.find(item => item.name === trendName) ?? trendOptions[0];
+  const trendOptions = evidence.filter(item => item.dailyRows.length);
   const notes = insights.filter(item => item.reportDate >= startDate && item.reportDate <= endDate && item.notes.some(note => normalizeInsightText(note).trim()))
     .sort((a, b) => b.reportDate.localeCompare(a.reportDate) || b.mailDate.localeCompare(a.mailDate)).slice(0, 2);
   const changes = useMemo(() => buildPerformanceChanges(report.media), [report.media]);
@@ -90,15 +88,8 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
     </dl>
     <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
     <section className={styles.section} aria-labelledby={`${id}-trend`}>
-      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>하나의 매체, 일별 흐름</h3></div></div>
-      <div className={styles.controls}>
-        <label>매체 찾기<input type="search" placeholder="매체명 검색" value={trendSearch} onChange={event => setTrendSearch(event.target.value)} /></label>
-        <label>추이 매체<select value={trendMedia?.name ?? ""} onChange={event => setTrendName(event.target.value)} disabled={!trendOptions.length}>
-          {!trendOptions.length && <option value="">일별 원본 없음</option>}{trendOptions.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
-        </select></label>
-      </div>
-      {trendMedia ? <details className={styles.trendDisclosure} open key={trendMedia.name}><summary><MediaLabel media={trendMedia.name}>{trendMedia.name}</MediaLabel> 일별 추이</summary><PerformanceReportTrend media={trendMedia} startDate={startDate} endDate={endDate} /></details>
-        : <p className={styles.empty}>{trendSearch ? "검색한 매체의 일별 원본이 없습니다." : "선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다."}</p>}
+      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>여러 지표, 같은 날의 흐름</h3></div></div>
+      {trendOptions.length ? <DailyMetricExplorer mediaOptions={trendOptions} startDate={startDate} endDate={endDate} /> : <p className={styles.empty}>선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다.</p>}
     </section>
     <div className={composition.length ? styles.contextGrid : styles.contextSingle}>
       {composition.length > 0 && <section className={styles.section} aria-labelledby={`${id}-spend`}>
@@ -180,61 +171,99 @@ export function MediaReportKpis({ media, baselineComplete }: { media: MediaPerfo
   </section>;
 }
 
-// Daily facts stay separate from cumulative metrics. Missing dates and missing
-// metrics interrupt the path; no synthetic rows or zero-filled dates are made.
+// dailyRows have already been source-deduplicated by reporting-data. Preserve
+// distinct placements even when their metric values happen to be identical.
+export function buildReportDailySeries(media: MediaPerformanceReport, startDate: string, endDate: string) {
+  const groups = new Map<string, typeof media.dailyRows>();
+  for (const row of media.dailyRows) {
+    const timestamp = Date.parse(row.date + "T00:00:00Z");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || !Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== row.date || row.date < startDate || row.date > endDate) continue;
+    const group = groups.get(row.date) ?? []; group.push(row); groups.set(row.date, group);
+  }
+  return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
+    const total = (key: Metric) => {
+      const values = rows.filter(row => key !== "spend" || !isPerformanceReferenceRow(row)).map(row => row[key]).filter(finite);
+      const sum = values.reduce((a, b) => a + b, 0);
+      return values.length && finite(sum) ? sum : null;
+    };
+    return { date, timestamp: Date.parse(date + "T00:00:00Z"), impressions: total("impressions"), clicks: total("clicks"), views: total("views"), spend: total("spend") };
+  });
+}
+type DailyPoint = ReturnType<typeof buildReportDailySeries>[number];
+const dailyFormat = (value: number | null | undefined, metric: Metric) => !finite(value) ? "미제공" : metric === "spend" ? money(value) : number(value);
+const metricAllowed = (media: MediaPerformanceReport, metric: Metric) => !raw(media) || ["impressions", "views", "spend"].includes(metric);
+
 export function PerformanceReportTrend({ media, startDate, endDate }: { media: MediaPerformanceReport; startDate: string; endDate: string }) {
-  const [selectedMetric, setSelectedMetric] = useState<Metric>(media.kind === "video" ? "views" : "impressions");
+  return <DailyMetricExplorer mediaOptions={[media]} startDate={startDate} endDate={endDate} />;
+}
+
+function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOptions: MediaPerformanceReport[]; startDate: string; endDate: string }) {
+  const id = useId();
+  const [search, setSearch] = useState("");
+  const [selectedNames, setSelectedNames] = useState<string[]>([mediaOptions[0]?.name].filter(Boolean));
+  const [selectedMetrics, setSelectedMetrics] = useState<Metric[] | null>(null);
   const [activeDate, setActiveDate] = useState("");
-  const series = useMemo(() => {
-    const groups = new Map<string, typeof media.dailyRows>();
-    for (const row of media.dailyRows) {
-      const timestamp = Date.parse(`${row.date}T00:00:00Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date) || !Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== row.date || row.date < startDate || row.date > endDate) continue;
-      const group = groups.get(row.date) ?? []; group.push(row); groups.set(row.date, group);
-    }
-    return [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
-      const total = (key: Metric) => { const values = rows.map(row => row[key]).filter(finite); return values.length ? values.reduce((a, b) => a + b, 0) : null; };
-      return { date, timestamp: Date.parse(`${date}T00:00:00Z`), impressions: total("impressions"), clicks: total("clicks"), views: total("views") };
-    });
-  }, [media.dailyRows, startDate, endDate]);
-  const allowed: Metric[] = raw(media) ? ["impressions", "views"] : media.kind === "video" ? ["views", "impressions", "clicks"] : ["impressions", "clicks", "views"];
-  const options = allowed.filter(key => series.some(point => finite(point[key])));
-  const metric = options.includes(selectedMetric) ? selectedMetric : options[0];
-  const points = metric ? series.filter(point => finite(point[metric])) : [];
-  const selected = points.find(point => point.date === activeDate) ?? points.at(-1);
-  const maximum = Math.max(1, ...points.map(point => point[metric!]!)) * 1.1;
-  const minTime = series[0]?.timestamp ?? 0, maxTime = series.at(-1)?.timestamp ?? 0;
-  const x = (timestamp: number) => maxTime === minTime ? 420 : 72 + (timestamp - minTime) / (maxTime - minTime) * 696;
-  const y = (value: number) => 192 - value / maximum * 160;
-  const paths: string[] = []; let segment = "", previous = 0;
+  const all = useMemo(() => mediaOptions.map(media => ({ media, series: buildReportDailySeries(media, startDate, endDate) })), [mediaOptions, startDate, endDate]);
+  const names = selectedNames.filter(name => all.some(item => item.media.name === name));
+  const selected = all.filter(item => (names.length ? names : [all[0]?.media.name]).includes(item.media.name));
+  const available = DAILY_METRICS.filter(metric => selected.some(({media, series}) => metricAllowed(media, metric) && series.some(point => finite(point[metric]))));
+  const metrics = (selectedMetrics ?? available.slice(0, 3)).filter(metric => available.includes(metric));
+  const dates = [...new Set(selected.flatMap(item => item.series.map(point => point.date)))].sort();
+  const date = dates.includes(activeDate) ? activeDate : dates.at(-1) ?? "";
+  const minTime = Date.parse(startDate + "T00:00:00Z"), maxTime = Date.parse(endDate + "T00:00:00Z");
+  const toggleMetric = (metric: Metric) => setSelectedMetrics(metrics.includes(metric) ? metrics.filter(key => key !== metric) : [...metrics, metric].slice(0, 4));
+  return <div className={styles.trend} data-daily-multi-metrics>
+    <p className={styles.meta}>{startDate} ~ {endDate} · 매체 최대 3개 · 지표 최대 4개 · 차트마다 독립 축</p>
+    {mediaOptions.length > 1 && <fieldset className={styles.metricChoices}><legend>비교 매체 (최대 3개)</legend>
+      <label className={styles.mediaSearch}>매체 찾기<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="매체명 검색" /></label>
+      <div className={styles.choiceList}>{all.filter(({media}) => media.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).map(({media}) => {
+        const checked = selected.some(item => item.media.name === media.name);
+        return <label key={media.name}><input type="checkbox" checked={checked} disabled={checked ? selected.length === 1 : selected.length >= 3} onChange={() => setSelectedNames(checked ? selected.map(item => item.media.name).filter(name => name !== media.name) : [...selected.map(item => item.media.name), media.name])} /><MediaLabel media={media.name}>{media.name}</MediaLabel></label>;
+      })}</div>
+      {!all.some(({media}) => media.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) && <p className={styles.meta}>검색한 매체가 없습니다. 기존 선택은 유지됩니다.</p>}
+    </fieldset>}
+    <fieldset className={styles.metricChoices}><legend>일별 지표 (최대 4개)</legend><div className={styles.choiceList}>{DAILY_METRICS.map(metric => {
+      const provided = available.includes(metric), checked = metrics.includes(metric);
+      return <label key={metric}><input type="checkbox" checked={checked} disabled={!provided || (!checked && metrics.length >= 4)} onChange={() => toggleMetric(metric)} />{labelFor(selected[0]?.media ?? mediaOptions[0], metric)}{!provided && <small>미제공</small>}</label>;
+    })}</div></fieldset>
+    {dates.length > 0 && <div className={styles.sharedDate}><label htmlFor={id + "-date"}>공통 비교일</label><select id={id + "-date"} value={date} onChange={event => setActiveDate(event.target.value)}>{dates.map(value => <option key={value} value={value}>{value}</option>)}</select><span className={styles.meta}>점을 선택하거나 Tab·←·→로 같은 날의 값을 함께 확인하세요.</span></div>}
+    <p className={styles.dateStatus} aria-live="polite">{date && date + " · "}{selected.map(item => item.media.name).join(" / ")} · {metrics.length}개 지표 선택</p>
+    <div className={styles.multiChartGrid}>{selected.flatMap(({media, series}) => metrics.map(metric => <DailyMetricChart key={media.name + metric} media={media} series={series} metric={metric} date={date} minTime={minTime} maxTime={maxTime} onDate={setActiveDate} />))}</div>
+    {!metrics.length && <p className={styles.empty}>{available.length ? "함께 볼 일별 지표를 선택하세요." : "선택 기간에 표시할 수 있는 일별 원본 지표가 없습니다. 누적·계획 수치로 대체하지 않습니다."}</p>}
+    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 일별 원본 제공분만 표시합니다. 미제공 날짜·값은 0이 아니며 선을 연결하지 않습니다. 실제 0은 ‘0’으로 표시합니다. 집행액은 서비스·참고 비용을 제외합니다. 각 차트의 축 범위가 달라 선 높이를 매체 간 규모로 비교할 수 없습니다. 방송·옥외의 원본 지표는 실제 접촉 인원·순도달을 뜻하지 않습니다.</p>
+  </div>;
+}
+
+function DailyMetricChart({ media, series, metric, date, minTime, maxTime, onDate }: { media: MediaPerformanceReport; series: DailyPoint[]; metric: Metric; date: string; minTime: number; maxTime: number; onDate: (date: string) => void }) {
+  const points = metricAllowed(media, metric) ? series.filter(point => finite(point[metric])) : [];
+  const selected = series.find(point => point.date === date);
+  const values = points.map(point => point[metric]!);
+  const low = Math.min(0, ...values), high = Math.max(0, ...values);
+  const padding = (high - low || 1) * 0.1, minimum = low < 0 ? low - padding : 0, maximum = high > 0 ? high + padding : 1;
+  const x = (timestamp: number) => maxTime === minTime ? 240 : 72 + (timestamp - minTime) / (maxTime - minTime) * 376;
+  const y = (value: number) => 174 - (value - minimum) / (maximum - minimum) * 142;
+  const paths: string[] = []; let segment = "", previous: number | null = null;
   for (const point of series) {
-    const value = metric ? point[metric] : null;
-    if (!finite(value)) { if (segment) paths.push(segment); segment = ""; previous = 0; continue; }
-    if (previous && point.timestamp - previous !== 86400000) { if (segment) paths.push(segment); segment = ""; }
-    segment += `${segment ? " L" : "M"}${x(point.timestamp)},${y(value)}`; previous = point.timestamp;
+    const value = point[metric];
+    if (!finite(value)) { if (segment) paths.push(segment); segment = ""; previous = null; continue; }
+    if (previous !== null && point.timestamp - previous !== 86400000) { if (segment) paths.push(segment); segment = ""; }
+    segment += (segment ? " L" : "M") + x(point.timestamp) + "," + y(value); previous = point.timestamp;
   }
   if (segment) paths.push(segment);
-  const metricLabel = metric ? labelFor(media, metric) : "일별 지표";
-  return <div className={styles.trend}>
-    <div className={styles.trendHeading}><div><h4><MediaLabel media={media.name} size="md">{media.name}</MediaLabel> · {metricLabel}</h4><p className={styles.meta}>{startDate} ~ {endDate}</p></div>
-      {options.length > 0 && <label>일별 지표<select value={metric} onChange={event => { setSelectedMetric(event.target.value as Metric); setActiveDate(""); }}>{options.map(key => <option key={key} value={key}>{labelFor(media, key)}</option>)}</select></label>}
-    </div>
-    {points.length ? <>
-      <p className={styles.chartReadout} aria-live="polite">{selected?.date} <strong>{number(selected?.[metric!])}</strong> <span>{metricLabel}</span></p>
-      <svg className={styles.chart} viewBox="0 0 800 238" role="group" aria-label={`${media.name} 일별 ${metricLabel}. 각 점을 선택해 날짜별 값을 확인하세요.`}>
-        {[0, 0.5, 1].map(tick => <g key={tick}><line x1="72" x2="768" y1={y(maximum * tick)} y2={y(maximum * tick)} className={styles.gridLine} /><text x="62" y={y(maximum * tick) + 4} textAnchor="end">{new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(maximum * tick)}</text></g>)}
-        {paths.map((d, index) => <path key={index} d={d} className={styles.chartLine} />)}
-        {points.map((point, index) => <g key={point.date}>
-          <circle cx={x(point.timestamp)} cy={y(point[metric!]!)} r={selected?.date === point.date ? 5 : 3} className={styles.chartDot} aria-hidden="true" />
-          <circle cx={x(point.timestamp)} cy={y(point[metric!]!)} r="12" className={styles.chartTarget} tabIndex={0} role="button" aria-label={`${point.date} ${metricLabel} ${number(point[metric!])}`} onFocus={() => setActiveDate(point.date)} onMouseEnter={() => setActiveDate(point.date)} onClick={() => setActiveDate(point.date)} onKeyDown={event => {
-            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setActiveDate(point.date); }
-            if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); const next = event.currentTarget.parentElement?.parentElement?.querySelectorAll<SVGCircleElement>('[role="button"]')[Math.max(0, Math.min(points.length - 1, index + (event.key === "ArrowLeft" ? -1 : 1)))]; next?.focus(); }
-          }}><title>{`${point.date} · ${metricLabel} ${number(point[metric!])}`}</title></circle>
-        </g>)}
-        {[...new Set([series[0], series[Math.floor((series.length - 1) / 2)], series.at(-1)])].filter(Boolean).map(point => <text key={point!.date} x={x(point!.timestamp)} y="224" textAnchor="middle">{point!.date.slice(5).replace("-", "/")}</text>)}
-      </svg>
-      <p className={styles.footnote}>점을 선택하거나 Tab·방향키로 일별 값을 확인하세요. 일자가 빠지거나 지표가 없으면 선을 연결하지 않습니다.</p>
-    </> : <p className={styles.empty}>선택 기간에 표시할 수 있는 일별 원본 지표가 없습니다. 누적·계획 수치로 대체하지 않습니다.</p>}
-    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 미제공 날짜·값은 0이 아닙니다.{raw(media) && " 원본 노출·조회 표기값이며 실제 접촉 인원이나 순도달을 뜻하지 않습니다."}</p>
-  </div>;
+  const label = labelFor(media, metric);
+  return <article className={styles.dailyCard} data-daily-metric={metric} data-daily-media={media.name}>
+    <h4><MediaLabel media={media.name}>{media.name}</MediaLabel> · {label}</h4>
+    <p className={styles.chartReadout} aria-live="polite"><span>{date || "일별 원본 없음"}</span><strong>{dailyFormat(metricAllowed(media, metric) ? selected?.[metric] : null, metric)}</strong></p>
+    <p className={styles.meta}>{metric === "spend" ? "원 · 유료 제공분" : "원본 제공 수량"} · 독립 축</p>
+    {points.length ? <svg className={styles.chart} viewBox="0 0 480 218" role="group" aria-label={media.name + " 일별 " + label + ". 같은 날의 값을 함께 확인하세요."}>
+      {[0, 0.5, 1].map(tick => { const value = minimum + (maximum - minimum) * tick; return <g key={tick}><line x1="72" x2="448" y1={y(value)} y2={y(value)} className={styles.gridLine} /><text x="62" y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value)}</text></g>; })}
+      {paths.map((d, index) => <path key={index} d={d} className={styles.chartLine} />)}
+      {date && <line x1={x(Date.parse(date + "T00:00:00Z"))} x2={x(Date.parse(date + "T00:00:00Z"))} y1="24" y2="180" className={styles.dateGuide} />}
+      {points.map((point, index) => <g key={point.date}><circle cx={x(point.timestamp)} cy={y(point[metric]!)} r={date === point.date ? 5 : 3} className={styles.chartDot} aria-hidden="true" /><circle cx={x(point.timestamp)} cy={y(point[metric]!)} r="12" className={styles.chartTarget} tabIndex={0} role="button" aria-label={point.date + " " + label + " " + dailyFormat(point[metric], metric)} onFocus={() => onDate(point.date)} onMouseEnter={() => onDate(point.date)} onClick={() => onDate(point.date)} onKeyDown={event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onDate(point.date); }
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? points.length - 1 : Math.max(0, Math.min(points.length - 1, index + (event.key === "ArrowLeft" ? -1 : 1))); event.currentTarget.ownerSVGElement?.querySelectorAll<SVGCircleElement>('[role="button"]')[next]?.focus(); }
+      }}><title>{point.date + " · " + label + " " + dailyFormat(point[metric], metric)}</title></circle></g>)}
+      {[...new Set([minTime, maxTime])].filter(Number.isFinite).map(time => <text key={time} x={x(time)} y="206" textAnchor="middle">{new Date(time).toISOString().slice(5, 10).replace("-", "/")}</text>)}
+    </svg> : <p className={styles.empty}>이 매체의 {label} 일별 원본은 미제공입니다.</p>}
+  </article>;
 }
