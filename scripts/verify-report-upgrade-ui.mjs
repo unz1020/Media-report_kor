@@ -223,7 +223,10 @@ try {
   await page.getByRole('button', { name: '소재 이미지 넣기', exact: true }).first().click();
   const entry = page.getByRole('region', { name: '소재 이미지 등록 대상 선택', exact: true }); await visible(entry);
   assert.equal(await editor().count(), 0, 'Top entry cannot silently infer the target');
-  const target = entry.getByLabel('기존 매체 / 지면 / 소재', { exact: true });
+  // A wrapping HTML label also contains its option text; assert the prompt separately.
+  assert.match(await entry.locator('label').textContent(), /^기존 매체\s*\/\s*지면\s*\/\s*소재/);
+  const target = entry.getByRole('combobox');
+  assert.equal(await target.count(), 1, 'Exactly one explicit existing-target selector');
   await target.locator('option', { hasText: 'Synthetic existing creative' }).waitFor({ state: 'attached' });
   await target.selectOption({ label: '직방 / Synthetic existing placement / Synthetic existing creative' });
   await visible(editor()); assert.match(await editor().textContent(), /등록 대상.*직방.*Synthetic existing placement.*Synthetic existing creative/s);
