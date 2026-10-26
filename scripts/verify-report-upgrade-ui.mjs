@@ -122,7 +122,8 @@ try {
   const mediaChoices = () => trend().getByRole('group', { name: '비교 매체 (최대 3개)', exact: true });
   const metricChoices = () => trend().getByRole('group', { name: '일별 지표 (최대 4개)', exact: true });
   const card = (name, metric) => trend().locator(`[data-daily-media="${name}"][data-daily-metric="${metric}"]`);
-  const syncReady = () => visible(page.getByText('DB 동기화 완료', { exact: true }));
+  // Responsive CSS hides this status below 900px; its exact text still signals ready.
+  const syncReady = () => page.getByText('DB 동기화 완료', { exact: true }).waitFor({ state: 'attached', timeout: 30000 });
   const noOverflow = async label => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${label} fits 390px without document overflow`);
   const checkGeometry = async () => {
     assert.doesNotMatch(await trend().textContent(), /NaN|Infinity|undefined/);
