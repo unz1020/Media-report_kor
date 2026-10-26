@@ -31,7 +31,16 @@ try {
  await page.keyboard.press('Escape');await closed();assert.equal(await trigger().evaluate(e=>e===document.activeElement),true,'Focus returns to image trigger');
  assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),before,'Scroll styles restored');
  await trigger().focus();await page.keyboard.press('Enter');await viewer().waitFor({state:'visible'});await viewer().getByRole('button',{name:'이미지 닫기',exact:true}).click();await closed();
- const chooserPromise=page.waitForEvent('filechooser');await page.getByText('이미지 다시 교체',{exact:true}).click();const chooser=await chooserPromise;await chooser.setFiles([]);assert.equal(await viewer().count(),0,'Replacement label does not open viewer');
+ // Replacement now opens an explicit target editor before the file chooser.
+ const proofBeforeReplacement=structuredClone(proof);
+ await page.getByText('이미지 다시 교체',{exact:true}).click();
+ const replacementEditor=page.getByRole('region',{name:'지면 수동 세팅',exact:true});await replacementEditor.waitFor({state:'visible'});
+ assert.equal(await viewer().count(),0,'Replacement opens the editor, never the read-only viewer');
+ assert.equal(await replacementEditor.getByRole('button',{name:'소재 이미지 저장',exact:true}).isDisabled(),true);
+ const chooserPromise=page.waitForEvent('filechooser');await replacementEditor.getByLabel('소재 이미지 · 게재 증빙 아님',{exact:true}).click();
+ const chooser=await chooserPromise;await chooser.setFiles([]);
+ assert.equal(await viewer().count(),0,'File selection does not open viewer');assert.deepEqual(proof,proofBeforeReplacement,'Cancelling file selection preserves the source proof');
+ await replacementEditor.getByRole('button',{name:'닫기',exact:true}).click();await replacementEditor.waitFor({state:'hidden'});
  await page.setViewportSize({width:390,height:844});await open();const mobile=await viewer().boundingBox();assert.ok(Math.abs(mobile.width-390)<=1&&Math.abs(mobile.height-844)<=1,'Mobile full screen');
  assert.equal(await viewer().evaluate(e=>e.scrollWidth<=e.clientWidth+1),true,'Mobile toolbar fits');
  await page.keyboard.press('Shift+Tab');assert.equal(await viewer().evaluate(e=>e.contains(document.activeElement)),true,'Native dialog traps focus');
