@@ -22,19 +22,23 @@ await page.route('**/api/reporting/store',route=>{
  if(body.action==='load_layout')return json(route,{layout:null,updatedAt:null});
  if(body.action==='load_state')return json(route,{imports:proof?[{id:proof.importId,report_date:proof.reportDate,updated_at:proof.publishedAt,metadata:{bundle:{placementProof:proof}}}]:[],insights:[]});
  assert.equal(body.action,'save_manual_proof');assert.equal(access,'editor');saves++;
- proof={...proof,...body.input,advertiser:'자코모',importId:'fixture-proof',reportDate:'2026-10-01',sourceFile:'[manual-placement] fixture',publishedAt:new Date().toISOString(),attachments:[],serviceType:'디지털 사전 세팅',location:'',airingTime:'',dailyFrequency:null,durationSec:null,budgetReference:null};
+ proof={manualImagePath:'fixture/original-evidence.jpg',materialIdentity:{assetId:'FIXTURE-001',version:'v1',displayName:'원본 소재'},performanceLink:{sourceFamily:'fixture',platform:'카카오',placement:'키워드 PC',creative:'원본 소재'},operation:{status:'집행 중',asOf:'2026-10-01'},...proof,...body.input,advertiser:'자코모',importId:'fixture-proof',reportDate:'2026-10-01',sourceFile:'[manual-placement] fixture',publishedAt:new Date().toISOString(),attachments:[{filename:'원본 게재보고.pdf',attachmentId:'original-report',mimeType:'application/pdf',kind:'report'}],serviceType:'디지털 사전 세팅',location:'',airingTime:'',dailyFrequency:null,durationSec:null,budgetReference:null};
  return json(route,{ok:true,proof});
 });
 await page.route('**/api/reporting/proof-image**',async route=>{
  if(route.request().method()==='GET')return route.fulfill({status:200,contentType:'image/jpeg',body:imageBytes});
  uploads++;const request=route.request(), form=await new Request('https://fixture.invalid',{method:'POST',headers:{'content-type':request.headers()['content-type']},body:request.postDataBuffer()}).formData();
- const file=form.get('file');assert.equal(form.get('importId'),'fixture-proof');assert.ok(/^image\/(png|jpeg|webp)$/.test(file.type));assert.ok(file.size<=4*1024*1024);
+ const before=structuredClone(proof);
+ assert.equal(form.get('purpose'),'creative_reference');assert.equal(form.get('advertiser'),proof.advertiser);assert.equal(form.get('reportDate'),proof.reportDate);assert.equal(form.get('sourceFile'),proof.sourceFile);assert.equal(form.get('expectedUpdatedAt'),proof.publishedAt);
+ const file=form.get('file');assert.equal(form.get('importId'),'fixture-proof');assert.ok(/^image\/(png|jpeg|webp)$/.test(file.type));assert.ok(file.size>0 && file.size<=4*1024*1024);
  imageBytes=Buffer.from(await file.arrayBuffer());
- if(failure)return json(route,{error:'IMAGE_TEST_FAILURE'},500);
- proof={...proof,manualImagePath:'fixture/image.jpg',publishedAt:new Date().toISOString()};return json(route,{path:proof.manualImagePath,updatedAt:proof.publishedAt});
+ if(failure){assert.deepEqual(proof,before);return json(route,{error:'IMAGE_TEST_FAILURE'},500);}
+ proof={...proof,creativeImagePath:'fixture/image.jpg',creativeImageFilename:file.name,publishedAt:new Date().toISOString()};
+ const {creativeImagePath,creativeImageFilename,publishedAt,...preserved}=proof;const {creativeImagePath:oldPath,creativeImageFilename:oldFilename,publishedAt:oldUpdatedAt,...original}=before;assert.deepEqual(preserved,original);assert.equal(creativeImageFilename,file.name);assert.equal(proof.manualImagePath,'fixture/original-evidence.jpg');
+ return json(route,{path:proof.creativeImagePath,updatedAt:proof.publishedAt});
 });
 const visible=locator=>locator.waitFor({state:'visible',timeout:20000});
-const editor=page.getByLabel('지면 수동 세팅',{exact:true}), picker=page.getByLabel('게재 이미지 입력',{exact:true});
+const editor=page.getByLabel('지면 수동 세팅',{exact:true}), picker=page.getByLabel('소재 이미지 입력',{exact:true});
 async function drop(bytes,name,type) {
  await picker.locator('[class*="drop"]').dispatchEvent('drop',{dataTransfer:await page.evaluateHandle(({base64,name,type})=>{const data=Uint8Array.from(atob(base64),c=>c.charCodeAt(0)),transfer=new DataTransfer();transfer.items.add(new File([data],name,{type}));return transfer;},{base64:bytes.toString('base64'),name,type})});
 }
@@ -42,12 +46,15 @@ try {
  await page.goto(root+'/creative');await visible(page.getByRole('button',{name:'지면 수동 등록',exact:true}));
  await page.getByRole('button',{name:'지면 수동 등록',exact:true}).click();
  await editor.getByLabel('매체',{exact:true}).fill('카카오');await editor.getByLabel('상품 / 게재지면',{exact:true}).fill('키워드 PC');await editor.getByLabel('소재명',{exact:true}).fill('게재 화면');
+ await editor.getByLabel('매체 미리보기 URL',{exact:true}).fill('https://example.com/original-preview');await editor.getByLabel('랜딩 URL',{exact:true}).fill('https://example.com/original-landing?item=1#detail');await editor.getByLabel('utm_source',{exact:true}).fill('kakao');
+ // Plain text paste stays native in the available metadata textbox.
+ const campaign=editor.getByLabel('캠페인명',{exact:true});await campaign.evaluate(input=>{const data=new DataTransfer();data.setData('text/plain','캠페인 문구');const event=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});input.dispatchEvent(event);if(event.defaultPrevented)throw Error('Text paste was intercepted');});
  const bytes=process.env.PROOF_TEST_PDF?fs.readFileSync(process.env.PROOF_TEST_PDF):fixturePdf();
  await drop(bytes,'게재 보고.pdf','application/pdf');await visible(picker.getByLabel('PDF 페이지',{exact:true}));
  const pages=await picker.getByLabel('PDF 페이지',{exact:true}).locator('option').count();assert.ok(pages>=2);
  assert.equal(await editor.getByRole('button',{name:'지면 저장',exact:true}).isDisabled(),true);
  const number=Math.min(3,pages);await picker.getByLabel('PDF 페이지',{exact:true}).selectOption(String(number));
- await page.waitForFunction(()=>!document.querySelector('[aria-label="게재 이미지 입력"] button[class*="primary"]')?.disabled);
+ await page.waitForFunction(()=>{const button=document.querySelector('[aria-label="소재 이미지 입력"] button[class*="primary"]');return button && !button.disabled;});
  await page.screenshot({path:'/tmp/proof-pdf-picker.png',fullPage:true});
  const sourceSize=await picker.getByAltText('보고서 이미지 미리보기').evaluate(image=>({width:image.naturalWidth,height:image.naturalHeight}));assert.ok(sourceSize.width>=800);
  for(const [name,value] of [['왼쪽','10'],['위쪽','15'],['너비','50'],['높이','60']])await picker.getByLabel(`자르기 ${name} (%)`,{exact:true}).fill(value);
@@ -59,17 +66,24 @@ try {
  const outputSize=await page.evaluate(async base64=>{const image=new Image();image.src='data:image/jpeg;base64,'+base64;await image.decode();return {width:image.naturalWidth,height:image.naturalHeight};},imageBytes.toString('base64'));
  assert.equal(outputSize.width,Math.round(sourceSize.width*.5));assert.equal(outputSize.height,Math.round(sourceSize.height*.6));
  const visual=page.getByLabel('게재 화면 이미지 드롭 또는 붙여넣기',{exact:true});await visible(visual);
+ const card=page.getByRole('article').filter({has:page.getByRole('heading',{name:'게재 화면',exact:true})});
+ await visible(card.getByRole('button',{name:'카카오 키워드 PC 게재 화면 이미지 크게 보기',exact:true}));await visible(card.getByRole('button',{name:'기존 게재 증빙 보기',exact:true}));
+ const evidenceHref=await card.getByRole('link',{name:'원본 게재보고.pdf ↓',exact:true}).getAttribute('href');
  // Paste an image on the existing placement card, then verify deferred replacement.
  const png=Buffer.from(await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;const c=canvas.getContext('2d');c.fillStyle='#2459ac';c.fillRect(0,0,320,180);return canvas.toDataURL('image/png').split(',')[1];}),'base64');
  await visual.evaluate((element,base64)=>{const transfer=new DataTransfer();transfer.items.add(new File([Uint8Array.from(atob(base64),c=>c.charCodeAt(0))],'클립보드.png',{type:'image/png'}));element.dispatchEvent(new ClipboardEvent('paste',{clipboardData:transfer,bubbles:true,cancelable:true}));},png.toString('base64'));
  await visible(editor);await visible(picker.getByAltText('보고서 이미지 미리보기'));assert.equal(uploads,2);
- // Plain text paste stays a native input action.
- const campaign=editor.getByLabel('캠페인명',{exact:true});await campaign.evaluate(input=>{const data=new DataTransfer();data.setData('text/plain','캠페인 문구');const event=new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true});input.dispatchEvent(event);if(event.defaultPrevented)throw Error('Text paste was intercepted');});
+ const beforeImageOnly=structuredClone(proof), metadataSaves=saves;
+ for(const label of ['매체','상품 / 게재지면','소재명','캠페인명','세팅 상태','매체 미리보기 URL','랜딩 URL','utm_source'])assert.equal(await editor.getByLabel(label,{exact:true}).count(),0);
+ assert.equal(await editor.getByRole('button',{name:'지면 저장',exact:true}).count(),0);
  // Drag a crop rectangle using pointer coordinates.
  const area=picker.getByLabel('게재 이미지 자르기',{exact:true});await area.scrollIntoViewIfNeeded();const bounds=await area.boundingBox();
  await page.mouse.move(bounds.x+bounds.width*.1,bounds.y+bounds.height*.1);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width*.8,bounds.y+bounds.height*.8);await page.mouse.up();
- assert.equal(await editor.getByRole('button',{name:'지면 저장',exact:true}).isDisabled(),true);await picker.getByRole('button',{name:'이 이미지 사용',exact:true}).click();await visible(picker.getByText('선택한 영역을 이미지로 준비했습니다. 지면 저장을 누르면 등록됩니다.',{exact:true}));
- await editor.getByRole('button',{name:'지면 저장',exact:true}).click();await editor.waitFor({state:'hidden'});assert.equal(uploads,3);
+ assert.equal(await editor.getByRole('button',{name:'소재 이미지 저장',exact:true}).isDisabled(),true);await picker.getByRole('button',{name:'이 이미지 사용',exact:true}).click();await visible(picker.getByText('선택한 영역을 이미지로 준비했습니다. 지면 저장을 누르면 등록됩니다.',{exact:true}));
+ failure=true;await editor.getByRole('button',{name:'소재 이미지 저장',exact:true}).click();await visible(editor.getByText('IMAGE_TEST_FAILURE',{exact:true}));assert.equal(uploads,3);assert.equal(saves,metadataSaves);assert.deepEqual(proof,beforeImageOnly);
+ failure=false;await editor.getByRole('button',{name:'소재 이미지 저장',exact:true}).click();await editor.waitFor({state:'hidden'});assert.equal(uploads,4);
+ assert.equal(saves,metadataSaves);assert.equal(await card.getByRole('link',{name:'원본 게재보고.pdf ↓',exact:true}).getAttribute('href'),evidenceHref);await visible(card.getByRole('button',{name:'기존 게재 증빙 보기',exact:true}));
+ const {creativeImagePath:replacementPath,creativeImageFilename:replacementFilename,publishedAt:replacementTime,...afterReplacement}=proof;const {creativeImagePath:previousPath,creativeImageFilename:previousFilename,publishedAt:previousTime,...beforeReplacement}=beforeImageOnly;assert.deepEqual(afterReplacement,beforeReplacement);assert.equal(replacementPath,'fixture/image.jpg');assert.equal(replacementFilename,'클립보드-지면.jpg');
  await page.getByRole('button',{name:'지면 · 랜딩 · UTM 수정',exact:true}).click();
  const zip=new JSZip();
  zip.file('ppt/presentation.xml','<p:presentation xmlns:p="p" xmlns:r="r"><p:sldIdLst><p:sldId id="1" r:id="s1"/></p:sldIdLst></p:presentation>');
@@ -78,7 +92,7 @@ try {
  zip.file('ppt/slides/_rels/slide1.xml.rels','<Relationships><Relationship Id="image1" Target="../media/image1.png"/></Relationships>');zip.file('ppt/media/image1.png',png);
  await drop(await zip.generateAsync({type:'nodebuffer'}),'게재보고.pptx','application/vnd.openxmlformats-officedocument.presentationml.presentation');
  await visible(picker.getByRole('button',{name:'슬라이드 1 · 이미지 1',exact:true}));await picker.getByRole('button',{name:'이 이미지 사용',exact:true}).click();await visible(picker.getByText('선택한 영역을 이미지로 준비했습니다. 지면 저장을 누르면 등록됩니다.',{exact:true}));
- await editor.getByRole('button',{name:'지면 저장',exact:true}).click();await editor.waitFor({state:'hidden'});assert.equal(uploads,4);
+ await editor.getByRole('button',{name:'지면 저장',exact:true}).click();await editor.waitFor({state:'hidden'});assert.equal(uploads,5);
  await page.getByRole('button',{name:'지면 · 랜딩 · UTM 수정',exact:true}).click();
  await drop(Buffer.from('invalid'),'구형.ppt','application/vnd.ms-powerpoint');await visible(picker.getByRole('alert'));assert.ok((await picker.getByRole('alert').innerText()).includes('구형 PPT'));
  await drop(Buffer.from('bad pdf'),'손상.pdf','application/pdf');await visible(picker.getByRole('alert'));
