@@ -14,11 +14,13 @@ const allowed = new Set([
   'lib/placement-showroom.ts', 'lib/placement-urls.ts',
 ].map(file => path.resolve(root, file)));
 const cssAllowed = new Set(['components/performance-source-panels.module.css', 'components/performance-visuals.module.css'].map(file => path.resolve(root, file)));
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 function load(file) {
   const name = path.resolve(root, file);
   assert.ok(allowed.has(name), `Unexpected module: ${name}`);
   if (cache.has(name)) return cache.get(name).exports;
+  if(name.endsWith(".json")) return JSON.parse(fs.readFileSync(name,"utf8"));
   const module = { exports: {} }; cache.set(name, module);
   const js = ts.transpileModule(fs.readFileSync(name, 'utf8'), { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
@@ -34,7 +36,7 @@ function load(file) {
     assert.ok(specifier.startsWith('.') || specifier.startsWith('@/'), `Forbidden runtime dependency: ${specifier}`);
     const base = specifier.startsWith('@/') ? path.resolve(root, specifier.slice(2)) : path.resolve(path.dirname(name), specifier);
     if (base.endsWith('.css')) {
-      assert.ok(cssAllowed.has(base));
+      assert.ok(cssAllowed.has(base) || base === path.resolve(root,'components/media-label.module.css'));
       return { __esModule: true, default: new Proxy({}, { get: (_obj, key) => String(key) }) };
     }
     const resolved = [...allowed].find(candidate => candidate === base || candidate === `${base}.ts` || candidate === `${base}.tsx`);

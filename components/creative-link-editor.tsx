@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { MediaLabel } from './media-label';
 import { useWorkspace } from "./workspace-context";
 import { hydratePublishedDailyState } from "@/lib/daily-report-store";
 import type { CreativeRotationGroup } from "@/lib/creative-rotation";
@@ -109,7 +110,7 @@ export function CreativeLinkEditor({ proof, group, onClose }: CreativeLinkEditor
     }
   }
   return <section ref={editorRoot} tabIndex={-1} className={styles.panel} aria-labelledby={`${id}-title`}>
-    <header className={styles.header}><div><h2 id={`${id}-title`}>운영정보·성과 연결</h2><p>{advertiser} · {month} · {group.media} · {group.placement}</p></div><button type="button" className={styles.button} disabled={busy} onClick={onClose}>닫기</button></header>
+    <header className={styles.header}><div><h2 id={`${id}-title`}>운영정보·성과 연결</h2><p>{advertiser} · {month} · <MediaLabel media={group.media}/> · {group.placement}</p></div><button type="button" className={styles.button} disabled={busy} onClick={onClose}>닫기</button></header>
     <p className={styles.identity}>등록 소재명 <strong>{proof.creativeName || "미입력"}</strong><span>등록 소재명과 게재 증빙의 상태·확인일은 변경하지 않습니다.</span></p>
     <div className={styles.warning}><strong>AE의 원본 확인이 필요한 수동 연결입니다.</strong><p>소재 A/B, 이름의 순서·유사성만으로 동일 소재를 추정하지 마세요. 원본 보고서와 등록 증빙을 대조한 경우에만 연결해주세요.</p></div>
     {!canEdit && <p role="status">조회 권한에서는 연결을 저장할 수 없습니다.</p>}

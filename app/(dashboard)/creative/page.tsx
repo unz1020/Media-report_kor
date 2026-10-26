@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MediaLabel } from '@/components/media-label';
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import {
@@ -263,7 +264,7 @@ export default function CreativePage() {
     <details className={styles.management} open><summary><span>관리·원본 자료</span><small>운영안 URL · 등록 지면 · 자료 연결 · 수동 세팅</small></summary>
 <LayoutCanvas page="creative">
     {plans.length > 0 && <LayoutPanel id="creative:plan-urls" title="운영안 소재 URL"><section className="card card-pad"><div className="report-panel-head"><div><h2>운영안 소재 URL</h2><p>운영안별 매체 지면 미리보기와 소재 원본 링크를 등록하고 확인합니다. 일정 화면과 함께 반영됩니다.</p></div></div>
-      <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media}</button>)}</div>
+      <div className={styles.planUrlFilters} aria-label="운영안 URL 매체 필터">{['전체',...new Set(plans.map(plan=>mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform)))].map(media=><button type="button" className="btn" key={media} aria-pressed={selectedMedia===media} onClick={()=>setSelectedMedia(media)}>{media==="전체"?media:<MediaLabel media={media}/>}</button>)}</div>
       <CreativeLegend names={plans.map(plan=>plan.creativeName)} /><div className={styles.planUrlGrid}>{plans.filter(plan=>selectedMedia==='전체' || (mediaHierarchy(plan).isTv?'TV':canonicalMedia(plan.platform))===selectedMedia || plan.platform===selectedMedia).map((plan,index)=><article className={styles.planUrlCard} style={creativeStyle(plan.creativeName)} key={`${advertiser}:${month}:${plan.rowId || index}`}><small>{mediaPath(plan)} › {plan.product}</small><h3><CreativeMarker name={plan.creativeName} />{plan.creativeName || plan.placement || '소재명 미입력'}</h3><p>{plan.periodStart || '일정 미입력'} ~ {plan.periodEnd || '일정 미입력'}</p><MediaPlanLinks plan={plan} datasets={datasets} /></article>)}</div>
     </section></LayoutPanel>}
     {!proofs.length && <LayoutPanel id="creative:등록된 지면이 없습니다.:3" title="등록된 지면이 없습니다."><section className="card card-pad empty-state"><h2>등록된 지면이 없습니다.</h2><p>지면 수동 등록에서 보고서 없이도 미리보기 이미지와 랜딩 URL·UTM을 먼저 세팅할 수 있습니다.</p></section></LayoutPanel>}
@@ -289,7 +290,7 @@ export default function CreativePage() {
             className={selectedMedia === item.media ? styles.mediaTabActive : styles.mediaTab}
             onClick={() => setSelectedMedia(item.media)}
           >
-            <strong>{item.media}</strong>
+            <strong><MediaLabel media={item.media}/></strong>
             <span>{item.placementKeys.size}개 지면{item.creativeCount ? ` · ${item.creativeCount}개 소재` : ""}</span>
           </button>)}
         </div>
@@ -301,7 +302,7 @@ export default function CreativePage() {
           const groupCreativeCount = group.placements.reduce((sum, placement) => sum + placement.proofs.filter((proof) => Boolean(proof.creativeName?.trim())).length, 0);
           return <section className={styles.mediaGroup} key={group.media}>
             <div className={styles.mediaGroupHead}>
-              <div><span>매체</span><h3>{group.media}</h3></div>
+              <div><span>매체</span><h3><MediaLabel media={group.media} size="md"/></h3></div>
               <div className={styles.mediaGroupStats}>
                 <span>{group.placements.length}개 지면</span>
                 {groupCreativeCount > 0 && <span>{groupCreativeCount}개 소재</span>}
@@ -337,7 +338,7 @@ export default function CreativePage() {
 
     <LayoutPanel id="creative:운영안 기준 연결 대기 지면:6" title="운영안 기준 연결 대기 지면"><section className="card section-space report-panel">
       <div className="report-panel-head"><div><h2>운영안 기준 연결 대기 지면</h2><p>{selectedMedia === "전체" ? "운영안에서 확인됐지만 아직 별도 게재 보고 자료가 연결되지 않은 상품을 관리합니다. 이미지 등록에 이미지·PDF·PPTX를 넣거나, 세팅 추가에서 화면을 붙여넣고 저장하세요." : `${selectedMedia} 운영안에서 아직 게재 보고 자료가 연결되지 않은 상품입니다.`}</p></div><span className="view-pill">{visiblePlans.length}개</span></div>
-      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재명</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong>{plan.platform}</strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeName || "미입력"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(file)setEditor({initialFile:file,selectionId:crypto.randomUUID(),initial:{media:plan.platform,placement:plan.placement || plan.product,creativeName:plan.creativeName || '',periodStart:plan.periodStart || '',periodEnd:plan.periodEnd || ''}});}}>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept={PROOF_IMAGE_ACCEPT} disabled={dataSyncState === "loading"} onChange={event => {
+      {visiblePlans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>상품/지면</th><th>기간</th><th>소재명</th><th>소재 유형</th><th>게재 확인</th><th>이미지</th><th>랜딩 URL</th><th>UTM</th>{canEdit && <th>수동 세팅</th>}</tr></thead><tbody>{visiblePlans.map((plan,index)=><tr key={`${plan.platform}-${plan.product}-${index}`}><td><strong><MediaLabel media={plan.platform}/></strong></td><td>{plan.product || plan.placement}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td>{plan.creativeName || "미입력"}</td><td>{plan.creativeType || "-"}</td><td><span className="badge review">연결 대기</span></td><td onDragOver={event=>{if(canEdit)event.preventDefault();}} onDrop={event=>{event.preventDefault();if(!canEdit || dataSyncState==='loading')return;const file=event.dataTransfer.files[0];if(file)setEditor({initialFile:file,selectionId:crypto.randomUUID(),initial:{media:plan.platform,placement:plan.placement || plan.product,creativeName:plan.creativeName || '',periodStart:plan.periodStart || '',periodEnd:plan.periodEnd || ''}});}}>{canEdit ? <label className="btn">이미지 등록<input type="file" aria-label={`${plan.platform} ${plan.product || plan.placement} 이미지 등록`} accept={PROOF_IMAGE_ACCEPT} disabled={dataSyncState === "loading"} onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";
         if (!file) return;

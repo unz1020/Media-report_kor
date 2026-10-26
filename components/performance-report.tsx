@@ -5,6 +5,7 @@ import type { PublishedInsight } from "@/lib/daily-report-store";
 import type { buildPerformanceReport, MediaPerformanceReport, ReportKind, ReportMetrics } from "@/lib/performance-report";
 import { buildPerformanceChanges } from "@/lib/performance-brief";
 import { inferMediaMentions, normalizeInsightText } from "@/lib/media-normalization";
+import { MediaLabel } from "./media-label";
 import styles from "./performance-report.module.css";
 
 type Report = ReturnType<typeof buildPerformanceReport>;
@@ -74,11 +75,11 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
     {!report.baselineComplete && <p className={styles.notice} role="status">기간 시작 전 기준 원본이 충분하지 않아 선택 기간의 누적 합계와 효율은 표시하지 않습니다. 제공된 일별 원본은 별도로 볼 수 있습니다.</p>}
     {(changes.length > 0 || sourceFindings.length > 0) && <section className={styles.attention} aria-label="최근 변화와 보고 당시 확인사항">
       {changes.slice(0,2).map(change => <button type="button" className={styles.changeCard} key={change.media} onClick={()=>onOpenMedia(change.media)} aria-label={change.media+" 최근 변화 상세 보기"}>
-        <span className={styles.attentionLabel}>최근 일별 변화 · {change.media}</span><strong>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
+        <span className={styles.attentionLabel}>최근 일별 변화 · <MediaLabel media={change.media}>{change.media}</MediaLabel></span><strong>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
         <span>{change.previousDate.slice(5)} {number(change.previous)} → {change.date.slice(5)} {number(change.current)}</span><small>같은 지면·지표의 전일 비교 · 효율 판단 아님</small>
       </button>)}
       {sourceFindings.map(({item,note}) => {const media=inferMediaMentions(note).find(name=>report.media.some(m=>m.name===name));return <div key={item.key+note} className={styles.findingCard}>
-        <span className={styles.attentionLabel}>보고 당시 원본 대조 메모</span><strong>{item.reportDate}</strong><p>{shorten(normalizeInsightText(note),120)}</p>{media&&<button type="button" onClick={()=>onOpenMedia(media)}>{media} 근거 확인 →</button>}<small>현재 해결 여부는 별도 기록 전까지 판단하지 않습니다.</small>
+        <span className={styles.attentionLabel}>보고 당시 원본 대조 메모</span><strong>{item.reportDate}</strong><p>{shorten(normalizeInsightText(note),120)}</p>{media&&<button type="button" onClick={()=>onOpenMedia(media)}><MediaLabel media={media}>{media}</MediaLabel> 근거 확인 →</button>}<small>현재 해결 여부는 별도 기록 전까지 판단하지 않습니다.</small>
       </div>})}
     </section>}
     <dl className={styles.headlineKpis}>
@@ -96,7 +97,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
           {!trendOptions.length && <option value="">일별 원본 없음</option>}{trendOptions.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
         </select></label>
       </div>
-      {trendMedia ? <details className={styles.trendDisclosure} open key={trendMedia.name}><summary>{trendMedia.name} 일별 추이</summary><PerformanceReportTrend media={trendMedia} startDate={startDate} endDate={endDate} /></details>
+      {trendMedia ? <details className={styles.trendDisclosure} open key={trendMedia.name}><summary><MediaLabel media={trendMedia.name}>{trendMedia.name}</MediaLabel> 일별 추이</summary><PerformanceReportTrend media={trendMedia} startDate={startDate} endDate={endDate} /></details>
         : <p className={styles.empty}>{trendSearch ? "검색한 매체의 일별 원본이 없습니다." : "선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다."}</p>}
     </section>
     <div className={composition.length ? styles.contextGrid : styles.contextSingle}>
@@ -104,7 +105,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
         <p className={styles.eyebrow}>집행 구성</p><h3 id={`${id}-spend`}>집행액 분포</h3>
         <p className={styles.support}>비용 제공 매체 내 비중 · 성과 순위가 아닙니다</p>
         <ul className={styles.spendList}>{composition.slice(0, 5).map(item => <li key={item.name}>
-          <button type="button" onClick={() => onOpenMedia(item.name)}><span>{item.name}</span><strong>{money(item.metrics.spend)}</strong></button>
+          <button type="button" onClick={() => onOpenMedia(item.name)}><span><MediaLabel media={item.name}>{item.name}</MediaLabel></span><strong>{money(item.metrics.spend)}</strong></button>
           <div className={styles.spendTrack} aria-hidden="true"><span style={{ width: `${item.metrics.spend! / paidTotal * 100}%` }} /></div>
           <small>{(item.metrics.spend! / paidTotal * 100).toFixed(1)}%</small>
         </li>)}</ul>
@@ -135,7 +136,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
         const primary = raw(item) ? item.metrics.impressions : item.kind === "video" ? item.metrics.views : item.metrics.clicks;
         const primaryLabel = raw(item) ? "원본 지표 · 노출수" : item.kind === "video" ? "조회수" : "클릭수";
         return <li key={item.name}><button type="button" className={styles.mediaRow} onClick={() => onOpenMedia(item.name)} aria-label={`${item.name} 성과 상세 보기`}>
-          <span className={styles.mediaName}><strong>{item.name}</strong><small>{KINDS[item.kind]} · 원본 {item.sourceCount}개</small></span>
+          <span className={styles.mediaName}><strong><MediaLabel media={item.name} size="md">{item.name}</MediaLabel></strong><small>{KINDS[item.kind]} · 원본 {item.sourceCount}개</small></span>
           <span className={styles.rowValue}><small>보고된 집행액</small><strong>{money(period(item.metrics.spend))}</strong></span>
           <span className={styles.rowValue}><small>{primaryLabel}</small><strong>{number(period(primary))}</strong></span>
           <span className={styles.coverage}><span>보고 기준 {item.reportDate ?? "미제공"}</span><span>{item.dailyThrough?`일별 원본 ~ ${item.dailyThrough}`:item.creativeThrough?`소재 원본 ${item.creativeThrough} · 매체 누적 미제공`:"일별 원본 미제공"}</span></span><span className={styles.arrow} aria-hidden="true">→</span>
@@ -144,7 +145,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
       {!results.length && <p className={styles.empty}>조건에 맞는 성과 원본이 없습니다.</p>}
       {results.length > 7 && <button type="button" className={styles.moreButton} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "7개만 보기" : `나머지 ${results.length - 7}개 매체 더 보기`}</button>}
       {pending.length > 0 && <details className={styles.pending}><summary>계획 등록 · 성과 원본 대기 <span>{pending.length}개 매체</span></summary><p className={styles.support}>계획만 제공된 매체입니다. 집행 여부나 성과를 판단하지 않습니다.</p>
-        <ul>{pending.slice(0, pendingExpanded ? undefined : 7).map(item => <li key={item.name}><button type="button" onClick={() => onOpenMedia(item.name)}><span>{item.name}</span><small>{KINDS[item.kind]} · 계획 상세 →</small></button></li>)}</ul>
+        <ul>{pending.slice(0, pendingExpanded ? undefined : 7).map(item => <li key={item.name}><button type="button" onClick={() => onOpenMedia(item.name)}><span><MediaLabel media={item.name}>{item.name}</MediaLabel></span><small>{KINDS[item.kind]} · 계획 상세 →</small></button></li>)}</ul>
         {pending.length > 7 && <button type="button" className={styles.moreButton} aria-expanded={pendingExpanded} onClick={() => setPendingExpanded(!pendingExpanded)}>{pendingExpanded ? "7개만 보기" : `계획 매체 ${pending.length - 7}개 더 보기`}</button>}
       </details>}
     </section>
@@ -215,7 +216,7 @@ export function PerformanceReportTrend({ media, startDate, endDate }: { media: M
   if (segment) paths.push(segment);
   const metricLabel = metric ? labelFor(media, metric) : "일별 지표";
   return <div className={styles.trend}>
-    <div className={styles.trendHeading}><div><h4>{media.name} · {metricLabel}</h4><p className={styles.meta}>{startDate} ~ {endDate}</p></div>
+    <div className={styles.trendHeading}><div><h4><MediaLabel media={media.name} size="md">{media.name}</MediaLabel> · {metricLabel}</h4><p className={styles.meta}>{startDate} ~ {endDate}</p></div>
       {options.length > 0 && <label>일별 지표<select value={metric} onChange={event => { setSelectedMetric(event.target.value as Metric); setActiveDate(""); }}>{options.map(key => <option key={key} value={key}>{labelFor(media, key)}</option>)}</select></label>}
     </div>
     {points.length ? <>

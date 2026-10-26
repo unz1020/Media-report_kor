@@ -26,7 +26,7 @@
 .matrixWrap{overflow-x:auto;max-width:100%;padding:16px 20px}
 .matrix{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap;border:1px solid #d0d5dd}
 .matrix caption{text-align:left;font-size:13px;font-weight:700;padding:0 0 12px;color:#344054}
-.matrix caption span{display:block;font-size:11px;font-weight:400;color:#667085;margin-top:4px}
+.matrix caption > span:not([data-media-label]){display:block;font-size:11px;font-weight:400;color:#667085;margin-top:4px}
 .matrix th,.matrix td{border-right:1px solid #d0d5dd;border-bottom:1px dotted #d0d5dd;padding:9px 12px;min-width:104px;text-align:right;color:inherit}
 .matrix thead th{background:#f2f4f7;text-align:center;color:#101828;font-size:12px;font-weight:700}
 .matrix .placementHead{background:#eaecf0;border-bottom:1px solid #d0d5dd}

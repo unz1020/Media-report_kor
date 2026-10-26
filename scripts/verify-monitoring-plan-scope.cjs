@@ -12,6 +12,7 @@ const mockReact = { ...React, useMemo: fn => fn(), useState: initial => {
   return [index < hookValues.length ? hookValues[index] : initial, next => updates.push([index, next])];
 } };
 const childStubs = {
+  'media-label': { MediaLabel: ({media}) => React.createElement('span', null, media) },
   'creative-rotation-panel': { CreativeRotationPanel: () => null },
   'viral-placement-board': { ViralPlacementBoard: () => null },
   'creative-url-preview': { CreativeUrlPreview: () => null },

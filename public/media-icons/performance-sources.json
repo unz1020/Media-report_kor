@@ -1,0 +1,29 @@
+[
+  {
+    "key": "netflix",
+    "name": "넷플릭스",
+    "src": "/media-icons/netflix.webp",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.netflix.mediaclient&hl=ko",
+    "sourceAsset": "https://play-lh.googleusercontent.com/nY18ZZBI153rnZ0-pt7o8gGqMn1RSQT4ewFbHTPrBB_Bd3o2L_l3wQ1GqyKv6tv5J29imVXcsyzT_mTErLOE-A=w240-h480-rw",
+    "mime": "image/webp",
+    "bytes": 5190
+  },
+  {
+    "key": "youtube",
+    "name": "유튜브",
+    "src": "/media-icons/youtube.webp",
+    "sourcePage": "https://play.google.com/store/apps/details?id=com.google.android.youtube",
+    "sourceAsset": "https://play-lh.googleusercontent.com/QNmuZQc9I6Zbe3mWnSr0hycnENqGFCI5p3yE29Hkxtf22T0IWS6zTrpxULLyyjWpB7ONAXDsDQXnXcVWokl3eg=w240-h480-rw",
+    "mime": "image/webp",
+    "bytes": 1942
+  },
+  {
+    "key": "tving",
+    "name": "티빙",
+    "src": "/media-icons/tving.webp",
+    "sourcePage": "https://play.google.com/store/apps/details?id=net.cj.cjhv.gs.tving&hl=ko",
+    "sourceAsset": "https://play-lh.googleusercontent.com/WGS0wjBd0e09Sh7aDvcor-1-38gBDh9H7N0YBpseFaTnIqdDzH5shMDhHmm-A5yWW-Iq0Lh5X9IaL5uATjObwF0=w240-h480-rw",
+    "mime": "image/webp",
+    "bytes": 2142
+  }
+]

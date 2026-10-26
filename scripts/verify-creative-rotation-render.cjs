@@ -9,12 +9,14 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const root = path.resolve(__dirname, '..');
 const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts', 'lib/creative-material.ts', 'supabase/functions/reporting-store/creative-material-input.ts'].map(file => path.join(root, file)));
 const cssAllowed = new Set(['components/creative-rotation-panel.module.css', 'components/creative-link-editor.module.css'].map(file => path.join(root, file)));
+for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 let workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready' };
 function load(file) {
   const name = path.resolve(root, file);
   assert.ok(allowed.has(name), `Unexpected dependency ${name}`);
   if (cache.has(name)) return cache.get(name).exports;
+  if(name.endsWith(".json")) return JSON.parse(fs.readFileSync(name,"utf8"));
   const module = { exports: {} }; cache.set(name, module);
   const result = ts.transpileModule(fs.readFileSync(name, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } });
   new Function('require', 'exports', 'module', result.outputText)(specifier => {
@@ -23,7 +25,7 @@ function load(file) {
     if (specifier === '@/lib/daily-report-store') return { hydratePublishedDailyState: () => { throw new Error('Store unavailable in synthetic test'); } };
     assert.ok(specifier.startsWith('.') || specifier.startsWith('@/'), `Forbidden dependency ${specifier}`);
     const base = specifier.startsWith('@/') ? path.join(root, specifier.slice(2)) : path.resolve(path.dirname(name), specifier);
-    if (base.endsWith('.css')) { assert.ok(cssAllowed.has(base)); return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) }; }
+    if (base.endsWith('.css')) { assert.ok(cssAllowed.has(base) || base === path.resolve(root,'components/media-label.module.css')); return { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) }; }
     const resolved = [...allowed].find(candidate => candidate === base || candidate === `${base}.ts` || candidate === `${base}.tsx`);
     assert.ok(resolved, `Forbidden module ${specifier}`); return load(resolved);
   }, module.exports, module);
@@ -58,7 +60,7 @@ try {
   });
   test('full-mode deep links include singleton targets and never silently replace missing targets', () => {
     const singleton = render({ groupId: other.id });
-    assert.match(singleton, /<h3>Other media/); assert.match(singleton, /Other asset/);
+    assert.match(singleton, /<h3><span[^>]*data-media-label="Other media"/); assert.match(singleton, /Other asset/);
     const unnamed = { ...other, id: 'unnamed-inventory', creatives: [], unnamedProofs: [proof('')] };
     const unnamedHtml = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report: { ...report, groups: [group, unnamed] }, groupId: unnamed.id }));
     assert.match(unnamedHtml, /소재명 없는 증빙 1건/);

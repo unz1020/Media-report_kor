@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MediaLabel } from '@/components/media-label';
 import { LayoutCanvas, LayoutPanel, LayoutGroup } from "@/components/layout-canvas";
 import { useWorkspace } from "@/components/workspace-context";
 import { publishedDatasetsFor, publishedInsightsFor, type PublishedDataset, type PublishedInsight } from "@/lib/daily-report-store";
@@ -85,7 +86,7 @@ export default function OverviewPage() {
         <LayoutPanel id="overview:매체별 운영 현황:8" title="매체별 운영 현황"><section className="section-space">
           <article className="card report-panel">
             <div className="report-panel-head"><div><h2>매체별 운영 현황</h2><p>등록 보고 행을 매체별로 단순 합산합니다. 누적·중복 조정 전 참고값이며 성과 리포트 집계와 다를 수 있습니다.</p></div><span className="view-pill">{mediaRows.length}개 매체</span></div>
-            <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.media}><td><strong>{item.media}</strong></td><td>{item.products.length ? `${item.products.slice(0,3).join(" · ")}${item.products.length > 3 ? ` 외 ${item.products.length - 3}` : ""}` : "-"}</td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td></tr>)}</tbody></table></div>
+            <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>집행액</th><th>노출</th><th>클릭</th><th>CTR</th></tr></thead><tbody>{mediaRows.map((item) => <tr key={item.media}><td><strong><MediaLabel media={item.media}/></strong></td><td>{item.products.length ? `${item.products.slice(0,3).join(" · ")}${item.products.length > 3 ? ` 외 ${item.products.length - 3}` : ""}` : "-"}</td><td className="num-cell">{formatKrw(item.summary.spend)}</td><td className="num-cell">{formatCount(item.summary.impressions)}</td><td className="num-cell">{formatCount(item.summary.clicks)}</td><td className="num-cell">{formatRate(item.summary.ctr)}</td></tr>)}</tbody></table></div>
           </article>
 
 
@@ -93,7 +94,7 @@ export default function OverviewPage() {
 
         <LayoutPanel id="overview:미디어 운영안:9" title="미디어 운영안"><details className="card section-space report-panel"><summary style={{cursor:"pointer",fontWeight:600}}>제안·예정 운영안 별도 보기 · {plans.length}개 항목</summary>
           <div className="report-panel-head table-title-row"><div><h2>미디어 운영안</h2><p>제안·예정 자료를 원본 그대로 보존합니다. 이 표와 등록 운영안 금액은 확정 예산·현재 집행·성과를 뜻하지 않습니다.</p></div><span className="view-pill">{plans.length}개 항목</span></div>
-          {plans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>기기/소재</th><th>기간</th><th>운영안 금액</th><th>예상 노출</th><th>예상 클릭</th><th>타겟팅</th></tr></thead><tbody>{plans.map((plan,index)=><tr key={`${plan.media}-${plan.canonicalProduct}-${index}`}><td><strong>{plan.media}</strong></td><td>{plan.canonicalProduct}</td><td>{[plan.device, plan.creativeType].filter(Boolean).join(" · ") || "-"}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td className="num-cell">{formatKrw(plan.budget)}</td><td className="num-cell">{formatCount(plan.expectedImpressions)}</td><td className="num-cell">{formatCount(plan.expectedClicks)}</td><td>{plan.target || "-"}</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">현재 반영 파일에서 미디어 운영안을 찾지 못했습니다. 운영안 문서를 추가하면 이 영역에 자동 반영됩니다.</div>}
+          {plans.length ? <div className="table-wrap report-table-wrap"><table className="report-table"><thead><tr><th>매체</th><th>광고상품</th><th>기기/소재</th><th>기간</th><th>운영안 금액</th><th>예상 노출</th><th>예상 클릭</th><th>타겟팅</th></tr></thead><tbody>{plans.map((plan,index)=><tr key={`${plan.media}-${plan.canonicalProduct}-${index}`}><td><strong><MediaLabel media={plan.media}/></strong></td><td>{plan.canonicalProduct}</td><td>{[plan.device, plan.creativeType].filter(Boolean).join(" · ") || "-"}</td><td>{plan.periodStart || "-"} – {plan.periodEnd || "-"}</td><td className="num-cell">{formatKrw(plan.budget)}</td><td className="num-cell">{formatCount(plan.expectedImpressions)}</td><td className="num-cell">{formatCount(plan.expectedClicks)}</td><td>{plan.target || "-"}</td></tr>)}</tbody></table></div> : <div className="card-pad empty-inline">현재 반영 파일에서 미디어 운영안을 찾지 못했습니다. 운영안 문서를 추가하면 이 영역에 자동 반영됩니다.</div>}
         </details></LayoutPanel>
 
         <LayoutPanel id="overview:원본 데이터 추적 정보:10" title="원본 데이터 추적 정보"><details className="section-space">

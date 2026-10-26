@@ -52,6 +52,7 @@ jobs:
           node scripts/verify-performance-source-render.cjs
           node scripts/verify-viral-placement-board.cjs
           node scripts/verify-media-icons.cjs
+          node scripts/verify-media-label.cjs
           node scripts/verify-showroom-breakdown.cjs
           node scripts/verify-placement-showroom.cjs
           node scripts/verify-proof-lightbox.cjs
