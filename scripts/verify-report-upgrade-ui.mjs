@@ -244,7 +244,13 @@ try {
     assert.ok(y.every(value => Math.abs(Number(value) - Number(y[0])) < 0.01), 'Independent per-metric scaling preserves each relative trend');
     const dateSelect = trend().getByLabel('공통 비교일', { exact: true });
     await visible(dateSelect);assert.equal(await dateSelect.locator('xpath=ancestor::details').count(), 0, 'Shared date stays outside optional table');
+    // Keyboard/focus updates can commit after the input event returns on a busy CI runner.
+    // Wait for the selected-day DOM state, then keep every exact date/value assertion.
+    const waitForDate = async date => {
+      await plot().locator('[data-combined-day="' + date + '"][tabindex="0"][aria-pressed="true"]').waitFor({ state: 'attached' });
+    };
     const expectReadouts = async (date, values) => {
+      await waitForDate(date);
       assert.equal(await dateSelect.inputValue(), date);
       for (let i = 0; i < metrics.length; i++) assert.equal(await readout(metrics[i]).textContent(), values[i]);
       assert.equal(await plot().locator('[data-combined-day][tabindex="0"]').getAttribute('data-combined-day'), date);
@@ -255,10 +261,10 @@ try {
     await page.keyboard.press('ArrowRight');await expectReadouts('2026-10-02', Array(4).fill('미제공'));
     await page.keyboard.press('ArrowRight');await expectReadouts('2026-10-03', Array(4).fill('미제공'));
     await page.keyboard.press('ArrowLeft');await expectReadouts('2026-10-02', Array(4).fill('미제공'));
-    await page.keyboard.press('End');assert.equal(await dateSelect.inputValue(), days[0]);
-    await page.keyboard.press('ArrowRight');assert.equal(await dateSelect.inputValue(), days[0], 'End bound clamps');
-    await page.keyboard.press('Home');assert.equal(await dateSelect.inputValue(), ascending[0]);
-    await page.keyboard.press('ArrowLeft');assert.equal(await dateSelect.inputValue(), ascending[0], 'Start bound clamps');
+    await page.keyboard.press('End');await waitForDate(days[0]);assert.equal(await dateSelect.inputValue(), days[0]);
+    await page.keyboard.press('ArrowRight');await waitForDate(days[0]);assert.equal(await dateSelect.inputValue(), days[0], 'End bound clamps');
+    await page.keyboard.press('Home');await waitForDate(ascending[0]);assert.equal(await dateSelect.inputValue(), ascending[0]);
+    await page.keyboard.press('ArrowLeft');await waitForDate(ascending[0]);assert.equal(await dateSelect.inputValue(), ascending[0], 'Start bound clamps');
     await hit('2026-10-04').click();await expectReadouts('2026-10-04', ['0', '0', '0원', '0']);
     await checkGeometry();
   };
