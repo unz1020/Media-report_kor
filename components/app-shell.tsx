@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import styles from "./app-shell.module.css";
 import { usePathname } from "next/navigation";
 import { seoulReportingMonth, shiftWorkspaceMonth } from "@/lib/workspace-months";
 import { useEffect, useState, type ReactNode } from "react";
@@ -26,12 +27,12 @@ const navItems = [
 ] as const;
 
 function Icon({ name }: { name: string }) {
-  if (name === "overview") return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;
-  if (name === "chart") return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19H2"/></svg>;
-  if (name === "calendar") return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8 14h3M13 14h3M8 18h3"/></svg>;
-  if (name === "image") return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 2-2 5 4"/></svg>;
-  if (name === "report") return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>;
-  return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8"/></svg>;
+  if (name === "overview") return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>;
+  if (name === "chart") return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-7"/><path d="M22 19H2"/></svg>;
+  if (name === "calendar") return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8 14h3M13 14h3M8 18h3"/></svg>;
+  if (name === "image") return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 2-2 5 4"/></svg>;
+  if (name === "report") return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>;
+  return <svg aria-hidden="true" focusable="false" className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8"/></svg>;
 }
 
 function AppShellInner({ children }: { children: ReactNode }) {
@@ -66,24 +67,30 @@ function AppShellInner({ children }: { children: ReactNode }) {
           : "DB 준비";
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">M</div><div className="brand-copy"><strong>Media Report</strong><span>광고 운영 대시보드</span></div></div>
-        <div className="nav-label">업무 메뉴</div>
-        <nav className="nav" aria-label="주 메뉴">
-          {navItems.map((item) => <Link key={item.href} href={item.href} className={`nav-link ${pathname === item.href ? "active" : ""}`}><Icon name={item.icon}/>{item.label}</Link>)}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="nav-label">AE 도구</div>
-          {canEdit && <div className="ae-only"><Link href="/data-update" className={`nav-link ${pathname === "/data-update" ? "active" : ""}`}><Icon name="report"/>데이터 업데이트</Link></div>}
-          <Link href="/team" className={`nav-link ${pathname === "/team" ? "active" : ""}`}><Icon name="overview"/>팀 관리</Link>
-          <div className="sidebar-user"><div className="avatar">{session.user.role === "admin" ? "관리" : "AE"}</div><div><strong>{session.user.display_name || session.user.email}</strong><span>{canEdit ? "편집 가능" : "조회 전용"}</span></div></div>
-          <button className="btn" onClick={async () => { await fetch("/api/gmail/disconnect", { method: "POST" }); await refreshSession(); }}>로그아웃</button>
+    <div className={styles.shell} data-navigation="top">
+      <a href="#workspace-content" className={styles.skipLink}>본문 바로가기</a>
+      <header className={styles.header} aria-label="워크스페이스 상단">
+        <div className={styles.navigationRow}>
+          <Link href="/overview" className={styles.brand} aria-label="Media Report 개요">
+            <span className={`brand-mark ${styles.mark}`} aria-hidden="true">M</span>
+            <span className={styles.brandCopy}><strong>Media Report</strong><span>광고 운영 대시보드</span></span>
+          </Link>
+          <nav className={styles.navigation} aria-label="주 메뉴">
+            {navItems.map(item => <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined} className={styles.navLink}><Icon name={item.icon}/>{item.label}</Link>)}
+          </nav>
+          <details key={pathname} className={styles.account} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector<HTMLElement>("summary")?.focus(); } }} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) event.currentTarget.open = false; }}>
+            <summary aria-label="계정 및 도구"><span className="avatar" aria-hidden="true">{canEdit ? session.user.role === "admin" ? "관리" : "AE" : "조회"}</span><span className={styles.accountName}>{session.user.display_name || session.user.email}</span><span className={styles.accountChevron} aria-hidden="true">⌄</span></summary>
+            <div className={styles.accountPanel}>
+              <div className={styles.profile}><strong>{session.user.display_name || session.user.email}</strong><span>{canEdit ? "편집 가능" : "조회 전용"}</span></div>
+              <nav aria-label="계정 및 도구 메뉴">
+                {canEdit && <Link href="/data-update" aria-current={pathname === "/data-update" ? "page" : undefined}><Icon name="report"/>데이터 업데이트</Link>}
+                <Link href="/team" aria-current={pathname === "/team" ? "page" : undefined}><Icon name="overview"/>팀 관리</Link>
+              </nav>
+              <button className="btn" onClick={async () => { await fetch("/api/gmail/disconnect", { method: "POST" }); await refreshSession(); }}>로그아웃</button>
+            </div>
+          </details>
         </div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
+        <div className={`topbar ${styles.contextBar}`}>
           <div className="selector-group">
             <select className="selector" aria-label="광고주 선택" disabled={dataSyncState === "saving"} value={advertiserKey} onChange={(event) => setAdvertiserKey(event.target.value as AdvertiserKey)}>
               {allowedAdvertiserKeys.map(key => <option key={key} value={key}>{ADVERTISERS[key].label}</option>)}
@@ -101,7 +108,9 @@ function AppShellInner({ children }: { children: ReactNode }) {
             <button className="btn" onClick={() => void reloadData()}>새로고침</button>
             {canEdit && <Link href="/data-update" className="btn primary"><span className="hide-mobile">데이터 </span>업데이트</Link>}
           </div>
-        </header>
+        </div>
+      </header>
+      <main className="main" id="workspace-content" tabIndex={-1}>
         <div className="content">{!allowedAdvertiserKeys.length ? <p>접근 가능한 광고주가 없습니다. 관리자에게 권한을 요청하세요.</p> : pathname === "/data-update" && !canEdit ? <p>조회 전용 계정입니다. 담당 관리자에게 편집 권한을 요청하세요.</p> : children}</div>
       </main>
     </div>

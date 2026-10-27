@@ -1,0 +1,34 @@
+.shell { min-height:100vh; min-width:0; }
+.header { position:sticky; top:0; z-index:40; background:rgba(255,255,255,.97); border-bottom:1px solid var(--border); backdrop-filter:blur(16px); }
+.navigationRow { max-width:1560px; margin-inline:auto; min-height:68px; padding:0 28px; display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:24px; border-bottom:1px solid var(--border); }
+.brand { display:flex; align-items:center; gap:10px; min-width:0; border-radius:8px; }
+.mark { color:#fff; flex-shrink:0; }
+.brandCopy { display:grid; gap:3px; white-space:nowrap; }
+.brandCopy strong { font-size:15px; line-height:1.2; letter-spacing:-.025em; }
+.brandCopy>span { font-size:11px; color:var(--muted); }
+.navigation { display:flex; align-items:center; justify-content:center; gap:4px; overflow-x:auto; min-width:0; overscroll-behavior-x:contain; scrollbar-width:thin; }
+.navLink { display:flex; align-items:center; justify-content:center; gap:7px; flex:0 0 auto; min-height:42px; padding:0 13px; border-radius:8px; color:var(--muted); font-size:13px; font-weight:650; white-space:nowrap; transition:background .15s,color .15s; }
+.navLink:hover { background:var(--surface-2); color:var(--text); }
+.navLink[aria-current=page] { background:var(--accent-soft); color:#4f46c9; box-shadow:inset 0 -2px #6861d8; }
+.brand:focus-visible,.navLink:focus-visible,.account summary:focus-visible,.accountPanel a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.account { position:relative; min-width:0; }
+.account summary { display:flex; align-items:center; gap:8px; min-height:42px; max-width:190px; padding:4px 8px; border:1px solid var(--border); border-radius:9px; cursor:pointer; list-style:none; font-size:12px; font-weight:650; background:#fff; }
+.account summary::-webkit-details-marker { display:none; }
+.accountName { min-width:0; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.accountChevron { margin-left:auto; color:var(--muted); }
+.account[open] .accountChevron { transform:rotate(180deg); }
+.accountPanel { position:absolute; right:0; top:calc(100% + 9px); z-index:50; width:min(268px,calc(100vw - 32px)); padding:12px; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 36px rgba(20,30,55,.14); }
+.profile { display:grid; gap:5px; padding:6px 7px 13px; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.profile strong { font-size:13px; }.profile>span { color:var(--muted); font-size:12px; }
+.accountPanel nav { display:grid; gap:3px; padding:8px 0; }
+.accountPanel a { display:flex; align-items:center; gap:9px; min-height:40px; padding:8px; border-radius:7px; font-size:13px; }
+.accountPanel a:hover,.accountPanel a[aria-current=page] { background:var(--accent-soft); color:#4f46c9; }
+.accountPanel>button { width:100%; justify-content:center; }
+.header .contextBar { max-width:1560px; margin-inline:auto; position:static; min-height:60px; height:auto; padding:10px 28px; border-bottom:0; gap:12px; background:transparent; backdrop-filter:none; flex-wrap:wrap; }
+.header .contextBar>div { min-width:0; }
+@media(max-width:1180px) { .navigationRow { padding:0 20px; gap:12px; }.navLink { padding:0 10px; gap:6px; }.brandCopy>span { display:none; }.accountName { max-width:76px; }.header .contextBar { padding:10px 20px; } }
+@media(max-width:900px) { .header { position:relative; }.navigationRow { grid-template-columns:minmax(0,1fr) auto; padding:10px 18px 0; gap:8px 12px; }.brand { grid-column:1; grid-row:1; }.account { grid-column:2; grid-row:1; }.navigation { grid-column:1/-1; grid-row:2; justify-content:flex-start; padding:4px 0 10px; }.navLink { min-height:42px; }.header .contextBar { padding:10px 18px; }.accountPanel { z-index:60; } }
+@media(max-width:520px) { .navigationRow { padding:10px 16px 0; }.brandCopy strong { font-size:14px; }.account summary { min-height:40px; padding:3px 6px; }.accountName { max-width:74px; }.header .contextBar { padding:10px 16px; gap:8px; }.header .contextBar>div { width:100%; flex-wrap:wrap; }.header .contextBar select { min-width:0; }.header .contextBar :global(.top-actions) { gap:6px; }.header .contextBar :global(.top-actions) :global(.btn) { padding:0 10px; }.header .contextBar :global(.sync-label) { display:none; } }
+@media(prefers-reduced-motion:reduce) { .navLink { transition:none; } }
+
+.skipLink { position:fixed; top:-80px; left:16px; z-index:100; padding:10px 16px; border-radius:8px; background:var(--accent); color:#fff; font-weight:700; }.skipLink:focus { top:8px; }
