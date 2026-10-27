@@ -72,7 +72,7 @@ export function ProofImagePicker({ initialFile, disabled = false, onChange, onPe
   function reset() { sequence.current++; clearResources(); setSource(''); setCandidates([]); setPdf(undefined); setError(''); setNotice(''); setBusy(false); setCrop(fullCrop); onChange(undefined); onPendingChange(false); }
   return <section className={styles.picker} aria-label="소재 이미지 입력">
     <div className={`${styles.drop} ${dragging ? styles.dragging : ''}`} onDragOver={event => { if (disabled) return; event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); if (disabled) return; const files = [...event.dataTransfer.files]; if (files.length > 1) { setError('한 번에 한 파일을 넣어주세요.'); return; } void receive(files[0]); }}>
-      <strong>이미지·PDF·PPTX를 여기에 놓으세요</strong><p>화면을 복사한 뒤 Ctrl+V / ⌘V로 바로 붙여넣을 수 있습니다.</p>
+      <strong>선택한 소재 파일을 가져오세요</strong><p>Google Drive에서 필요한 파일을 다운로드한 뒤 선택하거나 여기에 놓으세요. 화면을 복사해 Ctrl+V / ⌘V로 붙여넣을 수도 있습니다.</p><p>Drive 전체 연결은 필요하지 않습니다. 선택한 파일만 등록하며, 게재 증빙이나 소재별 성과로 자동 연결하지 않습니다.</p>
       <label>소재 이미지 · 게재 증빙 아님<input type="file" aria-label="소재 이미지 · 게재 증빙 아님" accept={PROOF_IMAGE_ACCEPT} disabled={disabled || busy} onChange={event => { void receive(event.target.files?.[0]); event.currentTarget.value = ''; }} /></label>
       <small>원본 최대 30MB · PDF 페이지 선택 · PPTX에 포함된 이미지 선택 · 이미지 자동 크기 조정</small>
     </div>
