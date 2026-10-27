@@ -20,7 +20,14 @@ export function PlacementSetupForm({ proof, initial, initialFile, imageOnly = fa
 }) {
   const { advertiser, month, canEdit, dataSyncState } = useWorkspace();
   const mounted = useRef(true);
+  const editorRef = useRef<HTMLElement>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.scrollIntoView({ block: 'start', behavior: 'auto' });
+    editor.focus({ preventScroll: true });
+  }, []);
   const [clientId] = useState(() => crypto.randomUUID());
   const [media, setMedia] = useState(proof?.media || initial?.media || "");
   const [placement, setPlacement] = useState(proof?.placement || initial?.placement || "");
@@ -113,7 +120,7 @@ export function PlacementSetupForm({ proof, initial, initialFile, imageOnly = fa
     } finally { setSaving(false); }
   }
 
-  return <section className={styles.panel} aria-label="지면 수동 세팅">
+  return <section ref={editorRef} tabIndex={-1} className={styles.panel} aria-label="지면 수동 세팅">
     <div className={styles.head}><div><h2>{imageOnly ? "소재 이미지 넣기" : proof ? "지면 세팅 수정" : "지면 수동 등록"}</h2><p>{advertiser} · {month} · 사용자 등록 소재이며 게재 증빙이 아닙니다. 기존 원본과 게재 상태·소재 ID·성과 연결은 바꾸지 않습니다.</p></div><button className="btn" type="button" disabled={saving} onClick={onClose}>닫기</button></div>
     <form onSubmit={submit}>
       <fieldset disabled={saving || !canEdit}>

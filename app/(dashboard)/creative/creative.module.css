@@ -252,3 +252,8 @@
 .management > summary small { font-size: 11px; color: #667085; }
 
 .imageEntry{padding:20px;margin-bottom:20px;border:1px solid #d5d0ee;border-radius:12px;background:#faf9ff;display:flex;flex-wrap:wrap;gap:12px;min-width:0}.imageEntry h2,.imageEntry p{flex-basis:100%;margin:0}.imageEntry p{font-size:12px;line-height:1.7}.imageEntry label{display:grid;gap:8px;flex:1 1 100%;min-width:0;font-size:12px}.imageEntry select{width:100%;min-width:0;max-width:100%;padding:12px;border:1px solid #ccc;border-radius:8px}@media(max-width:540px){.imageEntry{padding:14px}.imageEntry button{width:100%}}
+
+.creativeSwitcher { display: flex; align-items: end; gap: 0.6rem; flex-wrap: wrap; margin: 0.75rem 0; }
+.creativeSwitcher label { display: grid; gap: 0.25rem; flex: 1 1 240px; min-width: 0; font-size: 0.8rem; font-weight: 600; }
+.creativeSwitcher select { width: 100%; min-width: 0; max-width: 100%; padding: 0.55rem; border: 1px solid var(--border, #cbd5e1); border-radius: 0.5rem; background: var(--surface, #fff); color: inherit; }
+.creativeSwitcher span { align-self: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
