@@ -81,7 +81,7 @@ function validSvg(html) {
   const stack = [];
   for (const token of svg.matchAll(/<(\/?)([a-zA-Z][\w:-]*)\b[^>]*>/g)) {
     const [tag, closing, name] = token;
-    assert.ok(['svg', 'g', 'line', 'text', 'path', 'circle', 'title'].includes(name), `Unexpected SVG element ${name}`);
+    assert.ok(['svg', 'g', 'line', 'text', 'path', 'circle', 'title', 'defs', 'clipPath', 'rect'].includes(name), `Unexpected SVG element ${name}`);
     if (closing) assert.equal(stack.pop(), name, `Balanced SVG closing tag: ${name}`);
     else if (!tag.endsWith('/>')) stack.push(name);
   }
@@ -208,7 +208,7 @@ try {
     assert.ok(output.includes('누적 합계와 효율은 표시하지 않습니다'));
     assert.ok(!output.includes('집행액 분포'));
     assert.equal((output.match(/<dd[^>]*>—<\/dd>/g) || []).length, 4);
-    assert.ok(output.includes('2030-01-16 노출수 120'), 'Supplied daily value is still accessible');
+    assert.ok(output.includes('2030-01-16 · 노출수 120'), 'Supplied daily value is still accessible in the shared date label');
     // UI also guards stale externally supplied metrics when baseline is false.
     const stale = render(Kpis, { media: report.media.find(m => m.name === '네이버'), baselineComplete: false });
     assert.ok(stale.includes('누적 합계와 효율을 표시하지 않습니다'));
@@ -241,7 +241,7 @@ try {
   test('SVG is balanced, finite, source-labeled and keyboard accessible', () => {
     const output = trend(report.media.find(m => m.name === '네이버'));
     validSvg(output);
-    assert.match(output, /role="button"[^>]*aria-label="2030-01-15 노출수 100"/);
+    assert.match(output, /data-combined-day="2030-01-15"[^>]*role="button"[^>]*aria-label="2030-01-15 · 노출수 100/);
     assert.match(output, /tabindex="0"/);
     assert.ok(output.includes('일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다'));
   });
@@ -253,12 +253,13 @@ try {
     const output = trend(deepFreeze(medium));
     validSvg(output);
     assert.equal((output.match(/<path\b/g) || []).length, 3);
-    assert.ok(output.includes('2030-01-11 노출수 0'));
+    assert.match(output, /data-combined-point="impressions" data-date="2030-01-11"/);
     const graphs = (output.match(/<svg[\s\S]*?<\/svg>/g) || []).join('');
-    assert.ok(!graphs.includes('2030-01-12') && !graphs.includes('2030-01-14 노출수 0'), 'Only the calendar table includes missing days, never synthetic chart points');
+    assert.doesNotMatch(graphs, /data-combined-point="impressions" data-date="2030-01-(?:12|14)"/, 'Transparent calendar targets are not fabricated metric points');
+    assert.match(graphs, /data-combined-day="2030-01-12"/, 'Missing source days can still be inspected without fake zeros');
     assert.match(output, /data-daily-table-date="2030-01-12"/);
     assert.match(output, /원본 없음/);
-    assert.equal((output.match(/class="chartTarget"/g) || []).length, 3);
+    assert.equal((output.match(/data-combined-point="impressions"/g) || []).length, 3);
   });
   test('fractional unit costs do not round into false zero', () => {
     const medium = build({ rows: [row({ spend: 1, impressions: 100, clicks: 10 })] }).media[0];

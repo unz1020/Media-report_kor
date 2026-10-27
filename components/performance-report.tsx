@@ -88,7 +88,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
     </dl>
     <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
     <section className={styles.section} aria-labelledby={`${id}-trend`}>
-      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>일별 지표를 한 표에서</h3></div></div>
+      <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>한 그래프에서 함께 보는 일별 지표</h3></div></div>
       {trendOptions.length ? <DailyMetricExplorer mediaOptions={trendOptions} startDate={startDate} endDate={endDate} /> : <p className={styles.empty}>선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다.</p>}
     </section>
     <div className={composition.length ? styles.contextGrid : styles.contextSingle}>
@@ -233,9 +233,11 @@ function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOption
   const [selectedMetrics, setSelectedMetrics] = useState<Metric[] | null>(null);
   const [activeDate, setActiveDate] = useState("");
   const [onlyDate, setOnlyDate] = useState(false);
+  const [graphMediaName, setGraphMediaName] = useState("");
   const all = useMemo(() => mediaOptions.map(media => ({ media, series: buildReportDailySeries(media, startDate, endDate) })), [mediaOptions, startDate, endDate]);
   const names = selectedNames.filter(name => all.some(item => item.media.name === name));
   const selected = all.filter(item => (names.length ? names : [all[0]?.media.name]).includes(item.media.name));
+  const graphItem = selected.find(item => item.media.name === graphMediaName) ?? selected[0];
   const available = DAILY_METRICS.filter(metric => selected.some(({media, series}) => metricAllowed(media, metric) && series.some(point => finite(point[metric]))));
   const metrics = (selectedMetrics ?? available.slice(0, 3)).filter(metric => available.includes(metric));
   const dates = [...new Set(selected.flatMap(item => item.series.map(point => point.date)))].sort();
@@ -245,7 +247,7 @@ function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOption
   const minTime = Date.parse(startDate + "T00:00:00Z"), maxTime = Date.parse(endDate + "T00:00:00Z");
   const toggleMetric = (metric: Metric) => setSelectedMetrics(metrics.includes(metric) ? metrics.filter(key => key !== metric) : [...metrics, metric].slice(0, 4));
   return <div className={styles.trend} data-daily-multi-metrics>
-    <p className={styles.meta}>{startDate} ~ {endDate} · 매체 최대 3개 · 지표 최대 4개 · 날짜 × 매체 행 · 선택 지표를 한 표에 표시</p>
+    <p className={styles.meta}>{startDate} ~ {endDate} · 매체 최대 3개 · 지표 최대 4개 · 선택 매체의 여러 지표를 한 그래프에 표시</p>
     {mediaOptions.length > 1 && <fieldset className={styles.metricChoices}><legend>비교 매체 (최대 3개)</legend>
       <label className={styles.mediaSearch}>매체 찾기<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="매체명 검색" /></label>
       <div className={styles.choiceList}>{all.filter(({media}) => media.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())).map(({media}) => {
@@ -256,48 +258,91 @@ function DailyMetricExplorer({ mediaOptions, startDate, endDate }: { mediaOption
     </fieldset>}
     <fieldset className={styles.metricChoices}><legend>일별 지표 (최대 4개)</legend><div className={styles.choiceList}>{DAILY_METRICS.map(metric => {
       const provided = available.includes(metric), checked = metrics.includes(metric);
-      return <label key={metric}><input type="checkbox" checked={checked} disabled={!provided || (!checked && metrics.length >= 4)} onChange={() => toggleMetric(metric)} />{labelFor(selected[0]?.media ?? mediaOptions[0], metric)}{!provided && <small>미제공</small>}</label>;
+      return <label key={metric}><input type="checkbox" checked={checked} disabled={!provided || (!checked && metrics.length >= 4)} onChange={() => toggleMetric(metric)} />{metric === "impressions" ? "노출수" : metric === "clicks" ? "클릭수" : metric === "spend" ? "집행액" : "조회수"}{!provided && <small>미제공</small>}</label>;
     })}</div></fieldset>
-    {dateChoices.length > 0 && <div className={styles.sharedDate}><label htmlFor={id + "-date"}>공통 비교일</label><select id={id + "-date"} value={date} onChange={event => setActiveDate(event.target.value)}>{dateChoices.map(value => <option key={value} value={value}>{value}</option>)}</select><label className={styles.onlyDate}><input type="checkbox" checked={onlyDate} onChange={event => setOnlyDate(event.target.checked)} />선택일만 보기</label></div>}
+    {dateChoices.length > 0 && <div className={styles.sharedDate}><label htmlFor={id + "-date"}>공통 비교일</label><select id={id + "-date"} value={date} onChange={event => setActiveDate(event.target.value)}>{dateChoices.map(value => <option key={value} value={value}>{value}</option>)}</select><span className={styles.meta}>같은 날짜의 모든 지표를 함께 확인하세요.</span></div>}
     <p className={styles.dateStatus} aria-live="polite">{date && date + " · "}{selected.map(item => item.media.name).join(" / ")} · {metrics.length}개 지표 선택</p>
-    {metrics.length > 0 && <><DailyMetricTable groups={onlyDate ? dailyTable.groups.filter(group => group.date === date) : dailyTable.groups} metrics={metrics} date={date} />
-      <p className={styles.tableHint}>표 안에서 위아래·좌우로 이동할 수 있습니다. ‘미제공’은 지표 누락, ‘원본 없음’은 해당 날짜의 일별 자료 없음입니다. 실제 0은 0으로 표시하며, 합계는 만들지 않습니다. 방송·옥외의 원본값은 디지털 노출과 직접 비교하지 않습니다.{!dailyTable.calendarComplete && " 1년 초과 기간은 원본이 있는 날짜만 표시합니다."}</p>
-      <details className={styles.dailyGraphDisclosure}><summary>일별 그래프 펼치기</summary><div className={styles.multiChartGrid}>{selected.flatMap(({media, series}) => metrics.map(metric => <DailyMetricChart key={media.name + metric} media={media} series={series} metric={metric} date={date} minTime={minTime} maxTime={maxTime} onDate={setActiveDate} />))}</div></details></>}
+    {metrics.length > 0 && graphItem && <>
+      {selected.length > 1 && <div className={styles.graphMediaChoice}><label htmlFor={id+"-graph-media"}>그래프 매체</label><select id={id+"-graph-media"} value={graphItem.media.name} onChange={event=>setGraphMediaName(event.target.value)}>{selected.map(item=><option key={item.media.name} value={item.media.name}>{item.media.name}</option>)}</select><span>한 그래프에는 이 매체의 지표를 표시합니다. 매체 간 수치 비교는 아래 표에서 확인하세요.</span></div>}
+      <DailyCombinedChart media={graphItem.media} series={graphItem.series} metrics={metrics} dates={dateChoices} date={date} minTime={minTime} maxTime={maxTime} onDate={setActiveDate} />
+      <details className={styles.dailyGraphDisclosure} data-daily-table-disclosure><summary>일별 수치 표 펼치기</summary>
+        <label className={styles.onlyDate}><input type="checkbox" checked={onlyDate} onChange={event=>setOnlyDate(event.target.checked)} />선택일만 보기</label>
+        <DailyMetricTable groups={onlyDate?dailyTable.groups.filter(group=>group.date===date):dailyTable.groups} metrics={metrics} date={date} />
+        <p className={styles.tableHint}>‘미제공’은 지표 누락, ‘원본 없음’은 해당 날짜 자료 없음입니다. 실제 0은 0으로 표시하며, 다른 매체를 합산하지 않습니다. 방송·옥외 원본값은 디지털 노출과 직접 비교하지 않습니다.{!dailyTable.calendarComplete && " 1년 초과 기간은 원본이 있는 날짜만 표시합니다."}</p>
+      </details>
+    </>}
     {!metrics.length && <p className={styles.empty}>{available.length ? "함께 볼 일별 지표를 선택하세요." : "선택 기간에 표시할 수 있는 일별 원본 지표가 없습니다. 누적·계획 수치로 대체하지 않습니다."}</p>}
-    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 일별 원본 제공분만 표시합니다. 표의 값은 제공 지면만 집계한 수치이며 일부 지면은 미제공일 수 있습니다. 미제공 날짜·값은 0이 아니며 그래프에서는 선을 연결하지 않습니다. 실제 0은 ‘0’으로 표시합니다. 집행액은 서비스·참고 비용을 제외합니다. 각 차트의 축 범위가 달라 선 높이를 매체 간 규모로 비교할 수 없습니다. 방송·옥외의 원본 지표는 실제 접촉 인원·순도달을 뜻하지 않습니다.</p>
+    <p className={styles.footnote}>일별 원본의 제공 범위는 누적 성과 카드와 다를 수 있습니다. 일별 원본 제공분만 표시합니다. 표의 값은 제공 지면만 집계한 수치이며 일부 지면은 미제공일 수 있습니다. 미제공 날짜·값은 0이 아니며 그래프에서는 선을 연결하지 않습니다. 실제 0은 ‘0’으로 표시합니다. 집행액은 서비스·참고 비용을 제외합니다. 각 지표의 축 범위가 달라 선 높이를 지표 간 규모로 비교할 수 없습니다. 방송·옥외의 원본 지표는 실제 접촉 인원·순도달을 뜻하지 않습니다.</p>
   </div>;
 }
 
-function DailyMetricChart({ media, series, metric, date, minTime, maxTime, onDate }: { media: MediaPerformanceReport; series: DailyPoint[]; metric: Metric; date: string; minTime: number; maxTime: number; onDate: (date: string) => void }) {
-  const points = metricAllowed(media, metric) ? series.filter(point => finite(point[metric])) : [];
-  const selected = series.find(point => point.date === date);
-  const values = points.map(point => point[metric]!);
-  const low = Math.min(0, ...values), high = Math.max(0, ...values);
-  const padding = (high - low || 1) * 0.1, minimum = low < 0 ? low - padding : 0, maximum = high > 0 ? high + padding : 1;
-  const x = (timestamp: number) => maxTime === minTime ? 240 : 72 + (timestamp - minTime) / (maxTime - minTime) * 376;
-  const y = (value: number) => 174 - (value - minimum) / (maximum - minimum) * 142;
-  const paths: string[] = []; let segment = "", previous: number | null = null;
-  for (const point of series) {
-    const value = point[metric];
-    if (!finite(value)) { if (segment) paths.push(segment); segment = ""; previous = null; continue; }
-    if (previous !== null && point.timestamp - previous !== 86400000) { if (segment) paths.push(segment); segment = ""; }
-    segment += (segment ? " L" : "M") + x(point.timestamp) + "," + y(value); previous = point.timestamp;
-  }
-  if (segment) paths.push(segment);
-  const label = labelFor(media, metric);
-  return <article className={styles.dailyCard} data-daily-metric={metric} data-daily-media={media.name}>
-    <h4><MediaLabel media={media.name}>{media.name}</MediaLabel> · {label}</h4>
-    <p className={styles.chartReadout} aria-live="polite"><span>{date || "일별 원본 없음"}</span><strong>{dailyFormat(metricAllowed(media, metric) ? selected?.[metric] : null, metric)}</strong></p>
-    <p className={styles.meta}>{metric === "spend" ? "원 · 유료 제공분" : "원본 제공 수량"} · 독립 축</p>
-    {points.length ? <svg className={styles.chart} viewBox="0 0 480 218" role="group" aria-label={media.name + " 일별 " + label + ". 같은 날의 값을 함께 확인하세요."}>
-      {[0, 0.5, 1].map(tick => { const value = minimum + (maximum - minimum) * tick; return <g key={tick}><line x1="72" x2="448" y1={y(value)} y2={y(value)} className={styles.gridLine} /><text x="62" y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value)}</text></g>; })}
-      {paths.map((d, index) => <path key={index} d={d} className={styles.chartLine} />)}
-      {date && <line x1={x(Date.parse(date + "T00:00:00Z"))} x2={x(Date.parse(date + "T00:00:00Z"))} y1="24" y2="180" className={styles.dateGuide} />}
-      {points.map((point, index) => <g key={point.date}><circle cx={x(point.timestamp)} cy={y(point[metric]!)} r={date === point.date ? 5 : 3} className={styles.chartDot} aria-hidden="true" /><circle cx={x(point.timestamp)} cy={y(point[metric]!)} r="12" className={styles.chartTarget} tabIndex={0} role="button" aria-label={point.date + " " + label + " " + dailyFormat(point[metric], metric)} onFocus={() => onDate(point.date)} onMouseEnter={() => onDate(point.date)} onClick={() => onDate(point.date)} onKeyDown={event => {
-        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onDate(point.date); }
-        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? 0 : event.key === "End" ? points.length - 1 : Math.max(0, Math.min(points.length - 1, index + (event.key === "ArrowLeft" ? -1 : 1))); event.currentTarget.ownerSVGElement?.querySelectorAll<SVGCircleElement>('[role="button"]')[next]?.focus(); }
-      }}><title>{point.date + " · " + label + " " + dailyFormat(point[metric], metric)}</title></circle></g>)}
-      {[...new Set([minTime, maxTime])].filter(Number.isFinite).map(time => <text key={time} x={x(time)} y="206" textAnchor="middle">{new Date(time).toISOString().slice(5, 10).replace("-", "/")}</text>)}
-    </svg> : <p className={styles.empty}>이 매체의 {label} 일별 원본은 미제공입니다.</p>}
-  </article>;
+const COMBINED_COLORS: Record<Metric, string> = { impressions: "#365cce", clicks: "#087f8c", spend: "#a65d0b", views: "#6941c6" };
+const COMBINED_DASHES: Record<Metric, string | undefined> = { impressions: undefined, clicks: "7 4", spend: "2 4", views: "10 4 2 4" };
+const COMBINED_AXES: Record<Metric, { x: number; side: "left" | "right" }> = { impressions: { x: 156, side: "left" }, clicks: { x: 76, side: "left" }, spend: { x: 812, side: "right" }, views: { x: 892, side: "right" } };
+const axisNumber = (value: number) => Math.abs(value) >= 1e15 ? value.toExponential(1) : new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+
+// One media per plot: raw broadcast/OOH units never share a digital metric axis.
+// This projection only reads the existing source-deduplicated daily series.
+export function buildCombinedDailyChart(media: MediaPerformanceReport, series: DailyPoint[], metrics: Metric[], minTime: number, maxTime: number) {
+  const ordered = series.filter(point => finite(point.timestamp) && point.timestamp >= minTime && point.timestamp <= maxTime).slice().sort((a,b) => a.timestamp - b.timestamp);
+  const xAt = (timestamp: number) => maxTime > minTime ? 180 + Math.max(0, Math.min(1, (timestamp - minTime) / (maxTime - minTime))) * 600 : 480;
+  const axes = DAILY_METRICS.filter(metric => metrics.includes(metric)).map(metric => {
+    const allowed = metricAllowed(media, metric);
+    const values = allowed ? ordered.map(point => point[metric]).filter(finite) : [];
+    const minimum = Math.min(0, ...values), high = Math.max(0, ...values), maximum = high === minimum ? 1 : high;
+    // Divide first so extreme finite inputs cannot overflow max-min or coordinates.
+    const scale = Math.max(Math.abs(minimum), Math.abs(maximum), 1);
+    const yAt = (value: number) => 322 - (value / scale - minimum / scale) / (maximum / scale - minimum / scale) * 264;
+    const paths: string[] = [], points: { date: string; timestamp: number; value: number; x: number; y: number }[] = [];
+    let path = "", previous: number | null = null;
+    if (allowed) for (const point of ordered) {
+      const value = point[metric];
+      if (!finite(value)) { if(path) paths.push(path); path=""; previous=null; continue; }
+      if (previous !== null && point.timestamp - previous !== 86400000) { if(path) paths.push(path); path=""; }
+      const x=xAt(point.timestamp),y=yAt(value);
+      path += (path ? " L" : "M") + x + "," + y; previous=point.timestamp;
+      points.push({ date:point.date, timestamp:point.timestamp, value, x, y });
+    }
+    if(path) paths.push(path);
+    const label = raw(media) && metric === "views" ? "원본 지표 · 조회수" : labelFor(media,metric);
+    return { metric, label, color:COMBINED_COLORS[metric], dash:COMBINED_DASHES[metric], ...COMBINED_AXES[metric], minimum, maximum, allowed, provided:values.length>0, paths, points, yAt };
+  });
+  return { axes, xAt };
+}
+
+export function DailyCombinedChart({ media, series, metrics, dates, date, minTime, maxTime, onDate }: { media:MediaPerformanceReport; series:DailyPoint[]; metrics:Metric[]; dates:string[]; date:string; minTime:number; maxTime:number; onDate:(date:string)=>void }) {
+  const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const model = buildCombinedDailyChart(media,series,metrics,minTime,maxTime);
+  const selected = series.find(point=>point.date===date);
+  const read = (metric:Metric) => metricAllowed(media,metric) ? dailyFormat(selected?.[metric],metric) : "해당 없음";
+  const dayLabel = (day:string) => { const point=series.find(item=>item.date===day); return day+" · "+model.axes.map(axis=>axis.label+" "+(axis.allowed?dailyFormat(point?.[axis.metric],axis.metric):"해당 없음")).join(" · "); };
+  const axisTitle = (metric:Metric) => metric==="impressions" ? raw(media)?"원본 노출":"노출수" : metric==="clicks"?"클릭수":metric==="spend"?"집행액 (원)":raw(media)?"원본 조회":"조회수";
+  return <section className={styles.combinedCard} data-daily-combined-chart data-combined-media={media.name} aria-label={media.name+" 일별 통합 그래프"}>
+    <header className={styles.combinedHeading}><h4><MediaLabel media={media.name}>{media.name}</MediaLabel> · 여러 지표를 한 그래프에서</h4><p>색상·선 모양별 지표 · 각각의 원래 단위와 독립 축</p></header>
+    {raw(media) && <p className={styles.notice}>매체 원본의 표기 단위입니다. 디지털 노출·실제 접촉 인원과 동일하지 않습니다.</p>}
+    <div className={styles.combinedScroll} role="region" aria-label="통합 그래프 스크롤 영역" tabIndex={0}>
+      <svg className={styles.combinedPlot} data-combined-plot viewBox="0 0 960 400" role="group" aria-label={media.name+" 일별 다중 지표 통합 그래프"}>
+        <defs><clipPath id={"combined-"+chartId}><rect x="180" y="54" width="600" height="272" /></clipPath></defs>
+        {[0,.25,.5,.75,1].map(tick=><line key={tick} x1="180" x2="780" y1={58+tick*264} y2={58+tick*264} className={styles.gridLine} />)}
+        {model.axes.map(axis=><g key={axis.metric} data-combined-axis={axis.metric} data-axis-min={axis.minimum} data-axis-max={axis.maximum}>
+          <text x={axis.x} y="24" textAnchor={axis.side==="left"?"end":"start"} fill={axis.color} fontWeight="600">{axisTitle(axis.metric)}</text>
+          {axis.provided ? <><line x1={axis.x} x2={axis.x} y1="58" y2="322" stroke={axis.color} opacity=".45" />{[0,.5,1].map(tick=>{const value=axis.minimum*(1-tick)+axis.maximum*tick,y=axis.yAt(value);return <g key={tick}><line x1={axis.x-3} x2={axis.x+3} y1={y} y2={y} stroke={axis.color}/><text x={axis.x+(axis.side==="left"?-7:7)} y={y+4} textAnchor={axis.side==="left"?"end":"start"} fill={axis.color}>{axisNumber(value)}</text></g>;})}</> : <text x={axis.x} y="52" textAnchor={axis.side==="left"?"end":"start"} fill={axis.color}>{axis.allowed?"미제공":"해당 없음"}</text>}
+        </g>)}
+        <g clipPath={"url(#combined-"+chartId+")"} pointerEvents="none">
+          {model.axes.map(axis=><g key={axis.metric}>{axis.paths.map((d,index)=><path key={index} data-combined-line={axis.metric} d={d} fill="none" stroke={axis.color} strokeWidth="2.5" strokeDasharray={axis.dash} />)}{axis.points.map(point=><circle key={point.date} data-combined-point={axis.metric} data-date={point.date} cx={point.x} cy={point.y} r={date===point.date?4.5:2.5} fill={axis.color}><title>{point.date+" · "+axis.label+" "+dailyFormat(point.value,axis.metric)}</title></circle>)}</g>)}
+          {date && <line x1={model.xAt(Date.parse(date+"T00:00:00Z"))} x2={model.xAt(Date.parse(date+"T00:00:00Z"))} y1="54" y2="326" className={styles.dateGuide} />}
+        </g>
+        {!model.axes.some(axis=>axis.provided) && <text x="480" y="188" textAnchor="middle" className={styles.combinedEmpty}>선택한 매체의 일별 지표가 미제공입니다.</text>}
+        {dates.map((day,index)=>{const x=model.xAt(Date.parse(day+"T00:00:00Z")),previous=index?model.xAt(Date.parse(dates[index-1]+"T00:00:00Z")):180,next=index<dates.length-1?model.xAt(Date.parse(dates[index+1]+"T00:00:00Z")):780,left=index?(previous+x)/2:180,right=index<dates.length-1?(next+x)/2:780;return <rect key={day} data-combined-day={day} x={left} y="54" width={Math.max(1,right-left)} height="272" fill="transparent" role="button" tabIndex={date===day?0:-1} aria-label={dayLabel(day)} aria-pressed={date===day} className={styles.combinedDay} onMouseEnter={()=>onDate(day)} onFocus={()=>onDate(day)} onClick={()=>onDate(day)} onKeyDown={event=>{
+          if(event.key==="Enter"||event.key===" "){event.preventDefault();onDate(day);}
+          if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const target=event.key==="Home"?0:event.key==="End"?dates.length-1:Math.max(0,Math.min(dates.length-1,index+(event.key==="ArrowLeft"?-1:1)));event.currentTarget.ownerSVGElement?.querySelectorAll<SVGRectElement>('[data-combined-day]')[target]?.focus();}
+        }}><title>{dayLabel(day)}</title></rect>;})}
+        {[...new Set([0,Math.floor((dates.length-1)/2),dates.length-1])].filter(index=>index>=0&&dates[index]).map(index=><text key={index} x={model.xAt(Date.parse(dates[index]+"T00:00:00Z"))} y="352" textAnchor="middle">{dates[index].slice(5).replace("-","/")}</text>)}
+        <text x="480" y="382" textAnchor="middle">날짜에 마우스를 올리거나 터치 · 키보드 ← →로 모든 지표 함께 확인</text>
+      </svg>
+    </div>
+    <p className={styles.combinedDate}>{date || "일별 원본 없음"} · {selected?"같은 날짜의 지표":"해당 날짜 원본 없음"}</p>
+    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><i aria-hidden="true" style={{borderColor:axis.color,borderTopStyle:axis.dash?"dashed":"solid"}}/>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
+    <p className={styles.tableHint}>각 선은 색상에 맞는 독립 축을 사용합니다. 선의 높이로 지표 간 규모를 비교하지 마세요. 원본 값은 위에 그대로 표시하며, 미제공·날짜 공백은 연결하거나 0으로 채우지 않습니다.</p>
+  </section>;
 }

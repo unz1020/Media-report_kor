@@ -133,7 +133,18 @@ try {
   const trend = () => page.locator('[data-daily-multi-metrics]');
   const mediaChoices = () => trend().getByRole('group', { name: '비교 매체 (최대 3개)', exact: true });
   const metricChoices = () => trend().getByRole('group', { name: '일별 지표 (최대 4개)', exact: true });
-  const card = (name, metric) => trend().locator(`[data-daily-media="${name}"][data-daily-metric="${metric}"]`);
+  const combined = () => trend().locator('[data-daily-combined-chart]');
+  const plot = () => combined().locator('svg[data-combined-plot]');
+  const readout = metric => combined().locator('[data-combined-readout="' + metric + '"] strong');
+  const hit = date => plot().locator('[data-combined-day="' + date + '"]');
+  const metrics = ['impressions', 'clicks', 'spend', 'views'];
+  const focusMedia = async name => {
+    const select = trend().getByLabel('그래프 매체', { exact: true });
+    if (await select.count()) await select.selectOption(name);
+    assert.equal(await combined().getAttribute('data-combined-media'), name);
+    assert.equal(await plot().getAttribute('role'), 'group');
+    assert.equal(await plot().getAttribute('aria-label'), name + ' 일별 다중 지표 통합 그래프');
+  };
   // Responsive CSS hides this status below 900px; its exact text still signals ready.
   const syncReady = () => page.getByText('DB 동기화 완료', { exact: true }).waitFor({ state: 'attached', timeout: 30000 });
   const noOverflow = async label => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${label} fits 390px without document overflow`);
@@ -143,19 +154,26 @@ try {
     assert.doesNotMatch(geometry, /NaN|Infinity|undefined/, 'All SVG paths/coordinates must be finite');
   };
   const table = () => trend().getByRole('table', { name: '일별 지표 통합표', exact: true });
-  const chartDetails = () => trend().locator('details').filter({ has: page.locator('summary').filter({ hasText: /^일별 그래프 펼치기$/ }) });
+  const tableDetails = () => trend().locator('details').filter({ has: page.locator('summary').filter({ hasText: /^일별 수치 표 펼치기$/ }) });
   const openCharts = async () => {
-    assert.equal(await chartDetails().count(), 1);
-    if (await chartDetails().getAttribute('open') === null) await chartDetails().locator('summary').click();
-    await visible(trend().locator('[data-daily-metric]').first());
+    assert.equal(await combined().count(), 1, 'Exactly one overlaid chart, never media x metric cards');
+    assert.equal(await plot().count(), 1);assert.equal(await plot().getAttribute('viewBox'), '0 0 960 400');assert.equal(await combined().locator('svg').count(), 1);await visible(plot());
+    assert.equal(await combined().locator('xpath=ancestor::details').count(), 0, 'Graph is never hidden in optional details');
+    assert.equal(await trend().locator('[data-daily-metric]').count(), 0, 'Legacy small multiples are removed');
+  };
+  const openTable = async () => {
+    assert.equal(await tableDetails().count(), 1);
+    if (await tableDetails().getAttribute('open') === null) await tableDetails().locator('summary').click();
+    await visible(table());
+    assert.equal(await tableDetails().getByRole('checkbox', { name: '선택일만 보기', exact: true }).count(), 1);
   };
   const tableRow = (date, name) => table().locator(`tbody tr[data-daily-table-date="${date}"][data-daily-table-media="${name}"]`);
   const checkTable = async names => {
-    await visible(table());
+    await openTable();
     assert.notEqual(await table().getAttribute('data-daily-table'), null);
     assert.deepEqual(await table().locator('thead th').allTextContents(), ['날짜', '매체', '노출수', '클릭수', '집행액 (원)', '조회수']);
     assert.equal(await table().locator('thead th[scope="col"]').count(), 6);
-    assert.equal(await table().locator('[data-daily-metric]').count(), 0, 'Only chart cards use the legacy metric attribute');
+    assert.equal(await table().locator('[data-daily-metric]').count(), 0, 'No legacy small-multiple attributes remain');
     const days = await expectedDays(trend());
     assert.ok(['2026-10-02', '2026-10-03', '2026-10-04'].every(day => days.includes(day)), 'Accepted range covers fixture data-state checks');
     const rows = table().locator('tbody tr');
@@ -201,31 +219,67 @@ try {
     await noOverflow('Daily table');
   };
   const checkGaps = async () => {
-    await openCharts();
-    const naver = card('네이버', 'impressions');
-    assert.equal(await naver.getByRole('button').count(), 3, 'Null and missing days are not synthetic zero points');
-    assert.equal(await naver.getByRole('button', { name: '2026-10-04 노출수 0', exact: true }).count(), 1, 'A real zero is retained');
-    assert.equal(await naver.locator('svg path').count(), 3, 'Both explicit null and missing calendar days break the line');
-    await trend().getByLabel('공통 비교일', { exact: true }).selectOption('2026-10-02');
-    assert.equal(await naver.locator('p[aria-live="polite"] strong').textContent(), '미제공');
-    for (const text of await trend().locator('[data-daily-metric] p[aria-live="polite"] strong').allTextContents()) assert.equal(text, '미제공', 'Null shared day remains unknown across all selected media/metrics');
-    await trend().getByLabel('공통 비교일', { exact: true }).selectOption('2026-10-04');
-    assert.equal(await naver.locator('p[aria-live="polite"] strong').textContent(), '0');
-    for (const text of await trend().locator('[data-daily-metric] p[aria-live="polite"] strong').allTextContents()) assert.match(text, /^0(?:원)?$/, 'Real zero remains visible across all selected metrics');
-    const point = naver.getByRole('button', { name: '2026-10-01 노출수 100', exact: true });
-    await point.focus(); await point.press('ArrowRight');
-    assert.equal(await trend().getByLabel('공통 비교일', { exact: true }).inputValue(), '2026-10-04', 'Keyboard comparison skips absent values');
+    await openCharts();await focusMedia('네이버');
+    const days = await expectedDays(trend()), ascending = [...days].reverse();
+    assert.deepEqual(await plot().locator('[data-combined-day]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-combined-day'))), ascending, 'Hit targets include every accepted calendar day, even null/no-source days');
+    assert.equal(await plot().locator('[data-combined-day][role="button"][tabindex="0"]').count(), 1, 'One roving keyboard stop');
+    assert.equal(await plot().locator('rect[data-combined-day][role="button"]').count(), days.length);
+    assert.ok(await plot().locator('rect[data-combined-day]').evaluateAll(nodes => nodes.every(node => { const style = getComputedStyle(node);return style.fill === 'transparent' || style.fill === 'none' || Number(style.fillOpacity) === 0 || Number(style.opacity) === 0 || /rgba\([^)]*,\s*0\)$/.test(style.fill); })), 'Calendar targets are transparent, not extra visual series');
+    const colors = [];
+    for (const metric of metrics) {
+      const points = plot().locator('[data-combined-point="' + metric + '"]');
+      assert.deepEqual(await points.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-date'))), ['2026-10-01', '2026-10-04', '2026-10-06'], 'Only finite source values, including zero, become points');
+      const lines = plot().locator('[data-combined-line="' + metric + '"]');
+      const paths = await lines.evaluateAll(nodes => nodes.map(node => node.getAttribute('d') || '').join(' '));
+      assert.equal((paths.match(/[Mm]/g) || []).length, 3, 'Null and missing days each break the line');
+      colors.push(await lines.first().evaluate(node => getComputedStyle(node).stroke));
+      const geometry = await points.evaluateAll(nodes => nodes.map(node => ['cx', 'cy'].map(key => node.hasAttribute(key) ? Number(node.getAttribute(key)) : NaN)));
+      assert.ok(geometry.every(pair => pair.every(Number.isFinite)), 'All real source point coordinates are finite');
+    }
+    assert.equal(new Set(colors).size, 4, 'All four overlaid series have distinct colors');
+    assert.ok(colors.every(color => color !== 'none' && color !== 'transparent'));
+    // These fixture series have different magnitudes but identical relative shapes.
+    // Equal normalized y positions prove each metric uses its own scale, not one raw axis.
+    const y = await Promise.all(metrics.map(metric => plot().locator('[data-combined-point="' + metric + '"][data-date="2026-10-06"]').getAttribute('cy')));
+    assert.ok(y.every(value => Math.abs(Number(value) - Number(y[0])) < 0.01), 'Independent per-metric scaling preserves each relative trend');
+    const dateSelect = trend().getByLabel('공통 비교일', { exact: true });
+    await visible(dateSelect);assert.equal(await dateSelect.locator('xpath=ancestor::details').count(), 0, 'Shared date stays outside optional table');
+    const expectReadouts = async (date, values) => {
+      assert.equal(await dateSelect.inputValue(), date);
+      for (let i = 0; i < metrics.length; i++) assert.equal(await readout(metrics[i]).textContent(), values[i]);
+      assert.equal(await plot().locator('[data-combined-day][tabindex="0"]').getAttribute('data-combined-day'), date);
+    };
+    await dateSelect.selectOption('2026-10-02');await expectReadouts('2026-10-02', Array(4).fill('미제공'));
+    await hit('2026-10-04').hover();await expectReadouts('2026-10-04', ['0', '0', '0원', '0']);
+    await hit('2026-10-01').focus();await expectReadouts('2026-10-01', ['100', '1', '20원', '10']);
+    await page.keyboard.press('ArrowRight');await expectReadouts('2026-10-02', Array(4).fill('미제공'));
+    await page.keyboard.press('ArrowRight');await expectReadouts('2026-10-03', Array(4).fill('미제공'));
+    await page.keyboard.press('ArrowLeft');await expectReadouts('2026-10-02', Array(4).fill('미제공'));
+    await page.keyboard.press('End');assert.equal(await dateSelect.inputValue(), days[0]);
+    await page.keyboard.press('ArrowRight');assert.equal(await dateSelect.inputValue(), days[0], 'End bound clamps');
+    await page.keyboard.press('Home');assert.equal(await dateSelect.inputValue(), ascending[0]);
+    await page.keyboard.press('ArrowLeft');assert.equal(await dateSelect.inputValue(), ascending[0], 'Start bound clamps');
+    await hit('2026-10-04').click();await expectReadouts('2026-10-04', ['0', '0', '0원', '0']);
     await checkGeometry();
+  };
+  const checkGraphScroll = async () => {
+    await openCharts();
+    const region = trend().getByRole('region', { name: '통합 그래프 스크롤 영역', exact: true });await visible(region);
+    assert.equal(await region.locator('svg[data-combined-plot]').count(), 1);
+    const size = await region.evaluate(node => { node.scrollLeft = 0;node.scrollLeft = node.scrollWidth;const after = node.scrollLeft;node.scrollLeft = 0;return { width: node.clientWidth, content: node.scrollWidth, after, overflow: getComputedStyle(node).overflowX }; });
+    assert.ok(size.content >= 760 && size.content > size.width && size.after > 0, 'Mobile graph has meaningful internal scrolling');
+    assert.match(size.overflow, /auto|scroll/);
+    assert.ok(await plot().evaluate(node => node.getBoundingClientRect().width >= 760));await noOverflow('Combined graph');
   };
 
   await page.goto(root + '/performance'); await visible(trend()); await syncReady();
-  await visible(table());
-  assert.equal(await chartDetails().getAttribute('open'), null, 'First summary load defaults to the table, not expanded charts');
-  assert.equal(await trend().locator('[data-daily-metric]:visible').count(), 0);
-  assert.equal(await trend().locator('[data-daily-metric]').count(), 3, 'Existing default remains three metrics');
-  assert.equal(await metricChoices().getByRole('checkbox', { checked: true }).count(), 3);
-  assert.equal(await table().locator('thead th').count(), 5);
   await openCharts();
+  assert.equal(await tableDetails().getAttribute('open'), null, 'Optional number table starts closed');
+  assert.equal(await table().isVisible(), false);
+  assert.equal(await metricChoices().getByRole('checkbox', { checked: true }).count(), 3);
+  assert.equal(await combined().locator('[data-combined-readout]').count(), 3);
+  assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).count(), 0, 'One selected media needs no focus selector');
+  await openTable();assert.equal(await table().locator('thead th').count(), 5);
   // Ensure a deterministic explicit first media, independent of Korean sort order.
   if (!(await mediaChoices().getByRole('checkbox', { name: '네이버', exact: true }).isChecked())) {
     await mediaChoices().getByRole('checkbox', { name: '네이버', exact: true }).check();
@@ -241,30 +295,42 @@ try {
   for (const name of ['노출수', '클릭수', '집행액', '조회수']) await metricChoices().getByRole('checkbox', { name, exact: true }).check();
   assert.equal(await metricChoices().getByRole('checkbox').count(), 4);
   assert.equal(await metricChoices().getByRole('checkbox', { checked: true }).count(), 4);
-  assert.equal(await trend().locator('[data-daily-metric]').count(), 12, '3 media x 4 metrics');
+  await openCharts();assert.equal(await combined().locator('[data-combined-readout]').count(), 4);
+  assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).locator('option').count(), 3);
+  for (const name of ['카카오', '직방', '네이버']) await focusMedia(name);
   await mediaChoices().getByRole('searchbox', { name: '매체 찾기', exact: true }).fill('no-such-synthetic-media');
   await visible(trend().getByText('검색한 매체가 없습니다. 기존 선택은 유지됩니다.', { exact: true }));
-  assert.equal(await trend().locator('[data-daily-metric]').count(), 12);
+  await openCharts();assert.equal(await combined().locator('[data-combined-readout]').count(), 4);
   await mediaChoices().getByRole('searchbox', { name: '매체 찾기', exact: true }).fill('');
   await checkTable(['네이버', '카카오', '직방']);
   await checkGaps();
-  // A raw broadcast metric is inapplicable even when its source carries zero.
+  // Exact LGU+ stays its own canonical source group (not 어드레서블TV).
+  // This operator is classified as other/raw, so clicks remain inapplicable even at zero.
   await mediaChoices().getByRole('checkbox', { name: '직방', exact: true }).uncheck();
   await mediaChoices().getByRole('checkbox', { name: 'LGU+', exact: true }).check();
   assert.equal(await tableRow('2026-10-04', 'LGU+').locator('[data-daily-table-metric="clicks"]').textContent(), '해당 없음');
   assert.equal(await tableRow('2026-10-04', 'LGU+').locator('[data-daily-table-metric="impressions"]').textContent(), '0');
+  assert.deepEqual(await table().locator('thead th').allTextContents(), ['날짜', '매체', '노출수 / 원본값', '클릭수', '집행액 (원)', '조회수 / 원본값']);
+  await focusMedia('LGU+');
+  assert.equal(await combined().locator('[data-combined-readout="impressions"] dt').textContent(), '원본 지표 · 노출수');
+  assert.equal(await combined().locator('[data-combined-readout="views"] dt').textContent(), '원본 지표 · 조회수');
+  await trend().getByLabel('공통 비교일', { exact: true }).selectOption('2026-10-04');
+  assert.equal(await readout('clicks').textContent(), '해당 없음');
+  assert.equal(await plot().locator('[data-combined-point="clicks"]').count(), 0, 'Forbidden broadcast clicks never become points');
+  assert.equal((await plot().locator('[data-combined-line="clicks"]').evaluateAll(nodes => nodes.map(node => node.getAttribute('d') || '').join(''))).trim(), '', 'Forbidden series has no line geometry');
+  assert.equal(await readout('impressions').textContent(), '0');
   await mediaChoices().getByRole('checkbox', { name: 'LGU+', exact: true }).uncheck();
   await mediaChoices().getByRole('checkbox', { name: '직방', exact: true }).check();
   await page.setViewportSize({ width: 390, height: 844 }); await noOverflow('Multi-media summary');
-  await chartDetails().locator('summary').click();assert.equal(await trend().locator('[data-daily-metric]:visible').count(), 0);
-  await checkTableScroll();await openCharts();await noOverflow('Expanded multi-media charts');
+  await checkTableScroll();await tableDetails().locator('summary').click();
+  assert.equal(await table().isVisible(), false);await checkGraphScroll();await openTable();
   await page.getByRole('button', { name: '네이버 성과 상세 보기', exact: true }).click();
   await visible(page.getByRole('region', { name: '네이버 성과 요약', exact: true }));
-  await openCharts(); // Detail navigation may remount the explorer with closed charts.
-  assert.equal(await trend().count(), 1); assert.equal(await trend().locator('[data-daily-media="카카오"]').count(), 0);
+  await openCharts(); // Detail navigation keeps the graph visible by default.
+  assert.equal(await trend().count(), 1);await focusMedia('네이버');assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).count(), 0);
   for (const name of ['노출수', '클릭수', '집행액', '조회수']) await metricChoices().getByRole('checkbox', { name, exact: true }).check();
-  assert.equal(await trend().locator('[data-daily-metric]').count(), 4);
-  await checkTable(['네이버']); await checkGaps(); await checkTableScroll(); await noOverflow('Multi-metric media detail');
+  await openCharts();assert.equal(await combined().locator('[data-combined-readout]').count(), 4);
+  await checkTable(['네이버']); await checkGaps(); await checkTableScroll(); await checkGraphScroll(); await noOverflow('Multi-metric media detail');
 
   // Explicit operator identities, not a generic addressable-TV surrogate logo.
   for (const [media, key, src] of [['LGU+', 'lg-uplus', '/media-icons/lg-uplus.png'], ['SKB', 'sk-broadband', '/media-icons/sk-broadband.png']]) {
@@ -364,5 +430,5 @@ try {
   assert.ok(reads.some(read => read.advertiser === advertiser && read.month === '2031-02'));
   assert.ok(reads.some(read => read.advertiser === '교원웰스' && read.month === month));
   assert.deepEqual(storeWrites, []); assert.deepEqual(unexpected, []); assert.deepEqual(errors, []);
-  console.log('Report upgrade UI passed: default unified daily tables and expandable summary/detail multi-metric charts (3 media / 4 metrics), real zero vs null/calendar gaps and finite SVGs, keyboard shared date, explicit LGU+/SKB source images, generated November/manual months and advertiser isolation, empty media-mix onboarding, explicit creative target/local PNG/crop, deferred creative_reference-only upload, focus-ready submit, 409 same-image retry, original proof preservation and 390px overflow. All API traffic mocked.');
+  console.log('Report upgrade UI passed: default single overlaid summary/detail graph, optional daily tables (3 media / 4 metrics), real zero vs null/calendar gaps and finite SVGs, keyboard shared date, explicit LGU+/SKB source images, generated November/manual months and advertiser isolation, empty media-mix onboarding, explicit creative target/local PNG/crop, deferred creative_reference-only upload, focus-ready submit, 409 same-image retry, original proof preservation and 390px overflow. All API traffic mocked.');
 } finally { clearTimeout(deadline); releaseRefresh(); await browser.close(); }
