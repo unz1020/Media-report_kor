@@ -201,6 +201,7 @@ function renderGate(search, sessionError = "") {
   const effects = [];
   const jsx = (type, props) => ({ type, props });
   const context = { exports: {}, URLSearchParams, require(name) {
+    if (name === "./app-shell.module.css") return { default: {} };
     if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
     if (name === "react") return { useState: () => [state, value => { state = value; }], useEffect: fn => effects.push(fn) };
     if (name === "@/lib/workspace-months") {
