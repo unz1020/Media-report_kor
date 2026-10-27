@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { creativeImageUrl } from "@/lib/creative-image";
 import { MediaLabel } from '@/components/media-label';
 import { LayoutCanvas, LayoutPanel } from "@/components/layout-canvas";
@@ -37,6 +37,26 @@ function finalLanding(proof: PlacementProof) {
 }
 
 type ProofRecord = PlacementProof & { proofId?: string; creativeName?: string };
+
+function PlacementCreativeSwitcher({ proofs, placement, renderProof }: { proofs: ProofRecord[]; placement: string; renderProof: (proof: ProofRecord) => ReactNode }) {
+  const [selectedId, setSelectedId] = useState("");
+  const keys = proofs.map((proof, index) => `${proof.importId || proof.messageId || 'proof'}:${proof.proofId || proof.key || proof.creativeName || ''}:${index}`);
+  const foundIndex = keys.indexOf(selectedId);
+  const selectedIndex = foundIndex < 0 ? 0 : foundIndex;
+  if (!proofs.length) return null;
+  const selectIndex = (index: number) => setSelectedId(keys[index]);
+  return <>
+    {proofs.length > 1 && <div className={styles.creativeSwitcher} aria-label={`${placement} 소재 전환`}>
+      <button type="button" className="btn" disabled={selectedIndex === 0} onClick={() => selectIndex(selectedIndex - 1)}>이전 소재</button>
+      <label>소재 선택<select aria-label={`${placement} 소재 선택`} value={keys[selectedIndex]} onChange={event => setSelectedId(event.target.value)}>
+        {proofs.map((proof, index) => <option key={keys[index]} value={keys[index]}>{proof.creativeName || `소재명 미입력 ${index + 1}`}</option>)}
+      </select></label>
+      <span aria-live="polite">{selectedIndex + 1} / {proofs.length}</span>
+      <button type="button" className="btn" disabled={selectedIndex === proofs.length - 1} onClick={() => selectIndex(selectedIndex + 1)}>다음 소재</button>
+    </div>}
+    <div className={styles.proofGrid}>{renderProof(proofs[selectedIndex])}</div>
+  </>;
+}
 
 function attachmentUrl(proof: PlacementProof, file: PlacementProofAttachment, download = false) {
   const params = new URLSearchParams({
@@ -299,10 +319,7 @@ export default function CreativePage() {
                       {namedCreatives.length > 0 && <strong>{namedCreatives.length}개 소재 운영</strong>}
                     </div>
                   </div>
-                  {namedCreatives.length > 0 && <div className={styles.creativeQuickList}>
-                    {namedCreatives.map((proof) => <span key={proof.proofId || proof.key || `${proof.messageId}-${proof.creativeName}`} style={creativeStyle(proof.creativeName)}><CreativeMarker name={proof.creativeName} />{proof.creativeName}</span>)}
-                  </div>}
-                  <div className={styles.proofGrid}>{placementGroup.proofs.map(proofCard)}</div>
+                  <PlacementCreativeSwitcher key={`${advertiser}:${month}:${group.media}:${placementGroup.placement}`} placement={placementGroup.placement} proofs={placementGroup.proofs} renderProof={proofCard} />
                 </section>;
               })}
             </div>
