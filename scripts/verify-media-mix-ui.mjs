@@ -48,7 +48,13 @@ try{
  await toggle.click();assert.equal(await toggle.getAttribute('aria-checked'),'false');assert.equal(await page.locator('[data-layout-panel="schedule:day-details"] button').count(),0);
  await page.reload();await wait(toggle);assert.equal(await toggle.getAttribute('aria-checked'),'false');
  await page.getByRole('button',{name:'전체 ON',exact:true}).click();
- await page.getByRole('button',{name:'2026-10-01 일정 보기'}).click();await page.locator('[data-layout-panel="schedule:day-details"] button').first().click();await wait(page.getByRole('heading',{name:'네이버 › GFA › 소재 A'}));
+ await page.getByRole('button',{name:'2026-10-01 일정 보기'}).click();
+ const dayGroups=page.locator('[data-layout-panel="schedule:day-details"]');
+ assert.equal(await dayGroups.locator('details').first().evaluate(el=>el.open),false,'Category starts collapsed');
+ await dayGroups.locator('summary').filter({hasText:'네이버'}).click();
+ await dayGroups.locator('summary').filter({hasText:'GFA'}).click();
+ assert.equal(await dayGroups.getByRole('button').count(),2,'Grouping preserves both source records');
+ await dayGroups.getByRole('button').first().click();await wait(page.getByRole('heading',{name:'네이버 › GFA › 소재 A'}));
  await page.getByRole('searchbox').fill('소재 B');assert.equal(await page.locator('[data-layout-panel="schedule:day-details"] button').count(),1);await page.getByRole('searchbox').fill('');
  await page.getByRole('button',{name:'전체 OFF',exact:true}).click();await wait(page.getByText('표시 중인 상품이 없습니다. ON 설정과 검색어를 확인해주세요.'));await page.getByRole('button',{name:'전체 ON',exact:true}).click();
  await page.getByRole('button',{name:'미디어믹스 업데이트',exact:true}).click();

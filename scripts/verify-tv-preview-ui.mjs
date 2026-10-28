@@ -55,8 +55,9 @@ try {
  for (const name of ['네이버 GFA 캘린더 표시', '네이버 브랜드검색 캘린더 표시']) assert.equal(await page.getByRole('switch', {name, exact:true}).getAttribute('aria-checked'),'false');
  await page.getByRole('button', { name: '2026-10-01 일정 보기', exact: true }).click();
  const details = page.locator('[data-layout-panel="schedule:day-details"]');
+ const expandGroups = async () => { const groups=details.locator('details'); for(let i=0;i<await groups.count();i++){const group=groups.nth(i);if(!await group.evaluate(el=>el.open))await group.locator(':scope > summary').click();} };
  assert.equal(await details.getByRole('button', {name:/네이버/}).count(),0);
- await nav.click(); assert.equal(await details.getByRole('button', {name:/네이버/}).count(),2);
+ await nav.click(); await expandGroups(); assert.equal(await details.getByRole('button', {name:/네이버/}).count(),2);
  const marker = details.getByRole('button', {name:/유튜브 › VRC/}).locator('[data-creative-key]');
  const identity = {emoji:await marker.innerText(), color:await marker.getAttribute('data-creative-color')};
  assert.ok(identity.emoji); assert.match(identity.color,/^#[a-f0-9]{6}$/i);
@@ -65,7 +66,7 @@ try {
  assert.equal(new Set(unique.values()).size,unique.size,'Fixture materials have distinct markers');
  const duplicate=identities.filter(([name])=>name==='유튜브 정성편');assert.equal(duplicate.length,2);assert.deepEqual(duplicate[0],duplicate[1]);
  await page.getByRole('button', { name: '전체 OFF', exact:true }).click();assert.equal(await details.getByRole('button').count(),0);
- await page.getByRole('button', { name: '전체 ON', exact:true }).click();assert.equal(await details.getByRole('button').count(),6);
+ await page.getByRole('button', { name: '전체 ON', exact:true }).click();await expandGroups();assert.equal(await details.getByRole('button').count(),6);
  await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  await page.screenshot({path:'/tmp/category-calendar-mobile.png',fullPage:true});await page.setViewportSize({width:1400,height:1000});
  assert.equal(saves,0,'Calendar visibility never writes media operations');
