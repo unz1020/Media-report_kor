@@ -59,11 +59,12 @@ try {
  assert.equal(await details.getByRole('button', {name:/네이버/}).count(),0);
  await nav.click(); await expandGroups(); assert.equal(await details.getByRole('button', {name:/네이버/}).count(),2);
  const marker = details.getByRole('button', {name:/유튜브 › VRC/}).locator('[data-creative-key]');
- const identity = {emoji:await marker.innerText(), color:await marker.getAttribute('data-creative-color')};
- assert.ok(identity.emoji); assert.match(identity.color,/^#[a-f0-9]{6}$/i);
+ const identity = {key:await marker.getAttribute('data-creative-key'), color:await marker.getAttribute('data-creative-color')};
+ assert.equal(identity.key,'유튜브 정성편'); assert.match(identity.color,/^#[a-f0-9]{6}$/i); assert.equal(await marker.textContent(),'');
  const identities=await details.locator('[data-creative-key]').evaluateAll(nodes=>nodes.map(node=>[node.dataset.creativeKey,node.dataset.creativeColor,node.textContent]));
- const unique=new Map(identities.map(([name,color,emoji])=>[name,`${color}:${emoji}`]));
- assert.equal(new Set(unique.values()).size,unique.size,'Fixture materials have distinct markers');
+ const unique=new Map(identities.map(([name,color,text])=>[name,{color,text}]));
+ assert.equal(unique.size,5,'Distinct material names retain distinct keys');
+ for(const [name,value] of unique){assert.ok(name);assert.match(value.color,/^#[a-f0-9]{6}$/i);assert.equal(value.text,'','Automatic emoji is not displayed');}
  const duplicate=identities.filter(([name])=>name==='유튜브 정성편');assert.equal(duplicate.length,2);assert.deepEqual(duplicate[0],duplicate[1]);
  await page.getByRole('button', { name: '전체 OFF', exact:true }).click();assert.equal(await details.getByRole('button').count(),0);
  await page.getByRole('button', { name: '전체 ON', exact:true }).click();await expandGroups();assert.equal(await details.getByRole('button').count(),6);
@@ -86,7 +87,7 @@ try {
  const cards = page.locator('[data-layout-panel="creative:plan-urls"]');
  const yt = cards.locator('article').filter({hasText:'유튜브 › VRC'});
  await visible(yt.getByRole('heading', { name: '유튜브 정성편', exact: true }));
- assert.equal(await yt.locator('h3 [data-creative-key]').innerText(),identity.emoji);assert.equal(await yt.locator('h3 [data-creative-key]').getAttribute('data-creative-color'),identity.color);
+ assert.equal(await yt.locator('h3 [data-creative-key]').getAttribute('data-creative-key'),identity.key);assert.equal(await yt.locator('h3 [data-creative-key]').getAttribute('data-creative-color'),identity.color);assert.equal(await yt.locator('h3 [data-creative-key]').textContent(),'');
  assert.equal(await yt.getByRole('link', { name: '매체 지면 미리보기 열기 ↗', exact: true }).getAttribute('href'), 'https://example.com/ad-preview');
  await yt.getByRole('button', { name: '유튜브 미리보기', exact: true }).click(); assert.ok((await yt.locator('iframe').getAttribute('src')).includes('/embed/M7lc1UVf-VE'));
  const tt = cards.locator('article').filter({ has: page.getByRole('heading', { name: '틱톡 정성편', exact: true }) }); await tt.getByRole('button', { name: '틱톡 미리보기', exact: true }).click(); assert.ok((await tt.locator('iframe').getAttribute('src')).includes('/player/v1/6718335390845095173'));
@@ -101,6 +102,6 @@ try {
  await page.goto(root+'/schedule');await october();await tv.click();await page.getByLabel('조회 월 선택').selectOption('2026-09');await page.getByLabel('조회 월 선택').selectOption('2026-10');await visible(tv);assert.equal(await tv.getAttribute('aria-checked'),'false');await page.goto(root+'/creative');await october();
  await page.getByLabel('조회 월 선택').selectOption('2026-09'); await cards.waitFor({ state: 'hidden' });
  assert.deepEqual(errors, []);
- console.log('TV and URL UI passed: nested TV categories, category bulk toggles/persistence/keyboard/month isolation, distinct shared material emojis/colors, independent product toggles, URL edit/conflict/save, preserved budgets/source archive/other materials, gallery sync, embeds, URL deletion/reload, TV filter, mobile, viewer and month isolation.');
+ console.log('TV and URL UI passed: nested TV categories, category bulk toggles/persistence/keyboard/month isolation, shared material keys/colors without automatic emojis, independent product toggles, URL edit/conflict/save, preserved budgets/source archive/other materials, gallery sync, embeds, URL deletion/reload, TV filter, mobile, viewer and month isolation.');
 } catch (error) { console.error(await page.locator('body').innerText()); throw error; }
 finally { await browser.close(); }
