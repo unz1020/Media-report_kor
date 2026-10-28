@@ -39,7 +39,7 @@ const baseProof = {
   sourceFile: 'synthetic-proof.pdf', sourceSummary: 'Synthetic only', attachments: [],
 };
 const proofs = [
-  { ...baseProof, creativeName: '기획전', manualImagePath: 'fixture/zigbang-sale.svg', operation: { status: '중단', asOf: '2030-01-03', note: 'Synthetic stopped report' } },
+  { ...baseProof, creativeName: '기획전', manualImagePath: 'fixture/zigbang-sale.svg', creativeImagePath: 'fixture/creative-sale.svg', creativeImageFilename: 'creative-sale.svg', operation: { status: '중단', asOf: '2030-01-03', note: 'Synthetic stopped report' } },
   { ...baseProof, creativeName: '브랜드', manualImagePath: 'fixture/zigbang-brand.svg' },
   ...['A', 'B'].map(creativeName => ({ ...baseProof, media: '네이버', placement: 'PC 배너', creativeName, manualImagePath: `fixture/naver-${creativeName}.svg` })),
 ];
@@ -147,6 +147,14 @@ try {
     assert.equal(await registered().locator('tbody tr').count(), 2);
     assert.equal(await unlinked().locator('tbody tr').count(), 2);
     await selectEntry('기획전'); await metric('노출', '미제공'); await metric('클릭', '미제공');
+    const first = registered().locator('tbody tr').filter({has: page.getByRole('button', {name:'기획전 성과 상세 선택', exact:true})});
+    const second = registered().locator('tbody tr').filter({has: page.getByRole('button', {name:'브랜드 성과 상세 선택', exact:true})});
+    const image = first.getByRole('img', {name:'기획전 · 사용자 등록 소재 이미지 · 게재 증빙 아님'});
+    await visible(image); assert.match(await image.getAttribute('src'),/creative-sale/);
+    await visible(second.getByText('소재 이미지 미등록')); assert.equal(await unlinked().locator('img').count(),0);
+    await visible(detail().getByText('사용자 등록 소재 · 게재 증빙 아님'));
+    assert.match(await detail().getByRole('button',{name:'기획전 원본 증빙 확대'}).locator('img').getAttribute('src'),/zigbang-sale/);
+    await selectEntry('브랜드'); await visible(detail().getByText('소재 이미지 미등록')); await selectEntry('기획전');
   };
   const confirmAndSave = async () => {
     const confirmation = editor().getByRole('checkbox');
