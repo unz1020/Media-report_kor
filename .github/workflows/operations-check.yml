@@ -48,6 +48,7 @@ jobs:
           node scripts/verify-creative-image-render.cjs
           node scripts/verify-daily-multi-metrics.cjs
           node scripts/verify-creative-rotation.cjs
+          node scripts/verify-creative-calendar.cjs
           node scripts/verify-creative-rotation-render.cjs
           node scripts/verify-creative-link-input.mjs
           node scripts/verify-creative-material.cjs
