@@ -75,3 +75,11 @@ button.imageButton { cursor: zoom-in; }
 .materialIdentity dt { font-size:11px; color:#667085; }
 .materialIdentity dd { margin:4px 0 0; color:#344054; font-size:13px; overflow-wrap:anywhere; }
 @media(max-width:600px) { .materialIdentity { grid-template-columns:minmax(0,1fr); } }
+
+.thumbnail { display: inline-flex; width: 86px; height: 64px; align-items: center; justify-content: center; border: 1px solid #eaecf0; border-radius: 5px; background: #f9fafb; overflow: hidden; }
+.thumbnail img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.imageMissing { display: inline-block; max-width: 120px; color: #667085; font-size: 11px; white-space: normal; text-align: center; }
+.creativeReference { margin-bottom: 18px; }
+.creativeReference strong, .evidenceHeading { color: #344054; font-size: 12px; font-weight: 600; }
+.creativeReference p { margin: 4px 0 8px; color: #667085; font-size: 11px; }
+.evidenceHeading { margin: 0 0 8px; }

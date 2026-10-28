@@ -9,7 +9,7 @@ const { renderToStaticMarkup } = require('react-dom/server');
 const root = path.resolve(__dirname, '..');
 const allowed = new Set(['components/creative-rotation-panel.tsx', 'components/creative-link-editor.tsx', 'lib/creative-rotation.ts', 'lib/performance-report.ts', 'lib/media-normalization.ts', 'lib/placement-showroom.ts', 'lib/placement-urls.ts', 'lib/creative-material.ts', 'supabase/functions/reporting-store/creative-material-input.ts'].map(file => path.join(root, file)));
 const cssAllowed = new Set(['components/creative-rotation-panel.module.css', 'components/creative-link-editor.module.css'].map(file => path.join(root, file)));
-for (const file of ["components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
+for (const file of ["lib/creative-image.ts","components/media-label.tsx","lib/media-identity.ts","public/media-icons/sources.json","public/media-icons/performance-sources.json","public/media-icons/execution-sources.json"]) allowed.add(path.resolve(root,file));
 const cache = new Map();
 let workspace = { advertiser: 'Synthetic', month: '2030-01', canEdit: true, dataSyncState: 'ready' };
 function load(file) {
@@ -166,6 +166,23 @@ try {
       const output=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[ambiguousGroup]},groupId:ambiguousGroup.id,compact:true,selectedCreativeName}));
       assert.doesNotMatch(output,/class="detail"|<img /);
     }
+  });
+  test('registered images are distinct from evidence and never assigned to an unrelated performance row', () => {
+    const a = entry('A', { proofs: [proof('A', { creativeImagePath:'fixture/asset-A.jpg', creativeImageFilename:'asset-A.jpg', manualImagePath:'fixture/evidence-A.png' })] });
+    const b = entry('B', { proofs: [proof('B', { creativeImagePath:'fixture/asset-B.jpg', manualImagePath:undefined })] });
+    const imageGroup = { ...group, id:'image-group', creatives:[a,b], unlinkedPerformance:[entry('소재A')] };
+    const out = renderToStaticMarkup(React.createElement(CreativeRotationPanel, { report:{...report,groups:[imageGroup]}, groupId:imageGroup.id, onOpenImage:()=>{} }));
+    assert.match(out, /asset-A.jpg/); assert.match(out, /asset-B.jpg/); assert.match(out, /evidence-A.png/);
+    assert.match(out, /사용자 등록 소재 · 게재 증빙 아님/); assert.match(out, /원본 증빙 확대/);
+    const unlinked = out.match(/<section class="entrySection"><h4>미연결 성과 원본명[\s\S]*?<\/section>/)[0];
+    assert.doesNotMatch(unlinked, /asset-A.jpg|asset-B.jpg|evidence-A.png/); assert.match(unlinked, /소재 이미지 미등록/);
+    const ambiguous = entry('복수 이미지', { proofs:[proof('복수 이미지',{creativeImagePath:'fixture/one.jpg'}),proof('복수 이미지',{creativeImagePath:'fixture/two.jpg'})] });
+    const conflict = entry('충돌', { identityConflict:true, proofs:[proof('충돌',{creativeImagePath:'fixture/conflict.jpg'})] });
+    const multiGroup = {...group,id:'multi-image',creatives:[ambiguous,conflict],unlinkedPerformance:[]};
+    const multi = renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[multiGroup]},groupId:multiGroup.id,selectedCreativeName:'복수 이미지'}));
+    const rows = multi.match(/<tbody>[\s\S]*?<\/tbody>/)[0];
+    assert.doesNotMatch(rows,/one.jpg|two.jpg|conflict.jpg/); assert.equal((rows.match(/이미지 확인 필요/g)||[]).length,2);
+    assert.match(multi,/one.jpg/); assert.doesNotMatch(multi,/two.jpg/); // selected proof is shown, never silently merged
   });
   console.log(`Creative rotation render checks passed (${count} synthetic cases).`);
 } finally { globalThis.fetch = originalFetch; }
