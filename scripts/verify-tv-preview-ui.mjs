@@ -38,7 +38,7 @@ await page.route('https://www.tiktok.com/player/**', r => r.fulfill({ contentTyp
 const visible = l => l.waitFor({ state: 'visible', timeout: 15000 });
 async function october() { await visible(page.getByLabel('조회 월 선택')); await page.getByLabel('조회 월 선택').selectOption('2026-10'); await page.getByText('DB 동기화 완료').waitFor({state:'attached',timeout:15000}); }
 try {
- await page.goto(root + '/schedule'); await october();
+ await page.goto(root + '/schedule'); await october();await page.getByRole('checkbox',{name:'운영안 포함 · 확정 집행 아님'}).check();await page.getByRole('button',{name:'월간 달력',exact:true}).click();
  const tree = page.getByLabel('매체 상품 소재 분류');
  await visible(tree.locator('summary').filter({ hasText: /^TV$/ })); await visible(tree.locator('summary').filter({ hasText: /^지상파$/ })); await visible(tree.locator('summary').filter({ hasText: /^케이블$/ }));
  const cable = page.getByRole('switch', { name: 'tvN TV 광고 캘린더 표시' }); await cable.click(); assert.equal(await cable.getAttribute('aria-checked'), 'false'); assert.equal(await page.getByRole('switch', { name: 'MBC TV 광고 캘린더 표시' }).getAttribute('aria-checked'), 'true');
