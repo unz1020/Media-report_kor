@@ -310,6 +310,33 @@ export function buildCombinedDailyChart(media: MediaPerformanceReport, series: D
   return { axes, xAt };
 }
 
+// Compare adjacent calendar days for the same metric and source/placement scope.
+// Missing rows, missing values, changing coverage, and inapplicable metrics are
+// never interpreted as zero or bridged to the nearest available earlier day.
+export function buildDailyChange(media: MediaPerformanceReport, series: DailyPoint[], date: string, metric: Metric) {
+  const stamp = Date.parse(date + "T00:00:00Z");
+  if (!metricAllowed(media, metric) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !finite(stamp) || new Date(stamp).toISOString().slice(0,10) !== date) return null;
+  const previousDate = new Date(stamp - 86400000).toISOString().slice(0,10);
+  const current = series.find(point => point.date === date)?.[metric];
+  const previous = series.find(point => point.date === previousDate)?.[metric];
+  if (!finite(current) || !finite(previous)) return null;
+  const scope = (day: string) => media.dailyRows.filter(row => row.date === day && finite(row[metric]) && (metric !== "spend" || !isPerformanceReferenceRow(row)))
+    .map(row => JSON.stringify([row.sourceFile, row.platform, row.placement, row.sourceSheet])).sort();
+  const a = scope(date), b = scope(previousDate);
+  if (!a.length || a.length !== b.length || a.some((value,index) => value !== b[index])) return null;
+  const difference = current - previous;
+  if (!finite(difference)) return null;
+  const percent = previous === 0 ? null : difference / Math.abs(previous) * 100;
+  return { difference, percent: finite(percent) ? percent : null };
+}
+function dailyChangeLabel(change: ReturnType<typeof buildDailyChange>, metric: Metric) {
+  if (!change) return "전일 대비 비교 불가";
+  const sign = change.difference > 0 ? "+" : "";
+  const amount = metric === "spend" ? money(change.difference) : number(change.difference);
+  const rate = change.percent === null ? "" : " (" + (change.percent > 0 ? "+" : "") + change.percent.toFixed(1) + "%)";
+  return "전일 대비 " + sign + amount + rate;
+}
+
 export function DailyCombinedChart({ media, series, metrics, dates, date, minTime, maxTime, onDate }: { media:MediaPerformanceReport; series:DailyPoint[]; metrics:Metric[]; dates:string[]; date:string; minTime:number; maxTime:number; onDate:(date:string)=>void }) {
   const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const model = buildCombinedDailyChart(media,series,metrics,minTime,maxTime);
@@ -342,7 +369,7 @@ export function DailyCombinedChart({ media, series, metrics, dates, date, minTim
       </svg>
     </div>
     <p className={styles.combinedDate}>{date || "일별 원본 없음"} · {selected?"같은 날짜의 지표":"해당 날짜 원본 없음"}</p>
-    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><i aria-hidden="true" style={{borderColor:axis.color,borderTopStyle:axis.dash?"dashed":"solid"}}/>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
-    <p className={styles.tableHint}>각 선은 색상에 맞는 독립 축을 사용합니다. 선의 높이로 지표 간 규모를 비교하지 마세요. 원본 값은 위에 그대로 표시하며, 미제공·날짜 공백은 연결하거나 0으로 채우지 않습니다.</p>
+    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><i aria-hidden="true" style={{borderColor:axis.color,borderTopStyle:axis.dash?"dashed":"solid"}}/>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong> <span style={{display:"inline-block",marginLeft:4,fontSize:12,fontWeight:500,lineHeight:1.5,color:"var(--report-muted,#637083)"}} data-daily-change={axis.metric}>{dailyChangeLabel(buildDailyChange(media,series,date,axis.metric),axis.metric)}</span></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
+    <p className={styles.tableHint}>각 선은 색상에 맞는 독립 축을 사용합니다. 선의 높이로 지표 간 규모를 비교하지 마세요. 원본 값은 위에 그대로 표시하며, 미제공·날짜 공백은 연결하거나 0으로 채우지 않습니다. 전일 대비는 같은 지면·원본 범위가 제공된 연속 날짜만 비교합니다.</p>
   </section>;
 }
