@@ -137,6 +137,20 @@ try {
     assert.match(html, /aria-label="네이버 성과 상세 보기"/);
     assert.ok(html.includes('매체 계획 보기'));
   });
+  test('volume bars use source metrics, date coverage, zeros and exclude plans', () => {
+    assert.match(html, /매체별 지표 규모/);
+    assert.match(html, /aria-label="네이버 노출수 1,020 · 보고 기준 2030-01-17 · 상세 보기"/);
+    assert.match(html, /aria-label="카카오 노출수 0 · 보고 기준 2030-01-22 · 상세 보기"/);
+    assert.doesNotMatch(html, /aria-label="계획 전용 테스트 노출수/);
+    assert.match(html, /매체별 측정 기준이 다를 수 있습니다/);
+    const mixed = overview(build({rows:[row({impressions:2,reportDate:'2030-01-17'}),row({impressions:3,reportDate:'2030-01-22'})]}));
+    assert.match(mixed, /네이버 노출수 5 · 보고 기준 2030-01-17 ~ 2030-01-22/);
+    const blocked = overview(build({baselineComplete:false, rows:[row({impressions:12345})]}));
+    assert.match(blocked, /기간 시작 전 기준 원본이 충분하지 않아 선택 기간의 합계를 표시하지 않습니다/);
+    assert.doesNotMatch(blocked, /네이버 노출수 12,345 · 보고 기준/);
+    const missing = overview(build({rows:[row({impressions:null})]}));
+    assert.match(missing, /선택 기간에 노출수 합계를 제공한 매체가 없습니다/);
+  });
   test('reference spend excluded with an explicit note; source counts preserved', () => {
     assert.equal(report.totals.reportedSpend, 100);
     assert.equal(report.totals.excludedReferenceRows, 1);
