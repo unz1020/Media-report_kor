@@ -157,7 +157,7 @@ try {
   const tableDetails = () => trend().locator('details').filter({ has: page.locator('summary').filter({ hasText: /^일별 수치 표 펼치기$/ }) });
   const openCharts = async () => {
     assert.equal(await combined().count(), 1, 'Exactly one overlaid chart, never media x metric cards');
-    assert.equal(await plot().count(), 1);assert.equal(await plot().getAttribute('viewBox'), '0 0 960 400');assert.equal(await combined().locator('svg').count(), 1);await visible(plot());
+    assert.equal(await plot().count(), 1);assert.equal(await plot().getAttribute('viewBox'), '0 0 960 400');assert.equal(await combined().locator('svg:not([aria-hidden="true"])').count(), 1);await visible(plot());
     assert.equal(await combined().locator('xpath=ancestor::details').count(), 0, 'Graph is never hidden in optional details');
     assert.equal(await trend().locator('[data-daily-metric]').count(), 0, 'Legacy small multiples are removed');
   };

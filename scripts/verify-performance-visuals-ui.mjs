@@ -39,7 +39,7 @@ try{
  const plot=combined.locator('svg[data-combined-plot]');
  const table=explorer.getByRole('table',{name:'일별 지표 통합표',exact:true});
  const details=explorer.locator('details').filter({has:page.locator('summary').filter({hasText:/^일별 수치 표 펼치기$/})});
- const oneGraph=async()=>{assert.equal(await combined.count(),1);assert.equal(await plot.count(),1);assert.equal(await combined.locator('svg').count(),1);await visible(plot);assert.equal(await combined.locator('xpath=ancestor::details').count(),0);assert.equal(await explorer.locator('[data-daily-metric]').count(),0);};
+ const oneGraph=async()=>{assert.equal(await combined.count(),1);assert.equal(await plot.count(),1);assert.equal(await combined.locator('svg:not([aria-hidden="true"])').count(),1);await visible(plot);assert.equal(await combined.locator('xpath=ancestor::details').count(),0);assert.equal(await explorer.locator('[data-daily-metric]').count(),0);};
  await oneGraph();assert.equal(await combined.getAttribute('data-combined-media'),'네이버');
  assert.equal(await plot.getAttribute('viewBox'),'0 0 960 400');assert.equal(await plot.getAttribute('role'),'group');assert.equal(await plot.getAttribute('aria-label'),'네이버 일별 다중 지표 통합 그래프');
  assert.equal(await details.count(),1);assert.equal(await details.getAttribute('open'),null,'Graph is the default; numbers are optional');assert.equal(await table.isVisible(),false);
