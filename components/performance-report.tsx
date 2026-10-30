@@ -119,7 +119,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
     </section>
     {(changes.length > 0 || sourceFindings.length > 0) && <section className={styles.attention} aria-label="최근 변화와 보고 당시 확인사항">
       {changes.slice(0,2).map(change => <button type="button" className={styles.changeCard} key={change.media} onClick={()=>onOpenMedia(change.media)} aria-label={change.media+" 최근 변화 상세 보기"}>
-        <span className={styles.attentionLabel}>최근 일별 변화 · <MediaLabel media={change.media}>{change.media}</MediaLabel></span><strong>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
+        <span className={styles.attentionLabel}>최근 일별 변화 · <MediaLabel media={change.media}>{change.media}</MediaLabel></span><strong className={deltaTone(change.percent)==="up"?styles.deltaUp:deltaTone(change.percent)==="down"?styles.deltaDown:undefined} data-delta-tone={deltaTone(change.percent)}>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
         <span>{change.previousDate.slice(5)} {number(change.previous)} → {change.date.slice(5)} {number(change.current)}</span><small>같은 지면·지표의 전일 비교 · 효율 판단 아님</small>
       </button>)}
       {sourceFindings.map(({item,note}) => {const media=inferMediaMentions(note).find(name=>report.media.some(m=>m.name===name));return <div key={item.key+note} className={styles.findingCard}>
@@ -368,6 +368,7 @@ export function buildDailyChange(media: MediaPerformanceReport, series: DailyPoi
   const percent = previous === 0 ? null : difference / Math.abs(previous) * 100;
   return { difference, percent: finite(percent) ? percent : null };
 }
+const deltaTone=(value:number|null|undefined)=>!finite(value)||value===0?"flat":value>0?"up":"down";
 function dailyChangeLabel(change: ReturnType<typeof buildDailyChange>, metric: Metric) {
   if (!change) return "전일 대비 비교 불가";
   const sign = change.difference > 0 ? "+" : "";
@@ -408,7 +409,7 @@ export function DailyCombinedChart({ media, series, metrics, dates, date, minTim
       </svg>
     </div>
     <p className={styles.combinedDate}>{date || "일별 원본 없음"} · {selected?"같은 날짜의 지표":"해당 날짜 원본 없음"}</p>
-    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><svg aria-hidden="true" className={styles.legendStroke} viewBox="0 0 24 8"><line x1="0" y1="4" x2="24" y2="4" stroke={axis.color} strokeWidth="2.5" strokeDasharray={axis.dash}/></svg>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong> <span style={{display:"inline-block",marginLeft:4,fontSize:12,fontWeight:500,lineHeight:1.5,color:"var(--report-muted,#637083)"}} data-daily-change={axis.metric}>{dailyChangeLabel(buildDailyChange(media,series,date,axis.metric),axis.metric)}</span></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
+    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><svg aria-hidden="true" className={styles.legendStroke} viewBox="0 0 24 8"><line x1="0" y1="4" x2="24" y2="4" stroke={axis.color} strokeWidth="2.5" strokeDasharray={axis.dash}/></svg>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong> {(()=>{const change=buildDailyChange(media,series,date,axis.metric);const tone=change?deltaTone(change.difference):"none";return <span className={`${styles.dailyDelta} ${tone==="up"?styles.deltaUp:tone==="down"?styles.deltaDown:""}`} data-daily-change={axis.metric} data-delta-tone={tone}>{dailyChangeLabel(change,axis.metric)}</span>;})()}</dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
     <p className={styles.tableHint}>각 선은 색상에 맞는 독립 축을 사용합니다. 선의 높이로 지표 간 규모를 비교하지 마세요. 원본 값은 위에 그대로 표시하며, 미제공·날짜 공백은 연결하거나 0으로 채우지 않습니다. 전일 대비는 같은 지면·원본 범위가 제공된 연속 날짜만 비교합니다.</p>
   </section>;
 }
