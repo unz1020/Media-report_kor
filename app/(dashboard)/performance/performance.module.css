@@ -12,3 +12,14 @@
 @container(max-width:650px) { .reportShell :global(.page-desc) { display:none; } .reportShell :global(.page-head) { margin-bottom:14px; } .reportShell :global(.page-title) { font-size:23px; } .periodControls > summary { gap:8px; font-size:11px; } }
 
 .reportNav { overflow-x:auto; scrollbar-width:thin; min-width:0; }
+
+.mediaStepper { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px; padding:8px; border:1px solid var(--border,#dfe3e9); border-radius:10px; background:var(--surface,#fff); }
+.mediaStepper button { display:inline-flex; align-items:center; gap:8px; min-height:44px; min-width:0; max-width:42%; padding:8px 14px; border:1px solid var(--border,#dfe3e9); border-radius:8px; background:var(--surface-2,#f6f7fb); color:inherit; font:inherit; font-size:14px; font-weight:600; cursor:pointer; touch-action:manipulation; }
+.mediaStepper button span:nth-child(2), .mediaStepper button span:first-child:not([aria-hidden]) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mediaStepper button:hover { background:var(--surface-3,#eef1f8); border-color:var(--accent,#5358d5); }
+.mediaStepper button:focus-visible { outline:2px solid var(--accent,#5358d5); outline-offset:2px; }
+.mediaStepper button:last-child { justify-content:flex-end; }
+.stepCount { flex-shrink:0; font-size:13px; font-variant-numeric:tabular-nums; color:var(--muted,#637083); }
+.stepperBottom { margin-top:24px; }
+#media-detail-heading:focus { outline:none; }
+@media (max-width:600px) { .stepperBottom .mediaStepper { position:sticky; bottom:8px; z-index:5; box-shadow:0 4px 16px #0002; } .mediaStepper button { padding:8px 10px; } }
