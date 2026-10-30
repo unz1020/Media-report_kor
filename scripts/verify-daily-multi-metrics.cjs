@@ -72,7 +72,7 @@ const input = (extra = {}) => ({ rows: [], dailyRows: [], plans: [], startDate: 
   endDate: '2030-01-25', baselineComplete: true, ...extra });
 const metrics = ['spend', 'impressions', 'clicks', 'ctr', 'views', 'conversions', 'cpc', 'cpm', 'cpv'];
 
-const { buildCombinedDailyChart, DailyCombinedChart, buildReportDailySeries, buildReportDailyTable, DailyMetricTable, PerformanceReportTrend, PerformanceReportOverview } = load('components/performance-report.tsx');
+const { buildDailyChange, buildCombinedDailyChart, DailyCombinedChart, buildReportDailySeries, buildReportDailyTable, DailyMetricTable, PerformanceReportTrend, PerformanceReportOverview } = load('components/performance-report.tsx');
 const { buildPerformanceReport } = load('lib/performance-report.ts');
 const dailyRows = [daily({date:'2030-01-10', impressions:100, clicks:10, spend:20, views:4}),daily({date:'2030-01-10',placement:'Synthetic (서비스)',impressions:50,clicks:null,spend:999}),daily({date:'2030-01-12',impressions:0,clicks:0,spend:0}),daily({date:'2030-01-13',impressions:null,clicks:2,spend:null}),daily({date:'2030-02-30',impressions:999}),daily({date:'2029-01-01',impressions:999})];
 const report=buildPerformanceReport(input({dailyRows}));
@@ -84,7 +84,8 @@ assert.equal(series[0].impressions,150);assert.equal(series[0].spend,20);assert.
 const html=renderToStaticMarkup(React.createElement(PerformanceReportTrend,{media,startDate:'2030-01-10',endDate:'2030-01-25'}));
 assert.equal((html.match(/data-daily-metric=/g)||[]).length,0,'No separate per-metric chart cards');
 assert.equal((html.match(/data-daily-combined-chart=/g)||[]).length,1,'One default-visible combined graph');
-assert.equal((html.match(/<svg /g)||[]).length,1);
+assert.equal((html.match(/<svg /g)||[]).length,4,'One combined graph and three matching pattern legend icons');
+assert.equal((html.match(/aria-hidden=\"true\" class=\"legendStroke\"/g)||[]).length,3,'Legend displays each line dash pattern');
 assert.equal((html.match(/data-combined-axis=/g)||[]).length,3);
 assert.ok(html.indexOf('data-daily-combined-chart') < html.indexOf('<details'), 'Combined graph is outside the optional table disclosure');
 assert.equal((html.match(/<path /g)||[]).length,6,'Missing day and null interrupt each metric independently');
@@ -130,6 +131,27 @@ const rawModel=buildCombinedDailyChart(rawMedia,series,['impressions','clicks','
 const extreme=[{...series[0],impressions:-Number.MAX_VALUE},{...series[1],impressions:Number.MAX_VALUE}];const extremeModel=buildCombinedDailyChart(media,extreme,['impressions'],Date.parse('2030-01-10T00:00:00Z'),Date.parse('2030-01-25T00:00:00Z'));
 assert.ok(extremeModel.axes[0].points.every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)));assert.doesNotMatch(extremeModel.axes[0].paths.join(''),/NaN|Infinity/);
 const combinedHtml=renderToStaticMarkup(React.createElement(DailyCombinedChart,{media,series,metrics:['impressions','clicks','spend','views'],dates:['2030-01-10','2030-01-11','2030-01-12','2030-01-13'],date:'2030-01-12',minTime:Date.parse('2030-01-10T00:00:00Z'),maxTime:Date.parse('2030-01-25T00:00:00Z'),onDate:()=>{}}));
-assert.equal((combinedHtml.match(/data-combined-readout=/g)||[]).length,4);assert.equal((combinedHtml.match(/<svg /g)||[]).length,1);assert.equal((combinedHtml.match(/data-combined-day=/g)||[]).length,4);assert.equal((combinedHtml.match(/tabindex="0" role="button"/g)||[]).length,0);assert.match(combinedHtml,/data-combined-day="2030-01-12"[^>]*tabindex="0"/);assert.match(combinedHtml,/>0원</);assert.match(combinedHtml,/통합 그래프 스크롤 영역/);
+assert.equal((combinedHtml.match(/data-combined-readout=/g)||[]).length,4);assert.equal((combinedHtml.match(/<svg /g)||[]).length,5,'One combined graph and four legend icons');assert.equal((combinedHtml.match(/data-combined-day=/g)||[]).length,4);assert.equal((combinedHtml.match(/tabindex="0" role="button"/g)||[]).length,0);assert.match(combinedHtml,/data-combined-day="2030-01-12"[^>]*tabindex="0"/);assert.match(combinedHtml,/>0원</);assert.match(combinedHtml,/통합 그래프 스크롤 영역/);
 assert.equal(JSON.stringify(media),before,'Combined graph and optional table never mutate sources');
+// Consecutive daily changes require identical metric-specific source coverage.
+const changeRows = [
+ daily({date:'2030-01-14',impressions:384907,clicks:200,spend:0,views:null}),
+ daily({date:'2030-01-15',impressions:381317,clicks:217,spend:12.5,views:7}),
+ daily({date:'2030-01-16',impressions:381317,clicks:null,spend:12.5,views:7}),
+ daily({date:'2030-01-17',placement:'Another slot',impressions:5,clicks:1,spend:3}),
+ daily({date:'2030-01-19',impressions:10,clicks:2,spend:1})
+];
+const changeMedia={...media,dailyRows:changeRows};const changeSeries=buildReportDailySeries(changeMedia,'2030-01-14','2030-01-19');
+assert.deepEqual(buildDailyChange(changeMedia,changeSeries,'2030-01-15','impressions'),{difference:-3590,percent:-3590/384907*100});
+assert.deepEqual(buildDailyChange(changeMedia,changeSeries,'2030-01-15','clicks'),{difference:17,percent:8.5});
+assert.deepEqual(buildDailyChange(changeMedia,changeSeries,'2030-01-15','spend'),{difference:12.5,percent:null});
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-01-15','views'),null,'Missing value never becomes zero');
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-01-16','clicks'),null,'Missing current value');
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-01-17','impressions'),null,'Changed placements are incomparable');
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-01-19','impressions'),null,'No bridging over missing previous day');
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-01-14','impressions'),null,'Beginning of selected period');
+assert.equal(buildDailyChange({...changeMedia,kind:'broadcast'},changeSeries,'2030-01-15','clicks'),null,'Metric not applicable');
+assert.equal(buildDailyChange(changeMedia,changeSeries,'2030-02-30','clicks'),null,'Invalid calendar date');
+const changedHtml=renderToStaticMarkup(React.createElement(DailyCombinedChart,{media:changeMedia,series:changeSeries,metrics:['impressions','clicks','spend','views'],dates:['2030-01-14','2030-01-15'],date:'2030-01-15',minTime:Date.parse('2030-01-14T00:00:00Z'),maxTime:Date.parse('2030-01-19T00:00:00Z'),onDate:()=>{}}));
+assert.ok(changedHtml.includes('전일 대비 -3,590 (-0.9%)'));assert.ok(changedHtml.includes('전일 대비 +17 (+8.5%)'));assert.ok(changedHtml.includes('전일 대비 +13원'));assert.ok(changedHtml.includes('전일 대비 비교 불가'));assert.doesNotMatch(changedHtml,/NaN|Infinity/);
 console.log('Combined graph checks passed: one visible SVG, four overlaid metric series/colors/scales, same-day readouts/calendar controls, null and date gaps, real zero, raw units, reference cost exclusion, extreme finite geometry, optional table and source immutability.');
