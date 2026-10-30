@@ -285,3 +285,8 @@
 @container performance-report (max-width:500px) { .overviewChart { order:3; } .attention { order:4; } .report > .section { order:5; } .contextGrid, .contextSingle { order:6; } .report > .section:last-child { order:7; } }
 
 .legendStroke { width:24px; height:8px; display:block; flex-shrink:0; }
+
+/* Day-over-day tone: rise red, fall blue (KR stock convention). The +/- sign stays in the text. */
+.dailyDelta { display:inline-block; margin-left:4px; font-size:12px; font-weight:600; line-height:1.5; color:var(--report-muted,#637083); font-variant-numeric:tabular-nums; }
+.dailyDelta.deltaUp, .changeCard > strong.deltaUp { color:#d6282f; }
+.dailyDelta.deltaDown, .changeCard > strong.deltaDown { color:#1f5fd0; }
