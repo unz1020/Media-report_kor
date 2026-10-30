@@ -41,6 +41,8 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
   const [kind, setKind] = useState<ReportKind | "all">("all");
   const [expanded, setExpanded] = useState(false);
   const [pendingExpanded, setPendingExpanded] = useState(false);
+  const [overviewMetric, setOverviewMetric] = useState<"impressions" | "clicks" | "views">("impressions");
+  const [chartExpanded, setChartExpanded] = useState(false);
   const evidence = report.media.filter(item => item.rows.length || item.dailyRows.length || item.creativeRows?.length);
   const matches = (item: MediaPerformanceReport) => (kind === "all" || kind === item.kind) && item.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const results = evidence.filter(matches);
@@ -60,6 +62,25 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
   const scopeCount = (key: "impressions" | "clicks") => digital.filter(item => item.rows.some(row => finite(row[key]))).length;
   const period = (value: number | null) => report.baselineComplete ? value : null;
   const totals = report.totals;
+  const chartChoices = [
+    { key: "impressions", label: "노출수" },
+    { key: "clicks", label: "클릭수" },
+    { key: "views", label: "조회수" },
+  ] as const;
+  const chartCandidates = evidence.filter(item => overviewMetric === "views" ? item.kind === "video" : item.kind === "digital" || item.kind === "video");
+  const chartRows = chartCandidates.filter(item => finite(item.metrics[overviewMetric]) && item.metrics[overviewMetric]! >= 0)
+    .sort((a, b) => b.metrics[overviewMetric]! - a.metrics[overviewMetric]! || a.name.localeCompare(b.name, "ko"));
+  const chartOmitted = chartCandidates.length - chartRows.length;
+  const chartMax = chartRows[0]?.metrics[overviewMetric] ?? 0;
+  const chartLabel = chartChoices.find(choice => choice.key === overviewMetric)!.label;
+  const metricDates = (item: MediaPerformanceReport) => {
+    const rows = item.rows.filter(row => finite(row[overviewMetric]));
+    const valid = (date: unknown): date is string => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+    const dates = [...new Set(rows.map(row => row.reportDate).filter(valid))].sort();
+    if (!dates.length) return "보고 기준일 미제공";
+    const label = dates.length === 1 ? "보고 기준 " + dates[0] : "보고 기준 " + dates[0] + " ~ " + dates[dates.length - 1];
+    return rows.some(row => !valid(row.reportDate)) ? label + " · 일부 미제공" : label;
+  };
   return <div className={styles.report}>
     <header className={styles.hero}>
       <p className={styles.eyebrow}>보고 요약</p>
@@ -71,6 +92,31 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
       <p className={styles.meta}>최근 보고 기준일 {report.latestReportDate ?? "미제공"} <span>·</span> 최근 일별 원본 {report.latestDailyDate ?? "미제공"}</p>
     </header>
     {!report.baselineComplete && <p className={styles.notice} role="status">기간 시작 전 기준 원본이 충분하지 않아 선택 기간의 누적 합계와 효율은 표시하지 않습니다. 제공된 일별 원본은 별도로 볼 수 있습니다.</p>}
+    <dl className={styles.headlineKpis}>
+      <Kpi label="보고된 집행액" value={compactMoney(period(totals.reportedSpend))} exact={money(period(totals.reportedSpend))} scope={`${totals.spendMediaCount}개 매체의 비용 제공분 · 전체 예산 아님`} />
+      <Kpi label="디지털 노출수" value={compactCount(period(totals.digitalImpressions))} exact={number(period(totals.digitalImpressions))} scope={`디지털·동영상 ${scopeCount("impressions")}개 매체 제공분 · 방송·옥외 제외`} />
+      <Kpi label="디지털 클릭수" value={compactCount(period(totals.digitalClicks))} exact={number(period(totals.digitalClicks))} scope={`디지털·동영상 ${scopeCount("clicks")}개 매체 제공분 · 미제공분 제외`} />
+      {totals.videoMediaCount > 0 && <Kpi label="동영상 조회수" value={compactCount(period(totals.videoViews))} exact={number(period(totals.videoViews))} scope={`동영상·OTT ${totals.videoMediaCount}개 매체 조회 제공분`} />}
+    </dl>
+    <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
+    <section className={styles.overviewChart} aria-labelledby={`${id}-volume`}>
+      <div className={styles.overviewChartHeading}>
+        <div><p className={styles.eyebrow}>선택 기간 · 제공된 원본</p><h3 id={`${id}-volume`}>매체별 지표 규모</h3><p className={styles.support}>각 막대는 현재 지표의 최대 매체 대비 크기입니다. 성과나 효율 순위가 아닙니다.</p></div>
+        <div className={styles.metricTabs} role="group" aria-label="매체별 그래프 지표 선택">{chartChoices.map(choice => <button type="button" key={choice.key} aria-pressed={overviewMetric === choice.key} onClick={() => { setOverviewMetric(choice.key); setChartExpanded(false); }}>{choice.label}</button>)}</div>
+      </div>
+      {!report.baselineComplete ? <p className={styles.empty}>기간 시작 전 기준 원본이 충분하지 않아 선택 기간의 합계를 표시하지 않습니다.</p> : chartRows.length ? <>
+        <p className={styles.chartContext}>{overviewMetric === "views" ? "동영상·OTT" : "디지털·동영상"} · {chartLabel} 제공 {chartRows.length}개 매체{chartOmitted > 0 ? " · 미제공 등 제외 " + chartOmitted + "개" : ""} · 보고 기준일과 제공 지면은 매체별로 다를 수 있습니다.</p>
+        <ul className={styles.volumeList}>{chartRows.slice(0, chartExpanded ? undefined : 6).map(item => <li key={item.name}>
+          <button type="button" className={styles.volumeRow} onClick={() => onOpenMedia(item.name)} aria-label={item.name + " " + chartLabel + " " + number(item.metrics[overviewMetric]) + " · " + metricDates(item) + " · 상세 보기"}>
+            <span className={styles.volumeTitle}><MediaLabel media={item.name}>{item.name}</MediaLabel><small>{metricDates(item)}</small></span>
+            <span className={styles.volumeTrack} aria-hidden="true"><span style={{ width: `${chartMax > 0 ? item.metrics[overviewMetric]! / chartMax * 100 : 0}%` }} /></span>
+            <strong>{number(item.metrics[overviewMetric])}</strong><span className={styles.volumeArrow} aria-hidden="true">→</span>
+          </button>
+        </li>)}</ul>
+        {chartRows.length > 6 && <button type="button" className={styles.moreButton} aria-expanded={chartExpanded} onClick={() => setChartExpanded(!chartExpanded)}>{chartExpanded ? "상위 6개만 보기" : `${chartRows.length - 6}개 매체 더 보기`}</button>}
+        <p className={styles.footnote}>제공된 기간·지면의 합계입니다. 미제공 값은 0으로 처리하지 않으며, 매체별 측정 기준이 다를 수 있습니다. 막대를 선택하면 해당 매체의 상세 근거를 볼 수 있습니다.</p>
+      </> : <p className={styles.empty}>선택 기간에 {chartLabel} 합계를 제공한 매체가 없습니다. 일별 값이나 계획으로 대체하지 않습니다.</p>}
+    </section>
     {(changes.length > 0 || sourceFindings.length > 0) && <section className={styles.attention} aria-label="최근 변화와 보고 당시 확인사항">
       {changes.slice(0,2).map(change => <button type="button" className={styles.changeCard} key={change.media} onClick={()=>onOpenMedia(change.media)} aria-label={change.media+" 최근 변화 상세 보기"}>
         <span className={styles.attentionLabel}>최근 일별 변화 · <MediaLabel media={change.media}>{change.media}</MediaLabel></span><strong>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
@@ -80,13 +126,6 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
         <span className={styles.attentionLabel}>보고 당시 원본 대조 메모</span><strong>{item.reportDate}</strong><p>{shorten(normalizeInsightText(note),120)}</p>{media&&<button type="button" onClick={()=>onOpenMedia(media)}><MediaLabel media={media}>{media}</MediaLabel> 근거 확인 →</button>}<small>현재 해결 여부는 별도 기록 전까지 판단하지 않습니다.</small>
       </div>})}
     </section>}
-    <dl className={styles.headlineKpis}>
-      <Kpi label="보고된 집행액" value={compactMoney(period(totals.reportedSpend))} exact={money(period(totals.reportedSpend))} scope={`${totals.spendMediaCount}개 매체의 비용 제공분 · 전체 예산 아님`} />
-      <Kpi label="디지털 노출수" value={compactCount(period(totals.digitalImpressions))} exact={number(period(totals.digitalImpressions))} scope={`디지털·동영상 ${scopeCount("impressions")}개 매체 제공분 · 방송·옥외 제외`} />
-      <Kpi label="디지털 클릭수" value={compactCount(period(totals.digitalClicks))} exact={number(period(totals.digitalClicks))} scope={`디지털·동영상 ${scopeCount("clicks")}개 매체 제공분 · 미제공분 제외`} />
-      {totals.videoMediaCount > 0 && <Kpi label="동영상 조회수" value={compactCount(period(totals.videoViews))} exact={number(period(totals.videoViews))} scope={`동영상·OTT ${totals.videoMediaCount}개 매체 조회 제공분`} />}
-    </dl>
-    <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
     <section className={styles.section} aria-labelledby={`${id}-trend`}>
       <div className={styles.sectionHeading}><div><p className={styles.eyebrow}>일별 추이</p><h3 id={`${id}-trend`}>한 그래프에서 함께 보는 일별 지표</h3></div></div>
       {trendOptions.length ? <DailyMetricExplorer mediaOptions={trendOptions} startDate={startDate} endDate={endDate} /> : <p className={styles.empty}>선택 기간에 제공된 일별 성과 원본이 없습니다. 누적 성과와 계획 수치로 추이를 만들지 않습니다.</p>}
@@ -369,7 +408,7 @@ export function DailyCombinedChart({ media, series, metrics, dates, date, minTim
       </svg>
     </div>
     <p className={styles.combinedDate}>{date || "일별 원본 없음"} · {selected?"같은 날짜의 지표":"해당 날짜 원본 없음"}</p>
-    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><i aria-hidden="true" style={{borderColor:axis.color,borderTopStyle:axis.dash?"dashed":"solid"}}/>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong> <span style={{display:"inline-block",marginLeft:4,fontSize:12,fontWeight:500,lineHeight:1.5,color:"var(--report-muted,#637083)"}} data-daily-change={axis.metric}>{dailyChangeLabel(buildDailyChange(media,series,date,axis.metric),axis.metric)}</span></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
+    <dl className={styles.combinedReadouts} aria-live="polite">{model.axes.map(axis=><div key={axis.metric} data-combined-readout={axis.metric}><dt><svg aria-hidden="true" className={styles.legendStroke} viewBox="0 0 24 8"><line x1="0" y1="4" x2="24" y2="4" stroke={axis.color} strokeWidth="2.5" strokeDasharray={axis.dash}/></svg>{axis.label}</dt><dd><strong>{read(axis.metric)}</strong> <span style={{display:"inline-block",marginLeft:4,fontSize:12,fontWeight:500,lineHeight:1.5,color:"var(--report-muted,#637083)"}} data-daily-change={axis.metric}>{dailyChangeLabel(buildDailyChange(media,series,date,axis.metric),axis.metric)}</span></dd><small>{axis.provided?"독립 축 "+axisNumber(axis.minimum)+" ~ "+axisNumber(axis.maximum)+(axis.metric==="spend"?"원":"") : axis.allowed?"일별 원본 미제공":"이 매체에 적용하지 않는 지표"}</small></div>)}</dl>
     <p className={styles.tableHint}>각 선은 색상에 맞는 독립 축을 사용합니다. 선의 높이로 지표 간 규모를 비교하지 마세요. 원본 값은 위에 그대로 표시하며, 미제공·날짜 공백은 연결하거나 0으로 채우지 않습니다. 전일 대비는 같은 지면·원본 범위가 제공된 연속 날짜만 비교합니다.</p>
   </section>;
 }
