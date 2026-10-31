@@ -97,3 +97,21 @@ button.imageButton { cursor: zoom-in; }
 .visualEntry b { font-variant-numeric:tabular-nums; }
 .visualTrack { height:7px; margin-top:5px; background:#e4e7ec; border-radius:9px; overflow:hidden; }
 .visualTrack i { height:100%; display:block; background:#6941c6; }
+
+.testComparison { padding:16px; margin:16px 0; background:#fff; border:1px solid #d6bbfb; border-radius:9px; }
+.testComparison h4 { margin:0; color:#101828; font-size:15px; }
+.testComparison p { color:#475467; font-size:12px; line-height:1.6; }
+.testChoices { display:flex; flex-wrap:wrap; gap:6px; }
+.testChoices button { border:1px solid #d0d5dd; border-radius:6px; background:white; padding:8px 10px; color:#344054; cursor:pointer; overflow-wrap:anywhere; }
+.testChoices button[aria-pressed=true] { background:#6941c6; color:white; border-color:#6941c6; }
+.testChoices button:disabled { opacity:.5; cursor:not-allowed; }
+.testCards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.testCard { min-width:0; padding:12px; border:1px solid #e4e7ec; border-radius:8px; display:flex; flex-direction:column; gap:8px; }
+.testCard strong { color:#101828; font-size:13px; overflow-wrap:anywhere; }
+.testCard small { color:#667085; font-size:11px; line-height:1.5; }
+.testCard dl { margin:0; }
+.testCard dl div { display:flex; justify-content:space-between; gap:4px; border-top:1px solid #f2f4f7; padding:5px 0; font-size:12px; }
+.testCard dt { color:#667085; }
+.testCard dd { margin:0; font-weight:600; text-align:right; }
+@media(max-width:700px) { .testCards { grid-template-columns:minmax(0,1fr); } }
+.testCard .thumbnail { width:100%; height:140px; }

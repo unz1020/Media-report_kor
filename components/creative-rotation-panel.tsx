@@ -66,6 +66,38 @@ function ChartEntryImage({ entry }: { entry: CreativeRotationEntry }) {
   const keys = new Set(eligible.map(proof => creativeImageUrl(proof)));
   return rows.length && keys.size === 1 ? <CreativeImage proof={eligible[0]} thumbnail /> : <span className={styles.imageMissing}>연결 확인된 이미지 없음</span>;
 }
+/** User-selected images only. Metrics require the image-bearing proof to own each explicit source link. */
+export function ImageTestComparison({ group }: { group: CreativeRotationGroup }) {
+  const [chosen, setChosen] = useState<string[]>([]);
+  const entries = chosen.map(id => group.creatives.find(entry => entry.id === id)).filter((entry): entry is CreativeRotationEntry => Boolean(entry));
+  function toggle(id: string) { setChosen(current => current.includes(id) ? current.filter(item => item !== id) : current.length < 3 ? [...current, id] : current); }
+  function verified(entry: CreativeRotationEntry) {
+    const rows = entry.rows.filter(row => row.selected && !row.conflict);
+    const image = uniqueCreativeImage(entry);
+    if (group.ambiguousScope || entry.identityConflict || entry.conflictDates.length || !rows.length || !image || !rows.every(row => row.mapping === 'explicit_link')) return false;
+    return entry.proofs.some(proof => {
+      const link = proof.performanceLink;
+      return link && creativeImageUrl(proof) === creativeImageUrl(image) && rows.every(owner => link.sourceFamily === owner.sourceFamily && normalize(link.platform) === normalize(owner.row.platform) && normalize(link.placement) === normalize(owner.row.placement) && normalize(link.creative) === normalize(owner.row.creative));
+    });
+  }
+  return <section className={styles.testComparison} aria-label="이미지 테스트 비교">
+    <h4>이미지 테스트 비교</h4>
+    <p>같은 매체·지면의 비교할 등록 소재를 최대 3개 직접 선택하세요. 다른 지면으로 바꾸면 다시 선택합니다. 선택만으로 성과가 연결되지는 않습니다.</p>
+    {group.ambiguousScope && <p className={styles.warningText}>지면 또는 연결 범위가 모호해 원본 확인 전까지 수치를 표시하지 않습니다.</p>}
+    <div className={styles.testChoices} role="group" aria-label="비교할 소재 선택">{group.creatives.map(entry => <button key={entry.id} type="button" aria-pressed={chosen.includes(entry.id)} disabled={!chosen.includes(entry.id) && chosen.length >= 3} onClick={() => toggle(entry.id)}>{entry.name || '소재명 미입력'}</button>)}</div>
+    {entries.length ? <div className={styles.testCards}>{entries.map(entry => {
+      const confirmed = verified(entry);
+      const dates = confirmed ? [...new Set(entry.rows.filter(row => row.selected && !row.conflict).map(row => row.row.date))].sort() : [];
+      return <article className={styles.testCard} key={entry.id} aria-label={(entry.name || '소재명 미입력') + ' 이미지 테스트 결과'}>
+        <strong>{entry.name || '소재명 미입력'}</strong><EntryImage entry={entry}/>
+        <small>{confirmed ? '성과 원본 직접 연결됨' : '성과 연결·원본 확인 필요'}</small>
+        <dl>{([['노출', entry.metrics.impressions, ''], ['클릭', entry.metrics.clicks, ''], ['CTR', entry.metrics.ctr, '%'], ['유료 집행비용', entry.metrics.spend, '원'], ['전환', entry.metrics.conversions, '']] as const).map(([label, value, unit]) => <div key={label}><dt>{label}</dt><dd>{confirmed ? amount(value, unit) : '미제공'}</dd></div>)}</dl>
+        <small>{confirmed ? dates.length + '일 제공 · ' + date(dates[0]) + ' ~ ' + date(dates.at(-1)) : '성과 기간 미확인'}</small>
+      </article>;
+    })}</div> : <p className={styles.empty}>비교할 이미지를 선택하면 나란히 표시합니다.</p>}
+    <p>등록 이미지는 게재 증빙이 아닙니다. 이미지와 성과 원본의 직접 연결을 확인한 경우에만 수치를 표시합니다. CTR은 노출과 클릭이 함께 제공된 행을 기준으로 계산하고, 비용은 유료 집행비만 표시합니다. 제공일·집행 조건이 다르면 단순 우열로 해석하지 마세요.</p>
+  </section>;
+}
 function MetricDetails({ metrics }: { metrics: CreativeRotationMetrics }) {
   return <dl className={styles.metrics}>{([
     ["노출", metrics.impressions, ""], ["클릭", metrics.clicks, ""], ["CTR", metrics.ctr, "%"],
@@ -137,6 +169,7 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
       {group.creatives.some(entry => entry.proofs.length > 0 && !entry.materialIdentity) && <p className={styles.identityPending}>소재ID·버전 미등록 항목은 원본명으로 표시합니다. 새 ID를 임의 발급하거나 A/B를 자동 대응하지 않습니다. 상세의 ‘운영정보·성과 연결’에서 확인 후 등록할 수 있습니다.</p>}
       {missingExternal && <p className={styles.warningText}>선택한 원본 소재명을 현재 지면에서 찾지 못했습니다. 다른 소재의 상세로 대신 표시하지 않습니다. 비교표에서 직접 선택해주세요.</p>}
       {ambiguousExternal && <p className={styles.warningText}>같은 원본명이 여러 소재 또는 버전에 있습니다. ID·버전을 확인하고 비교표에서 직접 선택해주세요.</p>}
+      {!compact && <ImageTestComparison key={[report.advertiser, report.month, group.id].join(":")} group={group}/>}
       <section className={styles.visualComparison} aria-label="확인된 소재 성과 도표"><h4>연결 확인된 소재 성과</h4><p>AE가 성과 원본을 직접 연결한 소재만 표시합니다. 등록 이미지는 게재 증빙이 아닙니다. 소재별 제공일과 집행 범위가 다를 수 있어 효율 순위가 아닙니다.</p><div role="group" aria-label="소재 도표 지표 선택">{([['impressions','노출'],['clicks','클릭']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={chartMetric===key} onClick={()=>setChartMetric(key)}>{label}</button>)}</div>{(()=>{const eligible=group.creatives.filter(entry=>{const selected=entry.rows.filter(r=>r.selected&&!r.conflict);return !group.ambiguousScope&&!entry.identityConflict&&!entry.conflictDates.length&&selected.length>0&&selected.every(r=>r.mapping==='explicit_link');});const available=eligible.filter(entry=>typeof entry.metrics[chartMetric]==='number'&&Number.isFinite(entry.metrics[chartMetric])&&entry.metrics[chartMetric]!>=0);const max=Math.max(0,...available.map(entry=>entry.metrics[chartMetric] as number));return available.length?<ul>{available.map(entry=>{const value=entry.metrics[chartMetric] as number;const selected=entry.rows.filter(r=>r.selected&&!r.conflict);const dates=[...new Set(selected.map(r=>r.row.date))].sort();return <li key={entry.id}><button className={styles.visualEntry} type="button" onClick={()=>select(entry)}><ChartEntryImage entry={entry}/><span><strong>{entry.name||'소재명 미입력'}</strong><small>{dates.length}일 제공 · {date(dates[0])} ~ {date(dates.at(-1))}</small></span><b>{amount(value)}</b></button><div className={styles.visualTrack} aria-hidden="true"><i style={{width:max>0?(value/max*100)+'%':'0%'}} /></div></li>;})}</ul>:<p>직접 연결된 소재의 {chartMetric==='impressions'?'노출':'클릭'} 자료가 없습니다. 미연결·미제공은 0으로 표시하지 않습니다.</p>;})()}</section>
       <EntryTable entries={group.creatives} title="등록 소재" selectedId={selected?.id} onSelect={select} />
       {group.unlinkedPerformance.length > 0 && <EntryTable entries={group.unlinkedPerformance} title="미연결 성과 원본명" selectedId={selected?.id} onSelect={select} />}
