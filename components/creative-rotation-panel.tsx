@@ -56,6 +56,16 @@ function EntryImage({ entry }: { entry: CreativeRotationEntry }) {
   const hasImage = entry.proofs.some(proof => creativeImageUrl(proof));
   return <span className={styles.imageMissing}>{hasImage ? "이미지 확인 필요 · 상세 선택" : "소재 이미지 미등록"}</span>;
 }
+/** A chart thumbnail is shown only when the image-bearing proof itself owns every selected explicit link. */
+function ChartEntryImage({ entry }: { entry: CreativeRotationEntry }) {
+  const rows = entry.rows.filter(row => row.selected && !row.conflict);
+  const eligible = entry.proofs.filter(proof => proof.performanceLink && creativeImageUrl(proof) && rows.every(owner => {
+    const link = proof.performanceLink!;
+    return link.sourceFamily === owner.sourceFamily && normalize(link.platform) === normalize(owner.row.platform) && normalize(link.placement) === normalize(owner.row.placement) && normalize(link.creative) === normalize(owner.row.creative);
+  }));
+  const keys = new Set(eligible.map(proof => creativeImageUrl(proof)));
+  return rows.length && keys.size === 1 ? <CreativeImage proof={eligible[0]} thumbnail /> : <span className={styles.imageMissing}>연결 확인된 이미지 없음</span>;
+}
 function MetricDetails({ metrics }: { metrics: CreativeRotationMetrics }) {
   return <dl className={styles.metrics}>{([
     ["노출", metrics.impressions, ""], ["클릭", metrics.clicks, ""], ["CTR", metrics.ctr, "%"],
@@ -76,6 +86,7 @@ function EntryTable({ entries, title, selectedId, onSelect }: { entries: Creativ
 export function CreativeRotationPanel({ report, groupId, compact = false, selectedCreativeName, onOpenImage, onSelectProof, onEditLink }: CreativeRotationPanelProps) {
   const id = useId();
   const [query, setQuery] = useState("");
+  const [chartMetric, setChartMetric] = useState<"impressions" | "clicks">("impressions");
   const [onlyRolling, setOnlyRolling] = useState(true);
   const [chosenGroupId, setChosenGroupId] = useState("");
   const [selection, setSelection] = useState<{ groupId: string; entryId: string; externalName?: string } | null>(null);
@@ -126,6 +137,7 @@ export function CreativeRotationPanel({ report, groupId, compact = false, select
       {group.creatives.some(entry => entry.proofs.length > 0 && !entry.materialIdentity) && <p className={styles.identityPending}>소재ID·버전 미등록 항목은 원본명으로 표시합니다. 새 ID를 임의 발급하거나 A/B를 자동 대응하지 않습니다. 상세의 ‘운영정보·성과 연결’에서 확인 후 등록할 수 있습니다.</p>}
       {missingExternal && <p className={styles.warningText}>선택한 원본 소재명을 현재 지면에서 찾지 못했습니다. 다른 소재의 상세로 대신 표시하지 않습니다. 비교표에서 직접 선택해주세요.</p>}
       {ambiguousExternal && <p className={styles.warningText}>같은 원본명이 여러 소재 또는 버전에 있습니다. ID·버전을 확인하고 비교표에서 직접 선택해주세요.</p>}
+      <section className={styles.visualComparison} aria-label="확인된 소재 성과 도표"><h4>연결 확인된 소재 성과</h4><p>AE가 성과 원본을 직접 연결한 소재만 표시합니다. 등록 이미지는 게재 증빙이 아닙니다. 소재별 제공일과 집행 범위가 다를 수 있어 효율 순위가 아닙니다.</p><div role="group" aria-label="소재 도표 지표 선택">{([['impressions','노출'],['clicks','클릭']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={chartMetric===key} onClick={()=>setChartMetric(key)}>{label}</button>)}</div>{(()=>{const eligible=group.creatives.filter(entry=>{const selected=entry.rows.filter(r=>r.selected&&!r.conflict);return !group.ambiguousScope&&!entry.identityConflict&&!entry.conflictDates.length&&selected.length>0&&selected.every(r=>r.mapping==='explicit_link');});const available=eligible.filter(entry=>typeof entry.metrics[chartMetric]==='number'&&Number.isFinite(entry.metrics[chartMetric])&&entry.metrics[chartMetric]!>=0);const max=Math.max(0,...available.map(entry=>entry.metrics[chartMetric] as number));return available.length?<ul>{available.map(entry=>{const value=entry.metrics[chartMetric] as number;const selected=entry.rows.filter(r=>r.selected&&!r.conflict);const dates=[...new Set(selected.map(r=>r.row.date))].sort();return <li key={entry.id}><button className={styles.visualEntry} type="button" onClick={()=>select(entry)}><ChartEntryImage entry={entry}/><span><strong>{entry.name||'소재명 미입력'}</strong><small>{dates.length}일 제공 · {date(dates[0])} ~ {date(dates.at(-1))}</small></span><b>{amount(value)}</b></button><div className={styles.visualTrack} aria-hidden="true"><i style={{width:max>0?(value/max*100)+'%':'0%'}} /></div></li>;})}</ul>:<p>직접 연결된 소재의 {chartMetric==='impressions'?'노출':'클릭'} 자료가 없습니다. 미연결·미제공은 0으로 표시하지 않습니다.</p>;})()}</section>
       <EntryTable entries={group.creatives} title="등록 소재" selectedId={selected?.id} onSelect={select} />
       {group.unlinkedPerformance.length > 0 && <EntryTable entries={group.unlinkedPerformance} title="미연결 성과 원본명" selectedId={selected?.id} onSelect={select} />}
       {selected?.materialIdentity && <dl className={styles.materialIdentity}><div><dt>소재ID · 버전</dt><dd>{selected.materialIdentity.assetId} · {selected.materialIdentity.version}</dd></div><div><dt>소재 관리명</dt><dd>{selected.materialIdentity.displayName}</dd></div><div><dt>보고된 소재 파일명</dt><dd>{selected.materialIdentity.reportedFilename || "미등록"}</dd></div><div><dt>소재 규격</dt><dd>{selected.materialIdentity.format || "미등록"}</dd></div></dl>}
