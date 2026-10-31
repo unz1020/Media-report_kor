@@ -44,9 +44,10 @@ try{
  assert.equal(await plot.getAttribute('viewBox'),'0 0 960 400');assert.equal(await plot.getAttribute('role'),'group');assert.equal(await plot.getAttribute('aria-label'),'네이버 일별 다중 지표 통합 그래프');
  assert.equal(await details.count(),1);assert.equal(await details.getAttribute('open'),null,'Graph is the default; numbers are optional');assert.equal(await table.isVisible(),false);
  assert.equal(await combined.locator('[data-combined-readout]').count(),3);
- assert.equal(await explorer.getByLabel('그래프 매체',{exact:true}).count(),0);
+ assert.equal(await explorer.getByRole('group',{name:'그래프 매체',exact:true}).count(),0);
  const choices=explorer.getByRole('group',{name:'일별 지표 (최대 4개)'});
  assert.equal(await choices.getByRole('checkbox',{checked:true}).count(),3);
+ await choices.getByRole('button',{name:'노출·클릭',exact:true}).click();assert.equal(await choices.getByRole('checkbox',{checked:true}).count(),2);await choices.getByRole('button',{name:'비교 매체 제공 지표',exact:true}).click();assert.equal(await choices.getByRole('checkbox',{checked:true}).count(),4);await choices.getByRole('checkbox',{name:'조회수',exact:true}).uncheck();
  await choices.getByRole('checkbox',{name:'조회수',exact:true}).check();await oneGraph();
  const metrics=['impressions','clicks','spend','views'];const colors=[];
  for(const metric of metrics){
@@ -63,14 +64,14 @@ try{
  const mediaChoices=explorer.getByRole('group',{name:'비교 매체 (최대 3개)'});
  await mediaChoices.getByRole('checkbox',{name:'카카오',exact:true}).check();await mediaChoices.getByRole('checkbox',{name:'유튜브',exact:true}).check();
  assert.equal(await mediaChoices.getByRole('checkbox',{name:'메타',exact:true}).isDisabled(),true);await oneGraph();
- const mediaSelect=explorer.getByLabel('그래프 매체',{exact:true});assert.equal(await mediaSelect.locator('option').count(),3);
- await mediaSelect.selectOption('카카오');assert.equal(await combined.getAttribute('data-combined-media'),'카카오');
+ const mediaTabs=explorer.getByRole('group',{name:'그래프 매체',exact:true});assert.equal(await mediaTabs.getByRole('button').count(),3);
+ await mediaTabs.getByRole('button',{name:'카카오',exact:true}).click();assert.equal(await combined.getAttribute('data-combined-media'),'카카오');assert.equal(await mediaTabs.getByRole('button',{name:'카카오',exact:true}).getAttribute('aria-pressed'),'true');assert.ok((await choices.textContent()).includes('이 매체 미제공 · 표 비교용'));
  await explorer.getByLabel('공통 비교일',{exact:true}).selectOption('2026-10-03');
  assert.equal(await combined.locator('[data-combined-readout="spend"] strong').textContent(),'미제공');
  assert.equal(await plot.locator('[data-combined-point="spend"]').count(),0,'Focus media lacks spend without removing globally available spend metric');
  assert.equal(await choices.getByRole('checkbox',{name:'집행액',exact:true}).isEnabled(),true);
- await mediaSelect.selectOption('네이버');await oneGraph();
- const dateSelect=explorer.getByLabel('공통 비교일',{exact:true});await visible(dateSelect);assert.equal(await dateSelect.locator('xpath=ancestor::details').count(),0);const hit=date=>plot.locator('[data-combined-day="'+date+'"]');
+ await mediaTabs.getByRole('button',{name:'네이버',exact:true}).click();await oneGraph();
+ const dateSelect=explorer.getByLabel('공통 비교일',{exact:true});await visible(dateSelect);await dateSelect.selectOption('2026-10-03');await explorer.getByRole('button',{name:'이전 날짜'}).click();assert.equal(await dateSelect.inputValue(),'2026-10-02');await explorer.getByRole('button',{name:'다음 날짜'}).click();assert.equal(await dateSelect.inputValue(),'2026-10-03');assert.equal(await dateSelect.locator('xpath=ancestor::details').count(),0);const hit=date=>plot.locator('[data-combined-day="'+date+'"]');
  assert.deepEqual(await plot.locator('[data-combined-day]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-combined-day'))),[...days].reverse(),'One transparent hit target per accepted calendar day');
  assert.equal(await plot.locator('rect[data-combined-day][role="button"]').count(),days.length);assert.equal(await plot.locator('[data-combined-day][tabindex="0"]').count(),1);
  const readouts=async values=>{for(let i=0;i<metrics.length;i++)assert.equal(await combined.locator('[data-combined-readout="'+metrics[i]+'"] strong').textContent(),values[i]);};

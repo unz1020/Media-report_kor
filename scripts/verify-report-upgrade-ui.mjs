@@ -139,8 +139,8 @@ try {
   const hit = date => plot().locator('[data-combined-day="' + date + '"]');
   const metrics = ['impressions', 'clicks', 'spend', 'views'];
   const focusMedia = async name => {
-    const select = trend().getByLabel('그래프 매체', { exact: true });
-    if (await select.count()) await select.selectOption(name);
+    const tabs = trend().getByRole('group', { name: '그래프 매체', exact: true });
+    if (await tabs.count()) await tabs.getByRole('button', { name, exact: true }).click();
     assert.equal(await combined().getAttribute('data-combined-media'), name);
     assert.equal(await plot().getAttribute('role'), 'group');
     assert.equal(await plot().getAttribute('aria-label'), name + ' 일별 다중 지표 통합 그래프');
@@ -284,7 +284,7 @@ try {
   assert.equal(await table().isVisible(), false);
   assert.equal(await metricChoices().getByRole('checkbox', { checked: true }).count(), 3);
   assert.equal(await combined().locator('[data-combined-readout]').count(), 3);
-  assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).count(), 0, 'One selected media needs no focus selector');
+  assert.equal(await trend().getByRole('group', { name: '그래프 매체', exact: true }).count(), 0, 'One selected media needs no focus selector');
   await openTable();assert.equal(await table().locator('thead th').count(), 5);
   // Ensure a deterministic explicit first media, independent of Korean sort order.
   if (!(await mediaChoices().getByRole('checkbox', { name: '네이버', exact: true }).isChecked())) {
@@ -302,7 +302,7 @@ try {
   assert.equal(await metricChoices().getByRole('checkbox').count(), 4);
   assert.equal(await metricChoices().getByRole('checkbox', { checked: true }).count(), 4);
   await openCharts();assert.equal(await combined().locator('[data-combined-readout]').count(), 4);
-  assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).locator('option').count(), 3);
+  assert.equal(await trend().getByRole('group', { name: '그래프 매체', exact: true }).getByRole('button').count(), 3);
   for (const name of ['카카오', '직방', '네이버']) await focusMedia(name);
   await mediaChoices().getByRole('searchbox', { name: '매체 찾기', exact: true }).fill('no-such-synthetic-media');
   await visible(trend().getByText('검색한 매체가 없습니다. 기존 선택은 유지됩니다.', { exact: true }));
@@ -333,7 +333,7 @@ try {
   await page.getByRole('button', { name: '네이버 성과 상세 보기', exact: true }).click();
   await visible(page.getByRole('region', { name: '네이버 성과 요약', exact: true }));
   await openCharts(); // Detail navigation keeps the graph visible by default.
-  assert.equal(await trend().count(), 1);await focusMedia('네이버');assert.equal(await trend().getByLabel('그래프 매체', { exact: true }).count(), 0);
+  assert.equal(await trend().count(), 1);await focusMedia('네이버');assert.equal(await trend().getByRole('group', { name: '그래프 매체', exact: true }).count(), 0);
   for (const name of ['노출수', '클릭수', '집행액', '조회수']) await metricChoices().getByRole('checkbox', { name, exact: true }).check();
   await openCharts();assert.equal(await combined().locator('[data-combined-readout]').count(), 4);
   await checkTable(['네이버']); await checkGaps(); await checkTableScroll(); await checkGraphScroll(); await noOverflow('Multi-metric media detail');

@@ -156,7 +156,7 @@
 .changeCard { cursor: pointer; }
 .changeCard:hover { border-color: var(--report-accent); }
 .attentionLabel { font-size: 10px; color: var(--report-muted); }
-.changeCard > strong { color: var(--report-accent); font-size: 23px; letter-spacing: -.035em; font-weight: 650; }
+.changeCard > strong { color: var(--report-muted); font-size: 23px; letter-spacing: -.035em; font-weight: 650; }
 .changeCard > strong small { color: var(--report-ink); font-size: 11px; font-weight: 500; }
 .changeCard > span:not(:first-child) { font-size: 11px; color: var(--report-muted); }
 .changeCard > small,.findingCard > small { font-size: 10px; color: var(--report-muted); line-height: 1.7; }
@@ -290,3 +290,28 @@
 .dailyDelta { display:inline-block; margin-left:4px; font-size:12px; font-weight:600; line-height:1.5; color:var(--report-muted,#637083); font-variant-numeric:tabular-nums; }
 .dailyDelta.deltaUp, .changeCard > strong.deltaUp { color:#d6282f; }
 .dailyDelta.deltaDown, .changeCard > strong.deltaDown { color:#1f5fd0; }
+
+/* Explorer controls: select metrics next to their visual line key. */
+.controlTitle { font-weight:600; color:var(--report-ink,#17202e); }
+.graphMediaChoice { align-items:center; gap:8px 12px; }
+.graphMediaChoice>span:last-child { flex-basis:100%; }
+.graphMediaTabs { display:flex; flex-wrap:wrap; gap:6px; }
+.graphMediaTabs button,.metricShortcuts button,.sharedDate button { min-height:36px; border:1px solid var(--report-line,#dfe3e9); background:var(--report-paper,#fff); color:var(--report-ink,#17202e); border-radius:7px; font:inherit; padding:6px 11px; cursor:pointer; }
+.graphMediaTabs button { min-height:44px; }
+.graphMediaTabs button[aria-pressed="true"] { background:var(--surface-2,#f5f6ff); border-color:var(--report-accent,#5358d5); color:var(--report-accent,#5358d5); font-weight:700; }
+.metricHelp { display:flex; align-items:center; flex-wrap:wrap; justify-content:space-between; gap:8px; margin-bottom:10px; color:var(--report-muted,#637083); font-size:12px; }
+.metricShortcuts { display:flex; flex-wrap:wrap; gap:6px; }
+.metricShortcuts button { min-height:44px; font-size:12px; }
+.metricTiles { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.metricTiles label { display:flex; align-items:center; gap:7px; min-width:0; min-height:50px; border:1px solid var(--report-line,#dfe3e9); border-radius:8px; padding:9px 10px; font-size:13px; cursor:pointer; }
+.metricTiles label:has(input:checked) { background:var(--surface-2,#f5f6ff); border-color:var(--report-accent,#5358d5); }
+.metricTiles label:has(input:disabled) { color:var(--report-muted,#637083); cursor:not-allowed; }
+.metricTiles input { appearance:auto; width:16px; height:16px; flex:0 0 16px; margin:0; accent-color:var(--report-accent,#5358d5); }
+.metricStroke { width:20px; height:3px; flex:0 0 20px; }
+.metricName { min-width:0; font-weight:600; overflow-wrap:anywhere; }
+.metricName small { display:block; color:var(--report-muted,#637083); font-size:11px; font-weight:400; line-height:1.4; }
+.trend button:focus-visible { outline:2px solid var(--report-accent,#5358d5); outline-offset:3px; }
+.trend button:disabled { opacity:.5; cursor:not-allowed; }
+.sharedDate button { min-width:44px; min-height:44px; font-size:20px; line-height:1; }
+@container report-trend (max-width:680px) { .metricTiles { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:600px) { .metricTiles { grid-template-columns:repeat(2,minmax(0,1fr)); } }
