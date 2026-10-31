@@ -195,5 +195,28 @@ try {
     const bad={...linked,rows:[owner('Linked',{mapping:'exact_name'})]};const h2=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[{...g,creatives:[bad]}]},groupId:g.id}));assert.match(h2,/直接|直接連結|직접 연결된 소재의 노출 자료가 없습니다/);
     const wrong={...linked,proofs:[proof('Linked',{creativeImagePath:'unrelated.png'}),proof('Linked',{performanceLink:link})]};const h3=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[{...g,creatives:[wrong]}]},groupId:g.id}));const chart3=h3.match(/<section class="visualComparison"[\s\S]*?<\/section>/)[0];assert.doesNotMatch(chart3,/unrelated.png/);assert.match(chart3,/연결 확인된 이미지 없음/);
   });
+  test('image comparison shows only explicitly image-owned metrics and never fabricates missing values', () => {
+    const { ImageTestComparison } = load('components/creative-rotation-panel.tsx');
+    const link = { sourceFamily: 'synthetic-family', platform: 'Synthetic media', placement: 'Synthetic placement', creative: 'raw-A' };
+    const imagePath = 'synthetic/shared.png';
+    const firstProof = proof('기획전 A', { creativeImagePath: imagePath });
+    const linkedProof = proof('기획전 A', { creativeImagePath: imagePath, performanceLink: link });
+    const linkedRow = owner('raw-A', { mapping:'explicit_link', row:{ date:'2030-01-10', platform:'Synthetic media', placement:'Synthetic placement', creative:'raw-A', impressions:1000, clicks:10 } });
+    const selected = entry('기획전 A', { proofs:[firstProof, linkedProof], rows:[linkedRow], metrics:{...metrics, impressions:1000, clicks:10, ctr:1} });
+    const originalUseState = React.useState;
+    const show = item => {
+      React.useState = initial => Array.isArray(initial) ? [[item.id], () => {}] : originalUseState(initial);
+      try { return renderToStaticMarkup(React.createElement(ImageTestComparison, { group: { ...group, creatives:[item] } })); }
+      finally { React.useState = originalUseState; }
+    };
+    const confirmed = show(selected);
+    assert.match(confirmed, /성과 원본 직접 연결됨/); assert.match(confirmed, /1,000/); assert.match(confirmed, /2030-01-10/);
+    const unlinked = show({ ...selected, rows:[{...linkedRow,mapping:'exact_name'}] });
+    assert.match(unlinked, /성과 연결·원본 확인 필요/); assert.doesNotMatch(unlinked, /1,000/); assert.match(unlinked, /미제공/);
+    const wrongImage = show({ ...selected, proofs:[firstProof, {...linkedProof,creativeImagePath:'synthetic/other.png'}] });
+    assert.match(wrongImage, /성과 연결·원본 확인 필요/); assert.doesNotMatch(wrongImage, /1,000/);
+    const missing = show({ ...selected, rows:[], metrics:{...metrics} });
+    assert.match(missing, /성과 기간 미확인/); assert.match(missing, /미제공/);
+  });
   console.log(`Creative rotation render checks passed (${count} synthetic cases).`);
 } finally { globalThis.fetch = originalFetch; }
