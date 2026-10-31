@@ -184,5 +184,16 @@ try {
     assert.doesNotMatch(rows,/one.jpg|two.jpg|conflict.jpg/); assert.equal((rows.match(/이미지 확인 필요/g)||[]).length,2);
     assert.match(multi,/one.jpg/); assert.doesNotMatch(multi,/two.jpg/); // selected proof is shown, never silently merged
   });
+  test('visual chart only shows explicit linked metrics and the directly linked proof image', () => {
+    const link={sourceFamily:'synthetic-family',platform:'Synthetic media',placement:'Synthetic placement',creative:'Linked'};
+    const linked=entry('Linked',{proofs:[proof('Linked',{performanceLink:link,creativeImagePath:'linked.png'}),proof('Linked',{creativeImagePath:'unrelated.png'})],rows:[owner('Linked',{mapping:'explicit_link'})],metrics:{...metrics,impressions:12,clicks:0},reportedDates:['2030-01-10']});
+    const guessed=entry('Guessed',{proofs:[proof('Guessed',{creativeImagePath:'guess.png'})],rows:[owner('Guessed',{mapping:'exact_name'})],metrics:{...metrics,impressions:999}});
+    const g={...group,id:'chart',creatives:[linked,guessed],unlinkedPerformance:[]};
+    const h=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[g]},groupId:g.id}));
+    const chart=h.match(/<section class="visualComparison"[\s\S]*?<\/section>/)[0];
+    assert.match(chart,/Linked/);assert.match(chart,/linked.png/);assert.doesNotMatch(chart,/Guessed|guess.png|unrelated.png/);assert.match(chart,/12/);assert.match(chart,/2030-01-10/);
+    const bad={...linked,rows:[owner('Linked',{mapping:'exact_name'})]};const h2=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[{...g,creatives:[bad]}]},groupId:g.id}));assert.match(h2,/直接|直接連結|직접 연결된 소재의 노출 자료가 없습니다/);
+    const wrong={...linked,proofs:[proof('Linked',{creativeImagePath:'unrelated.png'}),proof('Linked',{performanceLink:link})]};const h3=renderToStaticMarkup(React.createElement(CreativeRotationPanel,{report:{...report,groups:[{...g,creatives:[wrong]}]},groupId:g.id}));const chart3=h3.match(/<section class="visualComparison"[\s\S]*?<\/section>/)[0];assert.doesNotMatch(chart3,/unrelated.png/);assert.match(chart3,/연결 확인된 이미지 없음/);
+  });
   console.log(`Creative rotation render checks passed (${count} synthetic cases).`);
 } finally { globalThis.fetch = originalFetch; }

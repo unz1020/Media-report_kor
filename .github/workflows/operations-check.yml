@@ -56,6 +56,7 @@ jobs:
           node scripts/verify-performance-report.cjs
           node scripts/verify-performance-brief.cjs
           node scripts/verify-performance-report-render.cjs
+          node scripts/verify-goal-progress.cjs
           node scripts/verify-performance-source-render.cjs
           node scripts/verify-viral-placement-board.cjs
           node scripts/verify-media-icons.cjs
