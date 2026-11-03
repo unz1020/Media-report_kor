@@ -1,25 +1,66 @@
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 const root=process.env.REPORTING_TEST_URL||'http://127.0.0.1:3000';
-const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}});
+const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});const page=await browser.newPage({viewport:{width:1440,height:1000}});
 const errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));let fail=false,release;const gate=new Promise(resolve=>release=resolve);
 const fact=(platform,placement,impressions,clicks,spend)=>({platform,placement,impressions,clicks,spend,ctr:impressions>0&&clicks!==null?clicks/impressions*100:null,achievement:null,guaranteed:'',sourceSheet:'Synthetic'});
 const nav={...fact('네이버','Synthetic feed',1000,10,100),cpc:999},service=fact('네이버','Synthetic (서비스)',50,0,20),off=fact('포커스미디어','Synthetic elevator',100000,999,50),kakao=fact('카카오','Synthetic native',900,15,null);
 const daily=[{...nav,date:'2030-01-01',impressions:100,clicks:10,spend:100},{...nav,date:'2030-01-03',impressions:900,clicks:0,spend:0},{...nav,date:'2030-01-04',impressions:0,clicks:0,spend:0},{...kakao,date:'2030-01-03',impressions:500,clicks:10,spend:null},{...kakao,date:'2030-01-04',impressions:400,clicks:5,spend:null}];
+daily.push({...fact('메타','Synthetic social',400,10,null),date:'2030-01-03'},{...fact('메타','Synthetic social',600,20,null),date:'2030-01-04'});
 const plan={platform:'SBS-TV',product:'Synthetic TV',placement:'Synthetic drama',device:'',creativeType:'영상',periodStart:'2030-01-01',periodEnd:'2030-01-31',budget:10000,expectedImpressions:null,expectedClicks:null,target:'',sourceSheet:'Synthetic plan'};
 const bundle={advertiser:'자코모',sourceFile:'synthetic.xlsx',reportDate:'2030-01-04',campaignStart:'2030-01-01',campaignEnd:'2030-01-31',placements:[nav,service,kakao],dailyPerformance:[...daily,{...service,date:'2030-01-04'}],creativeDailyPerformance:[{...nav,date:'2030-01-04',creative:'Synthetic creative',impressions:500,clicks:5},{...fact('키즈노트','Synthetic creative-only',null,null,null),date:'2030-01-03',creative:'Synthetic source only',impressions:500,clicks:5}],mediaPlan:[plan],operationNotes:[],mailChecks:[],parsedSheets:[],ignoredSheets:[],qa:{}};
 const imports=[{id:'fixture',report_date:'2030-01-04',updated_at:'2030-01-05T00:00:00Z',metadata:{bundle}},{id:'offline',report_date:'2030-01-04',updated_at:'2030-01-05T00:00:00Z',metadata:{bundle:{...bundle,sourceFile:'synthetic-offline.xlsx',placements:[off],dailyPerformance:[],creativeDailyPerformance:[],mediaPlan:[]}}}];const original=JSON.stringify(imports);
 const json=(r,data,status=200)=>r.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
 await page.addInitScript(()=>localStorage.setItem('media-report-month:fixture@example.test','2030-01'));
+// Block any non-read request outside the explicitly intercepted store reads too.
+await page.route('**/*',async route=>{const request=route.request();if(!['GET','HEAD','OPTIONS'].includes(request.method())){writes.push(request.method()+' '+request.url());return route.abort();}return route.continue();});
 await page.route('**/api/workspace',r=>json(r,{user:{email:'fixture@example.test',display_name:'Synthetic',role:'ae'},advertisers:[{id:'fixture',name:'자코모',slug:'jacomo',accessLevel:'editor'}],months:['2030-01','2030-02']}));
 await page.route('**/api/reporting/store',async r=>{const b=r.request().postDataJSON();if(b.action==='load_layout')return json(r,{layout:null,updatedAt:null});if(b.action==='load_state'){await gate;return fail?json(r,{error:'SYNTHETIC_FAILURE'},503):json(r,{imports:b.month==='2030-02'?[]:imports,insights:[]});}writes.push(b.action);return json(r,{error:'UNEXPECTED_WRITE'},400);});
 const wait=l=>l.waitFor({state:'visible',timeout:30000});
 async function identity(locator,media,key){const label=locator.locator('[data-media-label="'+media+'"]').first();await wait(label);const mark=label.locator('[data-media-icon]');assert.equal(await mark.getAttribute('data-media-icon'),key);assert.equal(await mark.getAttribute('aria-hidden'),'true');const images=mark.locator('img');if(await images.count()){await images.evaluateAll(els=>Promise.all(els.map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true})}))));assert.ok(await images.first().evaluate(img=>img.naturalWidth>0));assert.equal(await images.first().getAttribute('alt'),'');}const box=await mark.boundingBox();assert.ok(box.width>=21&&box.height>=21);assert.ok((await label.textContent()).includes(media));return mark;}
 const navigate=name=>page.getByRole('navigation',{name:'성과 리포트 화면'}).getByRole('button',{name,exact:true});
+// State-based waits: never assert the old React render immediately after changes.
+const summaryPanel=name=>page.getByRole('region',{name,exact:true});
+async function verifyInfographics() {
+ const coverage=summaryPanel('성과 원본과 계획 등록'), changes=summaryPanel('일별 변화 한눈에');
+ await wait(coverage); await wait(changes);
+ assert.match(await coverage.innerText(),/매체 수 · 2030-01-01 ~ 2030-01-04/);
+ assert.match(await coverage.innerText(),/성과 원본 있음\s*5\s*개 매체/);
+ assert.match(await coverage.innerText(),/계획만 등록\s*1\s*개 매체/);
+ assert.match(await coverage.innerText(),/최근 보고 기준일 2030-01-04 · 최근 일별 원본 2030-01-04/);
+ assert.match(await coverage.innerText(),/집행 여부나 실적을 판단하지 않습니다/);
+ const cards=changes.getByRole('button'); assert.equal(await cards.count(),2);
+ const meta=cards.filter({has:page.locator('[data-media-label="메타"]')});
+ const kakao=cards.filter({has:page.locator('[data-media-label="카카오"]')});
+ for (const [card,media,percentage,previous,current,tone,color] of [[meta,'메타','+100.0%','10회','20회','up','rgb(197, 33, 41)'],[kakao,'카카오','-50.0%','10회','5회','down','rgb(31, 95, 208)']]) {
+   await wait(card); const text=await card.innerText();
+   assert.match(text,new RegExp(media+'\\s*· 클릭수')); assert.ok(text.includes(percentage));
+   assert.match(text,new RegExp('2030-01-03\\s*'+previous+'[\\s\\S]*2030-01-04\\s*'+current));
+   const delta=card.locator('[data-delta-tone]');assert.equal(await delta.getAttribute('data-delta-tone'),tone);
+   assert.equal(await delta.evaluate(el=>getComputedStyle(el).color),color);
+   assert.ok(text.includes('같은 지면·지표의 전일 비교 · 효율 판단 아님'));
+ }
+ // Selecting a visual opens its media, and changing the detail selection is explicit.
+ await meta.click(); await wait(page.getByRole('region',{name:'메타 성과 요약',exact:true}));
+ await page.getByLabel('상세 매체 선택').selectOption('카카오'); await wait(page.getByRole('region',{name:'카카오 성과 요약',exact:true}));
+ await navigate('요약 리포트').click(); await wait(summaryPanel('일별 변화 한눈에'));
+ // Shorten the actual report period; neither calendar gaps nor a single source day
+ // may manufacture a comparison. Restore the original range before other checks.
+ await page.getByText('조회 기간',{exact:true}).first().click();
+ await page.getByLabel('성과 조회 종료일').fill('2030-01-03');
+ await wait(coverage.getByText('매체 수 · 2030-01-01 ~ 2030-01-03',{exact:true}));
+ await wait(changes.getByText('비교 가능한 일별 변화가 없습니다. 미제공·비교 불가를 0이나 변화 없음으로 표시하지 않습니다.',{exact:true}));
+ assert.equal(await changes.getByRole('button').count(),0);
+ await page.getByLabel('성과 조회 종료일').fill('2030-01-04');
+ await wait(coverage.getByText('매체 수 · 2030-01-01 ~ 2030-01-04',{exact:true}));
+ await wait(changes.getByRole('button').filter({has:page.locator('[data-media-label="카카오"]')}));
+ await page.getByText('조회 기간',{exact:true}).first().click();
+}
+
 try{
  await page.goto(root+'/performance');await wait(page.getByRole('heading',{name:'성과 자료를 불러오고 있습니다.',exact:true}));assert.equal(await page.getByRole('heading',{name:'아직 반영된 성과 데이터가 없습니다.',exact:true}).count(),0,'Loading is not hydrated empty');release();
  await wait(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}));await identity(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}),'네이버','naver');await identity(page.getByRole('button',{name:'카카오 성과 상세 보기',exact:true}),'카카오','kakao');assert.equal(await page.locator('table').count(),1,'Summary retains one optional daily table');const daily=page.locator('[data-daily-multi-metrics]');const graph=daily.locator('[data-daily-combined-chart]');await wait(graph.locator('svg[data-combined-plot]'));assert.equal(await graph.count(),1);assert.equal(await graph.locator('svg[data-combined-plot]').count(),1);assert.equal(await graph.locator('xpath=ancestor::details').count(),0);assert.equal(await daily.locator('[data-daily-metric]').count(),0);const numbers=daily.locator('details').filter({has:page.locator('summary').filter({hasText:/^일별 수치 표 펼치기$/})});assert.equal(await numbers.count(),1);assert.equal(await numbers.getAttribute('open'),null);assert.equal(await numbers.locator('table[data-daily-table]').count(),1);assert.equal(await numbers.locator('table').isVisible(),false);await numbers.locator('summary').click();assert.equal(await page.getByRole('table',{name:'일별 지표 통합표',exact:true}).count(),1);await numbers.locator('summary').click();assert.equal(await page.locator('table:not([data-daily-table])').count(),0,'No raw ledger table dump in the summary');assert.equal(await page.locator('[data-performance-matrix]').count(),0);
- await wait(page.getByRole('button',{name:'카카오 최근 변화 상세 보기',exact:true}));assert.ok((await page.getByRole('region',{name:'최근 변화와 보고 당시 확인사항'}).textContent()).includes('-50.0%'));
+ await verifyInfographics();
  assert.ok((await page.locator('main').textContent()).includes('150원'),'Reference 20 is excluded from paid spend');
  await page.getByRole('searchbox',{name:'매체 검색',exact:true}).fill('no-such-synthetic');await wait(page.getByText('조건에 맞는 성과 원본이 없습니다.',{exact:true}));await page.getByRole('searchbox',{name:'매체 검색',exact:true}).fill('');
  await page.getByRole('button',{name:'키즈노트 성과 상세 보기',exact:true}).click();await wait(page.getByRole('region',{name:'키즈노트 소재별 성과',exact:true}));await page.getByText('조회 기간',{exact:true}).first().click();assert.equal(await page.getByLabel('성과 조회 종료일').inputValue(),'2030-01-03','Creative-only source opens its available source day');await page.getByLabel('성과 조회 종료일').fill('2030-01-02');await navigate('요약 리포트').click();assert.equal(await page.getByLabel('성과 조회 종료일').inputValue(),'2030-01-04','Creative day never rewrites summary end');assert.equal(await page.getByLabel('성과 조회 시작일').inputValue(),'2030-01-01');await page.getByText('조회 기간',{exact:true}).first().click();
@@ -30,10 +71,10 @@ try{
  await page.getByRole('button',{name:'소재별',exact:true}).click();await wait(page.getByRole('region',{name:'네이버 소재별 성과',exact:true}));assert.equal(await page.getByRole('group',{name:/일별.*추이 그래프/}).count(),0);await page.getByRole('button',{name:'광고 지면',exact:true}).click();
  await page.getByLabel('상세 매체 선택').selectOption('포커스미디어');await wait(page.getByRole('region',{name:'포커스미디어 지면별 성과',exact:true}));await page.getByRole('button',{name:'핵심 지표로',exact:true}).click();const offline=page.getByRole('region',{name:'포커스미디어 성과 요약',exact:true});await wait(offline);assert.equal(await offline.getByText(/CTR|CPC/).count(),0,'OOH counts are not digital efficiency');
  await navigate('요약 리포트').click();await page.getByText(/계획 등록 · 성과 원본 대기/).click();await page.getByRole('button',{name:/^SBS-TV/}).click();await wait(page.getByText('운영안은 연결돼 있지만 실적 자료는 아직 없습니다.',{exact:true}));await page.getByRole('button',{name:'운영안 비교 보기',exact:true}).click();await wait(page.getByLabel('미디어믹스 예상 및 실제 성과 비교',{exact:true}));
- await navigate('요약 리포트').click();await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Summary fits 390px');await identity(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}),'네이버','naver');await page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Detail fits 390px');await page.getByRole('button',{name:'일별·원본 확인',exact:true}).click();await wait(matrix);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Raw view scrolls internally at 390px');
+ await navigate('요약 리포트').click();await page.setViewportSize({width:390,height:844});await verifyInfographics();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Summary fits 390px');await identity(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}),'네이버','naver');await page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Detail fits 390px');await page.getByRole('button',{name:'일별·원본 확인',exact:true}).click();await wait(matrix);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Raw view scrolls internally at 390px');
  await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-02');await wait(page.getByRole('heading',{name:'아직 반영된 성과 데이터가 없습니다.',exact:true}));assert.equal(await page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}).count(),0,'Scope changes clear old evidence');
  fail=true;await page.getByRole('button',{name:'새로고침',exact:true}).click();const syncError=page.getByRole('alert').filter({hasText:'최신 자료를 불러오지 못했습니다.'});await wait(syncError);assert.ok((await syncError.textContent()).includes('최신 자료를 불러오지 못했습니다.'));assert.equal(await page.getByRole('heading',{name:'아직 반영된 성과 데이터가 없습니다.',exact:true}).count(),0,'Failed request is not confirmed absence');
  fail=false;await page.getByLabel('조회 월 선택',{exact:true}).selectOption('2030-01');await page.getByRole('button',{name:'새로고침',exact:true}).click();await wait(page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true}));const naverRow=page.getByRole('button',{name:'네이버 성과 상세 보기',exact:true});const mark=await identity(naverRow,'네이버','naver');await mark.locator('img').evaluate(img=>{img.src='data:image/png;base64,invalid'});await wait(naverRow.locator('[data-media-icon="naver"][data-logo="false"]'));assert.equal(await mark.locator('img').count(),0);assert.ok((await naverRow.textContent()).includes('네이버'));assert.equal(await mark.getAttribute('data-monogram'),'N');
  assert.deepEqual(writes,[]);assert.equal(JSON.stringify(imports),original);assert.deepEqual(errors,[]);
- console.log('Advertiser report UI passed: loading/empty/error boundaries, summary without raw dump, coverage-safe changes, reference exclusion, search, per-media/detail/raw/creative/plan navigation, exact source values, mobile overflow, scope reset and no store writes.');
+ console.log('Advertiser report UI passed: loading/empty/error boundaries, summary without raw dump, desktop/390px infographic source counts, exact dates/values, direction colors, media navigation and date-range reset, coverage-safe changes, reference exclusion, search, per-media/detail/raw/creative/plan navigation, exact source values, mobile overflow, scope reset and no store writes.');
 }finally{release();await browser.close();}
