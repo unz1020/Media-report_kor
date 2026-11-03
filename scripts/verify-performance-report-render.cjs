@@ -151,6 +151,25 @@ try {
     const missing = overview(build({rows:[row({impressions:null})]}));
     assert.match(missing, /선택 기간에 노출수 합계를 제공한 매체가 없습니다/);
   });
+  test('infographics use scoped source counts and validated daily changes', () => {
+    const panels = [...html.matchAll(/<section class="summaryPanel"[\s\S]*?<\/section>/g)].map(match => text(match[0]));
+    assert.equal(panels.length, 2);
+    assert.match(panels[0], /매체 수 · 2030-01-10 ~ 2030-01-25/);
+    assert.match(panels[0], /성과 원본 있음3개 매체계획만 등록1개 매체/);
+    assert.match(panels[0], /최근 보고 기준일 2030-01-22/);
+    assert.match(panels[1], /네이버 · 클릭수\+50\.0%2030-01-1510회2030-01-1615회/);
+    assert.match(html, /data-delta-tone="up"/);
+    const empty = overview(build());
+    assert.match(empty, /성과 원본 있음<\/span><strong>0/);
+    assert.match(empty, /비교 가능한 일별 변화가 없습니다/);
+    assert.match(empty, /미제공·비교 불가를 0이나 변화 없음으로 표시하지 않습니다/);
+    const zero = overview(build({dailyRows:[daily({date:'2030-01-15',clicks:10}),daily({date:'2030-01-16',clicks:0})]}));
+    assert.match(zero, /data-delta-tone="down">-100\.0%/);
+    assert.match(text(zero), /2030-01-1510회2030-01-160회/);
+    const missing = overview(build({dailyRows:[daily({date:'2030-01-15',clicks:10}),daily({date:'2030-01-16',clicks:null})]}));
+    assert.match(missing, /비교 가능한 일별 변화가 없습니다/);
+    assert.doesNotMatch(missing, /data-delta-tone="(?:up|down)"/);
+  });
   test('reference spend excluded with an explicit note; source counts preserved', () => {
     assert.equal(report.totals.reportedSpend, 100);
     assert.equal(report.totals.excludedReferenceRows, 1);

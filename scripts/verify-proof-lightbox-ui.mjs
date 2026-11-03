@@ -16,7 +16,7 @@ const viewer=()=>page.locator('dialog[open]');
 async function open() {await trigger().click();await viewer().waitFor({state:'visible',timeout:20000});await page.waitForFunction(()=>document.querySelector('dialog[open] img')?.naturalWidth>0);}
 async function closed() {await page.locator('dialog').waitFor({state:'hidden'});}
 try {
- await page.goto(root+'/creative');await trigger().waitFor({state:'visible',timeout:30000});
+ await page.goto(root+'/creative');await page.getByLabel('조회 월 선택',{exact:true}).selectOption(proof.month);await trigger().waitFor({state:'visible',timeout:30000});
  const before=await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow}));
  await open();assert.equal(await page.evaluate(()=>document.body.style.overflow),'hidden');
  const bounds=await viewer().boundingBox();assert.ok(Math.abs(bounds.width-1280)<=1&&Math.abs(bounds.height-1000)<=1,'Full viewport dialog');

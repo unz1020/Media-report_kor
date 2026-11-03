@@ -99,6 +99,36 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
       {totals.videoMediaCount > 0 && <Kpi label="동영상 조회수" value={compactCount(period(totals.videoViews))} exact={number(period(totals.videoViews))} scope={`동영상·OTT ${totals.videoMediaCount}개 매체 조회 제공분`} />}
     </dl>
     <p className={styles.footnote}>제공된 원본 범위의 합계이며 전체 매체 실적을 뜻하지 않습니다. 서비스·참고 비용은 집행액에서 제외합니다{totals.excludedReferenceRows > 0 ? ` (${totals.excludedReferenceRows}개 원본 행)` : ""}. 미제공 값은 ‘—’, 실제 0은 ‘0’으로 표시합니다. 요약 단위는 반올림하며 정확한 값은 숫자에 마우스를 올리거나 매체 상세에서 확인합니다.</p>
+    <div className={styles.summaryVisuals}>
+      <section className={styles.summaryPanel} aria-labelledby={`${id}-coverage`}>
+        <p className={styles.eyebrow}>자료 현황 · 선택 기간</p><h3 id={`${id}-coverage`}>성과 원본과 계획 등록</h3>
+        <p className={styles.support}>매체 수 · {startDate} ~ {endDate}</p>
+        <div className={styles.coverageNumbers}>
+          <div><span>성과 원본 있음</span><strong>{evidence.length}<small>개 매체</small></strong></div>
+          <div><span>계획만 등록</span><strong>{report.planOnlyCount}<small>개 매체</small></strong></div>
+        </div>
+        {evidence.length + report.planOnlyCount > 0 ? <div className={styles.coverageBar} aria-hidden="true"><span style={{width: `${evidence.length / (evidence.length + report.planOnlyCount) * 100}%`}} /><span style={{width: `${report.planOnlyCount / (evidence.length + report.planOnlyCount) * 100}%`}} /></div> : <p className={styles.summaryEmpty}>선택 기간에 등록된 성과 원본과 계획이 없습니다.</p>}
+        <p className={styles.summaryNote}>성과 원본에는 일별·소재 원본도 포함됩니다. 계획만 등록은 성과 미제공을 뜻하며 집행 여부나 실적을 판단하지 않습니다.</p>
+        <p className={styles.summaryNote}>최근 보고 기준일 {report.latestReportDate ?? "미제공"} · 최근 일별 원본 {report.latestDailyDate ?? "미제공"}</p>
+      </section>
+      <section className={styles.summaryPanel} aria-labelledby={`${id}-daily-summary`}>
+        <p className={styles.eyebrow}>일별 원본 · 매체별 최근 비교</p><h3 id={`${id}-daily-summary`}>일별 변화 한눈에</h3>
+        <p className={styles.support}>선택 기간 · 변화율 절대값 상위 2개 · 매체별 기준일 상이</p>
+        {changes.length ? <ul className={styles.changeVisualList}>{changes.slice(0, 2).map(change => {
+          const max = Math.max(change.previous, change.current);
+          const tone = deltaTone(change.percent);
+          const exact = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 20 });
+          const unit = change.metric === "views" ? "원본 조회수" : "클릭수";
+          return <li key={change.media}><button type="button" className={styles.changeVisual} onClick={() => onOpenMedia(change.media)}>
+            <span className={styles.changeVisualHead}><span><MediaLabel media={change.media}>{change.media}</MediaLabel> · {unit}</span><strong className={tone === "up" ? styles.visualUp : styles.visualDown} data-delta-tone={tone}>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}%</strong></span>
+            <span className={styles.changeBarRow}><span>{change.previousDate}</span><span className={styles.changeTrack} aria-hidden="true"><i style={{width: `${change.previous / max * 100}%`}} /></span><b>{exact(change.previous)}회</b></span>
+            <span className={styles.changeBarRow}><span>{change.date}</span><span className={styles.changeTrack} aria-hidden="true"><i className={tone === "up" ? styles.barUp : styles.barDown} style={{width: `${change.current / max * 100}%`}} /></span><b>{exact(change.current)}회</b></span>
+            <small>최근 일별 변화 · 같은 지면·지표의 전일 비교 · 효율 판단 아님 · 상세 보기 →</small>
+          </button></li>;
+        })}</ul> : <p className={styles.summaryEmpty}>비교 가능한 일별 변화가 없습니다. 미제공·비교 불가를 0이나 변화 없음으로 표시하지 않습니다.</p>}
+        <p className={styles.summaryNote}>각 쌍의 큰 값을 기준으로 막대를 표시합니다. 매체 간 규모 비교가 아닙니다. 원본 조회수는 매체의 조회 정의에 따른 값이며 실제 시청 인원이나 순도달이 아닙니다.</p>
+      </section>
+    </div>
     <section className={styles.overviewChart} aria-labelledby={`${id}-volume`}>
       <div className={styles.overviewChartHeading}>
         <div><p className={styles.eyebrow}>선택 기간 · 제공된 원본</p><h3 id={`${id}-volume`}>매체별 지표 규모</h3><p className={styles.support}>각 막대는 현재 지표의 최대 매체 대비 크기입니다. 성과나 효율 순위가 아닙니다.</p></div>
@@ -117,11 +147,7 @@ export function PerformanceReportOverview({ report, insights, startDate, endDate
         <p className={styles.footnote}>제공된 기간·지면의 합계입니다. 미제공 값은 0으로 처리하지 않으며, 매체별 측정 기준이 다를 수 있습니다. 막대를 선택하면 해당 매체의 상세 근거를 볼 수 있습니다.</p>
       </> : <p className={styles.empty}>선택 기간에 {chartLabel} 합계를 제공한 매체가 없습니다. 일별 값이나 계획으로 대체하지 않습니다.</p>}
     </section>
-    {(changes.length > 0 || sourceFindings.length > 0) && <section className={styles.attention} aria-label="최근 변화와 보고 당시 확인사항">
-      {changes.slice(0,2).map(change => <button type="button" className={styles.changeCard} key={change.media} onClick={()=>onOpenMedia(change.media)} aria-label={change.media+" 최근 변화 상세 보기"}>
-        <span className={styles.attentionLabel}>최근 일별 변화 · <MediaLabel media={change.media}>{change.media}</MediaLabel></span><strong className={deltaTone(change.percent)==="up"?styles.deltaUp:deltaTone(change.percent)==="down"?styles.deltaDown:undefined} data-delta-tone={deltaTone(change.percent)}>{change.percent > 0 ? "+" : ""}{change.percent.toFixed(1)}% <small>{change.metric === "views" ? "원본 조회" : "클릭"}</small></strong>
-        <span>{change.previousDate.slice(5)} {number(change.previous)} → {change.date.slice(5)} {number(change.current)}</span><small>같은 지면·지표의 전일 비교 · 효율 판단 아님</small>
-      </button>)}
+    {sourceFindings.length > 0 && <section className={styles.attention} aria-label="보고 당시 확인사항">
       {sourceFindings.map(({item,note}) => {const media=inferMediaMentions(note).find(name=>report.media.some(m=>m.name===name));return <div key={item.key+note} className={styles.findingCard}>
         <span className={styles.attentionLabel}>보고 당시 원본 대조 메모</span><strong>{item.reportDate}</strong><p>{shorten(normalizeInsightText(note),120)}</p>{media&&<button type="button" onClick={()=>onOpenMedia(media)}><MediaLabel media={media}>{media}</MediaLabel> 근거 확인 →</button>}<small>현재 해결 여부는 별도 기록 전까지 판단하지 않습니다.</small>
       </div>})}

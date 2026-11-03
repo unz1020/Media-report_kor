@@ -315,3 +315,35 @@
 .sharedDate button { min-width:44px; min-height:44px; font-size:20px; line-height:1; }
 @container report-trend (max-width:680px) { .metricTiles { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .metricTiles { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* Compact evidence overview and verified per-media daily comparisons. */
+.summaryVisuals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:24px; }
+.summaryPanel { min-width:0; padding:22px; border:1px solid var(--report-line); border-radius:12px; background:var(--report-paper); }
+.summaryPanel h3 { margin-top:5px; font-size:19px; line-height:1.4; letter-spacing:-.035em; }
+.coverageNumbers { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:20px; }
+.coverageNumbers > div { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.coverageNumbers span { font-size:12px; color:var(--report-muted); }
+.coverageNumbers strong { font-size:28px; line-height:1.25; font-variant-numeric:tabular-nums; }
+.coverageNumbers strong small { margin-left:4px; font-size:12px; font-weight:500; }
+.coverageNumbers > div:first-child strong { color:var(--report-accent); }
+.coverageBar { display:flex; height:14px; overflow:hidden; border-radius:99px; background:var(--surface-3,#eef1f5); margin-top:16px; }
+.coverageBar span:first-child { background:var(--report-accent); }
+.coverageBar span:last-child { background:#a5adbb; }
+.summaryNote { margin-top:12px !important; font-size:11px; line-height:1.65; color:var(--report-muted); overflow-wrap:anywhere; }
+.summaryEmpty { margin-top:20px !important; font-size:13px; color:var(--report-muted); line-height:1.7; }
+.changeVisualList { list-style:none; padding:0; margin:12px 0 0; }
+.changeVisualList li + li { border-top:1px solid var(--report-line); }
+.changeVisual { width:100%; display:flex; flex-direction:column; gap:7px; border:0; background:none; text-align:left; padding:12px 0; cursor:pointer; }
+.changeVisualHead { width:100%; display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:13px; font-weight:600; }
+.changeVisualHead > span { min-width:0; overflow-wrap:anywhere; }
+.changeVisualHead strong { font-size:19px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.visualUp { color:#c52129; } .visualDown { color:#1f5fd0; }
+.changeBarRow { display:grid; grid-template-columns:80px minmax(30px,1fr) minmax(40px,auto); align-items:center; gap:8px; width:100%; font-size:11px; font-variant-numeric:tabular-nums; }
+.changeBarRow > span:first-child { color:var(--report-muted); }
+.changeBarRow b { text-align:right; font-weight:600; overflow-wrap:anywhere; }
+.changeTrack { height:8px; background:var(--surface-3,#eef1f5); border-radius:99px; overflow:hidden; }
+.changeTrack i { display:block; height:100%; border-radius:inherit; background:#98a2b3; }
+.changeTrack i.barUp { background:#c52129; } .changeTrack i.barDown { background:#1f5fd0; }
+.changeVisual small { font-size:10px; line-height:1.6; color:var(--report-muted); }
+@container performance-report (max-width:850px) { .summaryVisuals { grid-template-columns:minmax(0,1fr); } }
+@container performance-report (max-width:500px) { .summaryVisuals { order:3; gap:10px; } .summaryPanel { padding:16px 14px; } .overviewChart { order:4; } .attention { order:5; } .report > .section { order:6; } .contextGrid, .contextSingle { order:7; } .report > .section:last-child { order:8; } }
